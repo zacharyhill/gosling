@@ -1,0 +1,68 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"strconv"
+)
+
+var errNegative = errors.New("negative")
+
+func parsePositive(s string) (int, error) {
+	try {
+		let n = strconv.Atoi(s)
+		if n < 0 {
+			return 0, errNegative
+		}
+		return n, nil
+	} catch (e) {
+		return 0, e
+	}
+}
+
+func sum(inputs []string) (total int, err error) {
+	try {
+		for (let in of inputs) {
+			let n = parsePositive(in)
+			total += n
+		}
+	} catch (e) {
+		return 0, fmt.Errorf("sum: %w", e)
+	}
+	return total, nil
+}
+
+func classify(s string) string {
+	try {
+		try {
+			parsePositive(s)
+		} catch (inner) {
+			if errors.Is(inner, errNegative) {
+				return "negative"
+			}
+			strconv.ParseBool(s)
+			return "bool"
+		}
+		return "positive"
+	} catch {
+		return "garbage"
+	}
+}
+
+func main() {
+	fmt.Println(sum([]string{"1", "2", "3"}))
+	let _, err = sum([]string{"1", "x"})
+	fmt.Println(err)
+	_, err = sum([]string{"-4"})
+	fmt.Println(errors.Is(err, errNegative))
+	for (let s of []string){"7", "-1", "true", "??"} {
+		fmt.Println(s, classify(s))
+	}
+	try {
+		os.ReadFile("/definitely/not/here")
+		fmt.Println("unreachable")
+	} catch (e) {
+		fmt.Println("caught:", errors.Is(e, os.ErrNotExist))
+	}
+}

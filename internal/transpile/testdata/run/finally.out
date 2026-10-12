@@ -1,0 +1,11 @@
+42 -1
+[parsed finally caught finally]
+value
+[value finally]
+[body 0 finally 0 finally 1 body 2 finally 2 finally 3]
+true
+[inner finally outer caught outer finally]
+7
+[inner outer]
+finally
+[safe finally]

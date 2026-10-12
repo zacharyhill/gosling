@@ -1,0 +1,8 @@
+6 <nil>
+sum: strconv.Atoi: parsing "x": invalid syntax
+true
+7 positive
+-1 negative
+true bool
+?? garbage
+caught: true

@@ -1,0 +1,78 @@
+package letconst
+
+import (
+	"os"
+	"strings"
+)
+
+const limit = 10
+
+const typed: int = 5
+
+const prefix = strings.Repeat("-", 3)
+
+let fallback = strings.ToUpper("anon")
+
+let cache: map[string]string
+
+func load(path string) (string, error) {
+	const scale = 2
+	const upper = strings.ToUpper(path)
+	let count = 0
+	let names: []string
+	try {
+		const data = os.ReadFile(path)
+		count += len(data) * scale
+	} catch (e) {
+		return "", e
+	}
+	names = append(names, upper, fallback, cache[path])
+	return prefix + strings.Join(names, ",") + strings.Repeat("!", count%limit+typed), nil
+}
+
+func chained(n int) int {
+	const a = n * 2
+	const b = a + 1
+	return b
+}
+
+type point struct{ X, Y int }
+
+func destructure(p point, xs []int) int {
+	let {X, Y: y} = p
+	const [first, ...rest] = xs
+	X += y
+	for (const r of rest) {
+		X += r
+	}
+	for (let i in xs) {
+		i++
+		X += i
+	}
+	return X + first
+}
+
+func headers(m map[string]int, ch chan int, value any) int {
+	let total = 0
+	for (let i = 0; i < 3; i++) {
+		total += i
+	}
+	for const k, v = range m {
+		total += len(k) + v
+	}
+	if let n = len(m); n > 1 {
+		total += n
+	}
+	switch const v = value.(type) {
+	case int:
+		total += v
+	}
+	select {
+	case let v, ok = <-ch:
+		if ok {
+			total += v
+		}
+	default:
+	}
+	return total
+}

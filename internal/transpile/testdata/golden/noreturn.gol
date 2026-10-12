@@ -1,0 +1,47 @@
+package noreturn
+
+import (
+	"log"
+	"os"
+	"testing"
+)
+
+func mustRead(t *testing.T, path string) []byte {
+	try {
+		let data = os.ReadFile(path)
+		return data
+	} catch (e) {
+		t.Fatal(e)
+	}
+}
+
+func mustReadTB(tb testing.TB, path string) []byte {
+	try {
+		return os.ReadFile(path)
+	} catch (e) {
+		tb.Fatalf("read: %v", e)
+	}
+}
+
+func loadOrExit(path string) []byte {
+	try {
+		let data = os.ReadFile(path)
+		return data
+	} catch (e) {
+		log.Print(e)
+		os.Exit(1)
+	}
+}
+
+func loadOrDie(path string) []byte {
+	try {
+		let data = os.ReadFile(path)
+		return data
+	} catch (e) {
+		if os.IsNotExist(e) {
+			log.Fatalf("missing %s", path)
+		} else {
+			log.Fatal(e)
+		}
+	}
+}

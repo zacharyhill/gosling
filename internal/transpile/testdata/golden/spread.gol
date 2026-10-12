@@ -1,0 +1,37 @@
+package spread
+
+type User struct {
+	name string
+	age  int
+	tags []string
+}
+
+type Point struct{ X, Y int }
+
+func shorthand(name string, age int) User {
+	return User{name, age}
+}
+
+func mixed(name string) User {
+	return User{name, age: 3}
+}
+
+func positionalKeepsMeaning(X, Y int) Point {
+	return Point{Y, X}
+}
+
+func concat(a, b []int, x int) []int {
+	return [...a, x, 7, ...b]
+}
+
+func copySlice(a []string) []string {
+	return [...a]
+}
+
+func update(p Point) Point {
+	return Point{...p, X: 5}
+}
+
+func updateShorthand(u User, age int) User {
+	return User{...u, age, tags: [...u.tags, "new"]}
+}

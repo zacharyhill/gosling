@@ -1,0 +1,5 @@
+package noimports
+
+func label(n int) string {
+	return t`#${n}`
+}

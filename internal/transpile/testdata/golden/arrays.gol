@@ -1,0 +1,56 @@
+package arrays
+
+import "strconv"
+
+type User struct {
+	ID   int
+	Name string
+}
+
+func evensSquared(nums []int) []int {
+	return nums.filter(n => n%2 == 0).map(n => n * n)
+}
+
+func labels(nums []int) []string {
+	return nums.map((n, i) => strconv.Itoa(i) + ":" + strconv.Itoa(n))
+}
+
+func sum(nums []int) int {
+	return nums.reduce((acc, n) => acc + n, 0)
+}
+
+func total(nums []int) float64 {
+	return nums.reduce((acc, n) => acc + float64(n), 0.0)
+}
+
+func printAll(names []string, out func(string)) {
+	names.forEach(n => out(n))
+}
+
+func lookup(users []User, id int) string {
+	return users.find(u => u.ID == id)?.Name ?? "unknown"
+}
+
+func lookupPtr(users []*User, id int) *User {
+	return users.find(u => u.ID == id)
+}
+
+func checks(nums []int) (int, bool, bool, bool, int) {
+	return nums.findIndex(n => n > 2), nums.some(n => n < 0), nums.every(n => n >= 0), nums.includes(3), nums.indexOf(4)
+}
+
+func smallInts(nums []int64) bool {
+	return nums.includes(7)
+}
+
+func withFuncValue(nums []int, pred func(int) bool) []int {
+	return nums.filter(pred)
+}
+
+type Names []string
+
+func (n Names) filter(prefix string) Names { return n }
+
+func realMethodWins(n Names) Names {
+	return n.filter("a")
+}

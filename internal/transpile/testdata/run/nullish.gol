@@ -1,0 +1,40 @@
+package main
+
+import (
+	"fmt"
+	"strings"
+)
+
+type Profile struct{ Name string }
+
+type User struct {
+	Profile *Profile
+}
+
+func (u *User) Greet() string { return "hi " + (u.Profile?.Name ?? "?") }
+
+type Config struct{ Port *int }
+
+var counter int
+
+func next() *User {
+	counter++
+	return &User{Profile: &Profile{Name: "ada"}}
+}
+
+func main() {
+	let nobody: *User
+	let half = &User{}
+	let full = &User{Profile: &Profile{Name: "grace"}}
+	for (const u of []*User{nobody, half, full}) {
+		fmt.Println(u?.Profile?.Name ?? "anon")
+	}
+	let port = 9000
+	fmt.Println(Config{}.Port ?? 8080, Config{Port: &port}.Port ?? 8080)
+	fmt.Println(next()?.Profile?.Name ?? "none", counter)
+	fmt.Println(t`${strings.ToUpper(full?.Profile?.Name ?? "x")} ${nobody?.Profile?.Name}|`)
+	fmt.Println(full.Greet(), (&User{}).Greet())
+	let sb: *strings.Builder
+	sb?.WriteString("ignored")
+	fmt.Println("done")
+}

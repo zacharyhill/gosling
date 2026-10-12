@@ -1,0 +1,28 @@
+package main
+
+import "fmt"
+
+type Ok struct{ Value int }
+
+type Fail struct{ Reason string }
+
+type Pending struct{}
+
+type Result = Ok | Fail | Pending
+
+func describe(r Result) string {
+	switch let r = r.(type) {
+	case Ok:
+		return t`ok ${r.Value}`
+	case Fail:
+		return t`failed: ${r.Reason}`
+	case Pending:
+		return "pending"
+	}
+	return "nil"
+}
+
+func main() {
+	let results = []Result{Ok{42}, Fail{"timeout"}, Pending{}, nil}
+	results.forEach(r => fmt.Println(describe(r)))
+}

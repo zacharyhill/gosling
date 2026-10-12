@@ -1,0 +1,120 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+)
+
+var log []string
+
+func note(s string) string {
+	log = append(log, s)
+	return s
+}
+
+func flush() {
+	fmt.Println(log)
+	log = nil
+}
+
+func parse(s string) int {
+	try {
+		let n = strconv.Atoi(s)
+		note("parsed")
+		return n
+	} catch (e) {
+		note("caught")
+		return -1
+	} finally {
+		note("finally")
+	}
+}
+
+func returnOrder() string {
+	try {
+		return note("value")
+	} finally {
+		note("finally")
+	}
+}
+
+func loop() {
+	for (let i in 4) {
+		try {
+			if i == 1 {
+				continue
+			}
+			if i == 3 {
+				break
+			}
+			note(t`body ${i}`)
+		} finally {
+			note(t`finally ${i}`)
+		}
+	}
+}
+
+func nested() error {
+	try {
+		try {
+			strconv.Atoi("x")
+			note("unreachable")
+		} finally {
+			note("inner finally")
+		}
+	} catch (e) {
+		note("outer caught")
+		return e
+	} finally {
+		note("outer finally")
+	}
+	return nil
+}
+
+func nestedReturn() int {
+	try {
+		try {
+			return 7
+		} finally {
+			note("inner")
+		}
+	} finally {
+		note("outer")
+	}
+}
+
+func overrides() string {
+	try {
+		return "try"
+	} finally {
+		return "finally"
+	}
+}
+
+func emptyTry() {
+	try {
+		note("safe")
+	} catch (e) {
+		note("never")
+	} finally {
+		note("finally")
+	}
+}
+
+func main() {
+	fmt.Println(parse("42"), parse("x"))
+	flush()
+	fmt.Println(returnOrder())
+	flush()
+	loop()
+	flush()
+	let err = nested()
+	fmt.Println(errors.Is(err, strconv.ErrSyntax))
+	flush()
+	fmt.Println(nestedReturn())
+	flush()
+	fmt.Println(overrides())
+	emptyTry()
+	flush()
+}

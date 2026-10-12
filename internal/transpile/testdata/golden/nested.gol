@@ -1,0 +1,128 @@
+package nested
+
+import (
+	"errors"
+	"os"
+	"strconv"
+)
+
+func loop(paths []string) (int, error) {
+	let total = 0
+	for (let p of paths) {
+		try {
+			let s = os.ReadFile(p)
+			let n = strconv.Atoi(string(s))
+			if n < 0 {
+				continue
+			}
+			total += n
+		} catch {
+			continue
+		}
+	}
+	return total, nil
+}
+
+func nested(a, b string) error {
+	try {
+		try {
+			os.Remove(a)
+		} catch (inner) {
+			if !errors.Is(inner, os.ErrNotExist) {
+				os.Remove(b + ".bak")
+			}
+		}
+		os.Remove(b)
+	} catch (outer) {
+		return outer
+	}
+	return nil
+}
+
+func terminating(s string) (int, error) {
+	try {
+		let n = strconv.Atoi(s)
+		return n, nil
+	} catch (err) {
+		return 0, err
+	}
+}
+
+func assign(s string) int {
+	let n: int
+	try {
+		n = strconv.Atoi(s)
+	} catch {
+		n = -1
+	}
+	return n
+}
+
+func unusedBinding(s string) bool {
+	try {
+		strconv.Atoi(s)
+	} catch (e) {
+		return false
+	}
+	return true
+}
+
+func closureInTry(paths []string) error {
+	try {
+		for (let p of paths) {
+			switch p {
+			case "":
+				continue
+			default:
+				os.Remove(p)
+			}
+		}
+		let cleanup = func() error {
+			try {
+				os.Remove("tmp")
+			} catch (e) {
+				return e
+			}
+			return nil
+		}
+		cleanup()
+	} catch (err) {
+		try {
+			os.ReadFile("fallback")
+		} catch {
+			return err
+		}
+		return err
+	}
+	return nil
+}
+
+func emptyTry() string {
+	try {
+		println("nothing here can fail")
+	} catch (e) {
+		os.Remove(t`never ${e}`)
+		return "unreachable"
+	}
+	return "ok"
+}
+
+func catchNameUsedInTry(e string) error {
+	try {
+		os.Remove(e)
+		let n = strconv.Atoi(e)
+		e = strconv.Itoa(n)
+	} catch (e) {
+		return e
+	}
+	return nil
+}
+
+func catchNameUnusedInCatch(e string) bool {
+	try {
+		os.Remove(e)
+	} catch (e) {
+		return false
+	}
+	return true
+}

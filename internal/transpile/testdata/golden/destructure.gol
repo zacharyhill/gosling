@@ -1,0 +1,58 @@
+package destructure
+
+import (
+	"os"
+	"strconv"
+)
+
+type Point struct{ X, Y int }
+
+type Config struct {
+	Name string
+	Port int
+}
+
+func load(path string) (Config, error) {
+	try {
+		let data = os.ReadFile(path)
+		let port = strconv.Atoi(string(data))
+		return Config{Name: path, Port: port}, nil
+	} catch (e) {
+		return Config{}, e
+	}
+}
+
+func fields(p Point) int {
+	let {X, Y: y} = p
+	return X + y
+}
+
+func indexes(pair [2]string, xs []int) (string, int, []int) {
+	let [a, b] = pair
+	let [first, _, ...rest] = xs
+	return a + b, first, rest
+}
+
+func hoisted(path string) (string, error) {
+	try {
+		let {Name: name, Port: port} = load(path)
+		return name + ":" + strconv.Itoa(port), nil
+	} catch (e) {
+		return "", e
+	}
+}
+
+func inTry(path string) string {
+	try {
+		let {Name: name} = load(path)
+		return name
+	} catch {
+		return "default"
+	}
+}
+
+func reassign(p Point) (int, int) {
+	let x, y: int
+	{X: x, Y: y} = p
+	return x, y
+}

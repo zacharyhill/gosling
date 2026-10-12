@@ -1,0 +1,39 @@
+package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+const base = 10
+
+const label = fmt.Sprint("total")
+
+func parse(inputs []string) int {
+	let total = 0
+	for (const s of inputs) {
+		try {
+			const n = strconv.Atoi(s)
+			total += n * base
+		} catch {
+			total--
+		}
+	}
+	return total
+}
+
+func main() {
+	const result = parse([]string{"1", "x", "2"})
+	let message: string = t`${label}: ${result}`
+	fmt.Println(message)
+}
+
+func init() {
+	let sum = 0
+	for (let i = 1; i <= 4; i++) {
+		sum += i
+	}
+	if const doubled = sum * 2; doubled > 10 {
+		fmt.Println(t`doubled: ${doubled}`)
+	}
+}

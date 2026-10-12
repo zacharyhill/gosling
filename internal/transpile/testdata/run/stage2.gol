@@ -1,0 +1,46 @@
+package main
+
+import (
+	"fmt"
+	"strconv"
+	"time"
+)
+
+type User struct {
+	Name string
+	Age  int
+}
+
+func parseUser(s string) (User, error) {
+	try {
+		let age = strconv.Atoi(s)
+		return User{Name: "ada", Age: age}, nil
+	} catch (e) {
+		return User{}, e
+	}
+}
+
+func describe(s string) string {
+	try {
+		let {Name: name, Age: age} = parseUser(s)
+		return t`${name} is ${age}, ${age >= 18}`
+	} catch (e) {
+		return t`bad input: ${e}`
+	}
+}
+
+func main() {
+	fmt.Println(describe("36"))
+	fmt.Println(describe("x"))
+	let [a, b, ...rest] = []string{"x", "y", "z", "w"}
+	fmt.Println(t`${a}${b} ${len(rest)} ${2 * time.Second} 50%`)
+	let total = 0
+	for (const n of []int{1, 2, 3}) {
+		total += n
+	}
+	for (const k in map[string]int{"only": 1}) {
+		fmt.Println(t`key=${k} total=${total} ratio=${float64(total) / 4}`)
+	}
+	fmt.Println(t`multi
+line ${total}`)
+}

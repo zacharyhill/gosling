@@ -1,0 +1,46 @@
+package templates
+
+import (
+	"errors"
+	"time"
+)
+
+type User struct {
+	Name string
+	Age  int
+}
+
+func greet(u User, admin bool, score float64, wait time.Duration) string {
+	return t`hello ${u.Name}, you are ${u.Age} (admin: ${admin}, score ${score}, wait ${wait})`
+}
+
+func plain() string {
+	return t`100% plain`
+}
+
+func percent(n int) string {
+	return t`${n}% done`
+}
+
+func multiline(name string) string {
+	let msg = t`Dear ${name},
+thanks!`
+	return msg
+}
+
+func wrapped(err error) error {
+	return errors.New(t`wrapped: ${err}`)
+}
+
+func escapes(name string) string {
+	return t`tab\there\nline ${name} \${literal} é\x41\u{1F600} \\ \q \"quoted\" \
+continued`
+}
+
+func noInterpolationEscapes() string {
+	return t`a\tb\n`
+}
+
+func floats(f float64, g float32, h int) string {
+	return t`${f} ${g} ${1000000.0} ${0.1 + 0.2} ${float64(h) / 3}`
+}

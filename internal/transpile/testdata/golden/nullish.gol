@@ -1,0 +1,89 @@
+package nullish
+
+import (
+	"io"
+	"time"
+)
+
+type Profile struct {
+	Name    string
+	Manager *User
+}
+
+type User struct {
+	Profile *Profile
+}
+
+type Config struct {
+	Port    *int
+	Timeout *time.Duration
+	Retries *int64
+}
+
+func name(user *User) string {
+	return user?.Profile?.Name ?? "anon"
+}
+
+func port(cfg Config) int {
+	let p = cfg.Port ?? 8080
+	return p
+}
+
+func timeout(cfg *Config) time.Duration {
+	return cfg?.Timeout ?? 5 * time.Second
+}
+
+func retries(cfg Config) int64 {
+	return cfg.Retries ?? 3
+}
+
+func maybeName(user *User) string {
+	let n = user?.Profile?.Name
+	return n
+}
+
+func manager(user *User) *User {
+	return user?.Profile?.Manager
+}
+
+func managerOrSelf(user *User) *User {
+	return user?.Profile?.Manager ?? user
+}
+
+func lookup(users map[string]*User, id string) string {
+	return users[id]?.Profile?.Name ?? id
+}
+
+func current() *User { return nil }
+
+func viaCall() string {
+	return current()?.Profile?.Name ?? "nobody"
+}
+
+func closeIt(c io.Closer) {
+	c?.Close()
+}
+
+func reader(r io.Reader, fallback io.Reader) io.Reader {
+	return r ?? fallback
+}
+
+func chained(a, b, c *int) int {
+	return a ?? b ?? c ?? 0
+}
+
+func shadow(v *User) string {
+	return v?.Profile?.Name ?? "v"
+}
+
+func generic[T any](p *T, d T) T {
+	return p ?? d
+}
+
+func literalBase() int {
+	return Config{}.Port ?? 8080
+}
+
+func inTemplate(user *User) string {
+	return t`hi ${user?.Profile?.Name ?? "there"}`
+}

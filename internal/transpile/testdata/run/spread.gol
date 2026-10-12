@@ -1,0 +1,23 @@
+package main
+
+import "fmt"
+
+type Point struct{ X, Y int }
+
+type User struct {
+	name string
+	age  int
+}
+
+func main() {
+	let a = []int{1, 2}
+	let b = [...a, 3]
+	b[0] = 99
+	fmt.Println(a, b, [...a, ...b])
+	let p = Point{1, 2}
+	let q = Point{...p, Y: 20}
+	fmt.Println(p, q)
+	let name, age = "ada", 36
+	let u = User{name, age}
+	fmt.Println(u, User{...u, name: "grace"})
+}

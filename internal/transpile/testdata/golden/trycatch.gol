@@ -1,0 +1,23 @@
+package config
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+)
+
+type Config struct {
+	Name string
+}
+
+// Load reads and parses a config file.
+func Load(path string) (Config, error) {
+	let cfg: Config
+	try {
+		let data = os.ReadFile(path) // read it
+		json.Unmarshal(data, &cfg)
+	} catch (e) {
+		return Config{}, fmt.Errorf("load: %w", e)
+	}
+	return cfg, nil
+}

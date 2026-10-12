@@ -1,0 +1,41 @@
+package hoist
+
+import (
+	"os"
+	"strconv"
+	"strings"
+)
+
+func nested(s string) int {
+	try {
+		let n = strconv.Atoi(strings.TrimSpace(s)) * 2
+		return n
+	} catch {
+		return 0
+	}
+}
+
+func inner(path string) int {
+	try {
+		return len(strings.Fields(string(os.ReadFile(path))))
+	} catch {
+		return -1
+	}
+}
+
+func varDecl(s string) int {
+	try {
+		let n: int = strconv.Atoi(s)
+		return n
+	} catch {
+		return 0
+	}
+}
+
+func selector(path string) string {
+	try {
+		return os.Stat(path).Name()
+	} catch {
+		return ""
+	}
+}

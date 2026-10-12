@@ -1,0 +1,7 @@
+package importfmt
+
+import "strings"
+
+func shout(s string) string {
+	return t`${strings.ToUpper(s)}!`
+}

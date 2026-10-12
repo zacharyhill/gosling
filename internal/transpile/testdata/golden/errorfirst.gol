@@ -1,0 +1,28 @@
+package errorfirst
+
+import (
+	"errors"
+	"os"
+)
+
+func backwards() (error, int) { return errors.New("boom"), 0 }
+
+// Results received explicitly are left alone, including a blank discard.
+func explicit(path string) (int, error) {
+	try {
+		os.ReadFile(path)
+		let err, n = backwards()
+		if err != nil {
+			return 0, err
+		}
+		let _, m = backwards()
+		return n + m, nil
+	} catch (e) {
+		return 0, e
+	}
+}
+
+// Outside try a bare call is plain Go.
+func outside() {
+	backwards()
+}

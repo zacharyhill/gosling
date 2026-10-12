@@ -1,0 +1,78 @@
+package arrows
+
+import (
+	"fmt"
+	"slices"
+	"sort"
+	"strconv"
+	"strings"
+)
+
+func typed() int {
+	let double = (x int) => x * 2
+	return double(21)
+}
+
+func block() func(int) (int, error) {
+	return (n int) => {
+		if n < 0 {
+			return 0, fmt.Errorf("negative: %d", n)
+		}
+		return n, nil
+	}
+}
+
+func fromCallSignature(xs []string) {
+	sort.Slice(xs, (i, j) => xs[i] < xs[j])
+}
+
+func fromGenericCall(xs []string) {
+	slices.SortFunc(xs, (a, b) => strings.Compare(a, b))
+}
+
+func fromVarType() int {
+	let inc: func(int) int = x => x + 1
+	return inc(1)
+}
+
+func fromReturn() func(string) bool {
+	return s => s != ""
+}
+
+func voidContext(run func(func(string))) {
+	run(s => fmt.Println(s))
+}
+
+func curried() int {
+	let add = (a int) => (b int) => a + b
+	return add(1)(2)
+}
+
+func tryInArrows(xs []string) []int {
+	let parse = (s string) => {
+		try {
+			let n = strconv.Atoi(s)
+			return n, nil
+		} catch (e) {
+			return 0, e
+		}
+	}
+	return xs.map(s => {
+		try {
+			let n = parse(s)
+			return n
+		} catch {
+			return -1
+		}
+	})
+}
+
+func laterReturnTypes(n int) (int, error) {
+	let check = (x int) => {
+		if x > 0 {
+			return x, nil
+		}
+		return 0, fmt.Errorf("bad %d", x)
+	}
+	return check(n)
+}

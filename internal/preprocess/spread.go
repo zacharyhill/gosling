@@ -1,0 +1,170 @@
+package preprocess
+
+import (
+	"go/token"
+	"strings"
+)
+
+// Spread markers. [...a, x, ...b] becomes __goslingCat(a, __goslingOne(x), b).
+// T{...p, X: 1} becomes T(__goslingWith(p, T{X: 1})). Both keep the source
+// text in order.
+const (
+	CatMarker  = "__goslingCat"
+	OneMarker  = "__goslingOne"
+	WithMarker = "__goslingWith"
+)
+
+type element struct {
+	start, end int // token indexes, end is the comma or closing bracket
+	spread     bool
+}
+
+// elements splits the bracketed list that opens at token openIndex into
+// elements. It also returns the index of the closing token.
+func (processor *processor) elements(openIndex int, closing token.Token) ([]element, int, error) {
+	var out []element
+	depth, start := 0, openIndex+1
+	for tokenIndex := openIndex + 1; tokenIndex < len(processor.tokens); tokenIndex++ {
+		switch current := processor.tokens[tokenIndex]; current.kind {
+		case token.LPAREN, token.LBRACK, token.LBRACE:
+			depth++
+		case token.RPAREN, token.RBRACK, token.RBRACE:
+			if depth > 0 {
+				depth--
+				continue
+			}
+			if current.kind != closing {
+				return nil, 0, &Error{current.offset, "unbalanced brackets"}
+			}
+			if start < tokenIndex {
+				out = append(out, element{start, tokenIndex, processor.tokens[start].is(token.ELLIPSIS)})
+			}
+			return out, tokenIndex, nil
+		case token.COMMA:
+			if depth == 0 {
+				out = append(out, element{start, tokenIndex, processor.tokens[start].is(token.ELLIPSIS)})
+				start = tokenIndex + 1
+			}
+		case token.SEMICOLON:
+			if depth == 0 {
+				return nil, 0, &Error{current.offset, "missing comma before newline in spread"}
+			}
+		}
+	}
+	return nil, 0, &Error{processor.tokens[openIndex].offset, "unbalanced brackets"}
+}
+
+func (processor *processor) insertBefore(tokenIndex int, text string) {
+	processor.inserts[tokenIndex] += text
+}
+
+// sliceSpread rewrites the slice literal with spread elements that opens at
+// token tokenIndex.
+func (processor *processor) sliceSpread(tokenIndex int) (int, error) {
+	elements, closeIndex, err := processor.elements(tokenIndex, token.RBRACK)
+	if err != nil {
+		return 0, err
+	}
+	lbrack := processor.tokens[tokenIndex]
+	processor.replace(lbrack.offset, lbrack.end(), CatMarker+"(")
+	processor.parens++ // openBracket skips this [, but rewrite still counts its ]
+	inRun := false
+	for elementIndex, item := range elements {
+		if item.spread {
+			processor.scheduled[item.start] = ""
+			continue
+		}
+		if !inRun {
+			processor.insertBefore(item.start, OneMarker+"(")
+			inRun = true
+		}
+		if elementIndex == len(elements)-1 || elements[elementIndex+1].spread {
+			processor.insertBefore(item.end, ")")
+			inRun = false
+		}
+	}
+	processor.scheduled[closeIndex] = ")"
+	return tokenIndex, nil
+}
+
+// structSpread rewrites T{...p, fields} where the { is token tokenIndex.
+func (processor *processor) structSpread(tokenIndex int) (int, error) {
+	lbrace := processor.tokens[tokenIndex]
+	typeStart, ok := processor.typeBefore(tokenIndex)
+	if !ok {
+		return 0, &Error{lbrace.offset, "struct spread needs a type name before {"}
+	}
+	typeText := strings.TrimSpace(string(processor.src[processor.tokens[typeStart].offset:lbrace.offset]))
+	elements, closeIndex, err := processor.elements(tokenIndex, token.RBRACE)
+	if err != nil {
+		return 0, err
+	}
+	for _, field := range elements[1:] {
+		if field.spread {
+			return 0, &Error{processor.tokens[field.start].offset, "struct spread must be the first element"}
+		}
+	}
+	processor.replace(lbrace.offset, processor.tokenAt(tokenIndex+1).end(), "("+WithMarker+"(")
+	processor.braceStack = append(processor.braceStack, frame{kind: frameBlock})
+	if len(elements) > 1 {
+		processor.scheduled[elements[0].end] = ", " + typeText + "{"
+		processor.scheduled[closeIndex] = "}))"
+	} else {
+		processor.scheduled[closeIndex] = ", " + typeText + "{}))"
+	}
+	return tokenIndex + 1, nil
+}
+
+// typeBefore finds the start of a type name, like T, pkg.T, or T[int], that
+// ends directly before token tokenIndex.
+func (processor *processor) typeBefore(tokenIndex int) (int, bool) {
+	typeStart := tokenIndex - 1
+	if typeStart >= 0 && processor.tokens[typeStart].is(token.RBRACK) {
+		depth := 0
+		for ; typeStart >= 0; typeStart-- {
+			switch processor.tokens[typeStart].kind {
+			case token.RBRACK:
+				depth++
+			case token.LBRACK:
+				depth--
+			}
+			if depth == 0 {
+				break
+			}
+		}
+		typeStart--
+	}
+	if typeStart < 0 || !processor.tokens[typeStart].is(token.IDENT) {
+		return 0, false
+	}
+	if typeStart >= 2 && processor.tokens[typeStart-1].is(token.PERIOD) && processor.tokens[typeStart-2].is(token.IDENT) {
+		typeStart -= 2
+	}
+	return typeStart, true
+}
+
+// spreadInBraces reports whether the ... at token ellipsisIndex directly follows a
+// comma inside braces, as in T{X: 1, ...p}.
+func (processor *processor) spreadInBraces(ellipsisIndex int) bool {
+	if ellipsisIndex == 0 || !processor.tokens[ellipsisIndex-1].is(token.COMMA) {
+		return false
+	}
+	depth := 0
+	for tokenIndex := ellipsisIndex - 1; tokenIndex >= 0; tokenIndex-- {
+		switch processor.tokens[tokenIndex].kind {
+		case token.RPAREN, token.RBRACK, token.RBRACE:
+			depth++
+		case token.LPAREN, token.LBRACK:
+			if depth == 0 {
+				return false
+			}
+			depth--
+		case token.LBRACE:
+			if depth == 0 {
+				return true
+			}
+			depth--
+		}
+	}
+	return false
+}

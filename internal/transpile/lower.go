@@ -1,0 +1,232 @@
+package transpile
+
+import (
+	"bytes"
+	"go/ast"
+	"go/token"
+	"go/types"
+)
+
+type lowerer struct {
+	*transpiler
+	file           *file
+	info           *types.Info
+	edits          []edit
+	identPositions map[string][]token.Pos
+	lastTryID      int
+	// drops replace whole regions, such as an unreachable catch block.
+	// They discard the edits inside them.
+	drops          []edit
+	parents        map[ast.Node]ast.Node
+	consumedHoists map[*ast.CallExpr]bool
+	optionalRoots  map[ast.Expr]bool
+}
+
+func newLowerer(transpiler *transpiler, file *file, info *types.Info) *lowerer {
+	lowering := &lowerer{
+		transpiler:     transpiler,
+		file:           file,
+		info:           info,
+		identPositions: map[string][]token.Pos{},
+		consumedHoists: map[*ast.CallExpr]bool{},
+	}
+	ast.Inspect(file.ast, func(node ast.Node) bool {
+		if ident, ok := node.(*ast.Ident); ok && ident.Pos().IsValid() {
+			lowering.identPositions[ident.Name] = append(lowering.identPositions[ident.Name], ident.Pos())
+		}
+		return true
+	})
+	lowering.findChains()
+	return lowering
+}
+
+func (lowerer *lowerer) lowerFile() {
+	for _, decl := range lowerer.file.ast.Decls {
+		funcDecl, ok := decl.(*ast.FuncDecl)
+		if !ok {
+			lowerer.walkExprs(decl)
+			continue
+		}
+		if funcDecl.Body == nil {
+			continue
+		}
+		lowerer.walkBlock(funcDecl.Body.List, nil)
+	}
+	lowerer.lowerConsts()
+	lowerer.lowerTemplates()
+	lowerer.lowerNullish()
+	lowerer.lowerArrows()
+	lowerer.lowerArrays()
+	lowerer.lowerUnions()
+	lowerer.lowerSpread()
+	lowerer.emitImports()
+	for body := range lowerer.file.panicAtEnd {
+		lowerer.insert(body.Rbrace, "panic(\"unreachable\")\n", lowerer.line(body.Rbrace))
+	}
+	for _, splitOffset := range lowerer.file.preprocessed.Splits {
+		lowerer.edits = append(lowerer.edits, edit{start: splitOffset, end: splitOffset + len("; "), text: "\n", line: lowerer.line(lowerer.file.tokenFile.Pos(splitOffset))})
+	}
+	for tryOffset := range lowerer.file.tries {
+		lowerer.errorf(lowerer.file, lowerer.file.tokenFile.Pos(tryOffset), "try is only supported as a statement")
+	}
+	for marker, call := range lowerer.file.hoisted {
+		if !lowerer.consumedHoists[marker] {
+			lowerer.errorf(lowerer.file, call.Pos(), errUncheckableCall)
+		}
+	}
+}
+
+func (lowerer *lowerer) walkBlock(list []ast.Stmt, try *tryContext) {
+	for _, stmt := range list {
+		lowerer.walkStmt(stmt, try)
+	}
+}
+
+// walkExprs lowers function literals nested in nodes. Each literal starts a
+// new function context, because goto and return cannot cross it.
+func (lowerer *lowerer) walkExprs(nodes ...ast.Node) {
+	for _, root := range nodes {
+		if root == nil {
+			continue
+		}
+		ast.Inspect(root, func(node ast.Node) bool {
+			funcLit, ok := node.(*ast.FuncLit)
+			if !ok {
+				return true
+			}
+			lowerer.walkBlock(funcLit.Body.List, nil)
+			return false
+		})
+	}
+}
+
+func (lowerer *lowerer) walkStmt(stmt ast.Stmt, try *tryContext) {
+	switch stmt := stmt.(type) {
+	case *ast.IfStmt:
+		if tryInfo, ok := lowerer.file.tries[lowerer.offset(stmt.Pos())]; ok {
+			delete(lowerer.file.tries, lowerer.offset(stmt.Pos()))
+			lowerer.lowerTry(stmt, tryInfo, try)
+			return
+		}
+		if parent, ok := lowerer.parents[stmt].(*ast.IfStmt); !ok || parent.Else != stmt {
+			lowerer.hoist(stmt, try, stmt.Init, stmt.Cond) // an else-if has no place for them
+		}
+		lowerer.walkExprs(stmt.Init, stmt.Cond)
+		lowerer.walkBlock(stmt.Body.List, try)
+		if stmt.Else != nil {
+			lowerer.walkStmt(stmt.Else, try)
+		}
+	case *ast.BlockStmt:
+		if !lowerer.file.finallyBlocks[stmt] { // lowered with its try statement
+			lowerer.walkBlock(stmt.List, try)
+		}
+	case *ast.LabeledStmt:
+		lowerer.walkStmt(stmt.Stmt, try)
+	case *ast.ForStmt:
+		lowerer.hoist(stmt, try, stmt.Init) // the condition and post statement run on each iteration
+		lowerer.walkExprs(stmt.Init, stmt.Cond, stmt.Post)
+		lowerer.walkBlock(stmt.Body.List, try)
+	case *ast.RangeStmt:
+		lowerer.hoist(stmt, try, stmt.X)
+		lowerer.walkExprs(stmt.X)
+		lowerer.walkBlock(stmt.Body.List, try)
+	case *ast.SwitchStmt:
+		lowerer.hoist(stmt, try, stmt.Init, stmt.Tag)
+		lowerer.walkExprs(stmt.Init, stmt.Tag)
+		lowerer.walkClauses(stmt.Body, try)
+	case *ast.TypeSwitchStmt:
+		lowerer.checkExhaustive(stmt)
+		lowerer.hoist(stmt, try, stmt.Init, stmt.Assign)
+		lowerer.walkExprs(stmt.Init, stmt.Assign)
+		lowerer.walkClauses(stmt.Body, try)
+	case *ast.SelectStmt:
+		lowerer.walkClauses(stmt.Body, try)
+	default:
+		lowerer.hoist(stmt, try, stmt)
+		if !lowerer.lowerExit(stmt, try) {
+			lowerer.lowerTryStmt(stmt, try)
+		}
+		lowerer.walkExprs(stmt)
+	}
+}
+
+func (lowerer *lowerer) walkClauses(body *ast.BlockStmt, try *tryContext) {
+	for _, clause := range body.List {
+		switch clause := clause.(type) {
+		case *ast.CaseClause:
+			for _, expr := range clause.List {
+				lowerer.walkExprs(expr)
+			}
+			lowerer.walkBlock(clause.Body, try)
+		case *ast.CommClause:
+			lowerer.walkExprs(clause.Comm)
+			lowerer.walkBlock(clause.Body, try)
+		}
+	}
+}
+
+func (lowerer *lowerer) insert(pos token.Pos, text string, line int) {
+	offset := lowerer.offset(pos)
+	lowerer.edits = append(lowerer.edits, edit{start: offset, end: offset, text: text, line: line})
+}
+
+// insertAfter adds inline directly after stmt, and block after any line
+// comment that trails stmt. So the comment stays on the line of stmt.
+func (lowerer *lowerer) insertAfter(stmt ast.Stmt, inline, block string, line int) {
+	if inline != "" {
+		lowerer.insert(stmt.End(), inline, line)
+	}
+	src := lowerer.file.preprocessed.Src
+	offset := lowerer.offset(stmt.End())
+	cursor := offset
+	for cursor < len(src) && (src[cursor] == ' ' || src[cursor] == '\t') {
+		cursor++
+	}
+	if bytes.HasPrefix(src[cursor:], []byte("//")) {
+		offset = cursor + bytes.IndexByte(src[cursor:], '\n')
+		if offset < cursor {
+			offset = len(src)
+		}
+	}
+	lowerer.edits = append(lowerer.edits, edit{start: offset, end: offset, text: block, line: line})
+}
+
+func (lowerer *lowerer) insertOrdered(pos token.Pos, text string, line, order int) {
+	offset := lowerer.offset(pos)
+	lowerer.edits = append(lowerer.edits, edit{start: offset, end: offset, text: text, line: line, order: order})
+}
+
+func (lowerer *lowerer) depth(node ast.Node) int {
+	depth := 0
+	for ancestor := lowerer.parents[node]; ancestor != nil; ancestor = lowerer.parents[ancestor] {
+		depth++
+	}
+	return depth
+}
+
+func (lowerer *lowerer) offset(pos token.Pos) int { return lowerer.file.tokenFile.Offset(pos) }
+
+func (lowerer *lowerer) replace(from, to token.Pos, text string, line int) {
+	lowerer.replaceOffsets(lowerer.offset(from), lowerer.offset(to), text, line)
+}
+
+func (lowerer *lowerer) replaceOffsets(start, end int, text string, line int) {
+	lowerer.edits = append(lowerer.edits, edit{start: start, end: end, text: text, line: line})
+}
+
+// drop replaces [from, to) with text and discards every edit inside it.
+func (lowerer *lowerer) drop(from, to token.Pos, text string, line int) {
+	lowerer.drops = append(lowerer.drops, edit{start: lowerer.offset(from), end: lowerer.offset(to), text: text, line: line})
+}
+
+func (lowerer *lowerer) line(pos token.Pos) int { return lowerer.file.tokenFile.Line(pos) }
+
+func (lowerer *lowerer) dropped(pos token.Pos) bool {
+	offset := lowerer.offset(pos)
+	for _, drop := range lowerer.drops {
+		if offset >= drop.start && offset < drop.end {
+			return true
+		}
+	}
+	return false
+}

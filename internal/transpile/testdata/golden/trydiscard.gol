@@ -1,0 +1,18 @@
+package trydiscard
+
+import (
+	"io"
+	"os"
+)
+
+// The explicit discard keeps Close unchecked, so a failing Close cannot
+// replace the error from ReadFile.
+func read(c io.Closer, path string) ([]byte, error) {
+	try {
+		let data = os.ReadFile(path)
+		_ = c.Close()
+		return data, nil
+	} catch (e) {
+		return nil, e
+	}
+}

@@ -1,0 +1,29 @@
+package main
+
+import (
+	"fmt"
+	"slices"
+	"strings"
+)
+
+type User struct {
+	Name  string
+	Age   int
+	Admin bool
+}
+
+func main() {
+	let users = []User{{"ada", 36, true}, {"bob", 17, false}, {"cy", 25, false}}
+	let adults = users.filter(u => u.Age >= 18).map(u => strings.ToUpper(u.Name))
+	fmt.Println(adults)
+	fmt.Println(users.reduce((sum, u) => sum + u.Age, 0))
+	fmt.Println(users.find(u => u.Admin)?.Name ?? "none", users.find(u => u.Age > 99)?.Name ?? "none")
+	fmt.Println(users.some(u => u.Age < 18), users.every(u => u.Age < 18), users.findIndex(u => u.Name == "cy"))
+	users.forEach((u, i) => fmt.Println(t`${i}: ${u.Name}`))
+	let nums = []int{5, 2, 8}
+	slices.SortFunc(nums, (a, b) => b - a)
+	fmt.Println(nums, nums.includes(8), nums.indexOf(2))
+	let compose = (f func(int) int, g func(int) int) => (x int) => g(f(x))
+	let inc = (x int) => x + 1
+	fmt.Println(compose(inc, x => x * 10)(4))
+}

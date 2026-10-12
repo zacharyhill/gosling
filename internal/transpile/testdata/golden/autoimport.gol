@@ -1,0 +1,12 @@
+package autoimport
+
+import "net/http"
+
+func requestURL(r *http.Request) any {
+	let u = r?.URL
+	return u
+}
+
+func paths(rs []*http.Request) []string {
+	return rs.map(r => r.URL).map(u => u.Path)
+}

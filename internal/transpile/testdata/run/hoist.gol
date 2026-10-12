@@ -1,0 +1,40 @@
+package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+type Point struct{ X, Y int }
+
+func atoi(s string) (int, error) { return strconv.Atoi(s) }
+
+func sum(a, b string) int {
+	try {
+		let total = atoi(a) + atoi(b)
+		return total
+	} catch (e) {
+		fmt.Println("caught:", e)
+		return -1
+	}
+}
+
+func build(xs []string) (Point, error) {
+	try {
+		let p: Point = Point{X: atoi(xs[0]), Y: atoi(xs[1])}
+		if atoi(xs[0]) > 100 {
+			return Point{}, fmt.Errorf("too big")
+		}
+		return p, nil
+	} catch (e) {
+		return Point{}, e
+	}
+}
+
+func main() {
+	fmt.Println(sum("2", "3"))
+	fmt.Println(sum("2", "x"))
+	fmt.Println(build([]string{"1", "2"}))
+	fmt.Println(build([]string{"1", "y"}))
+	fmt.Println(build([]string{"500", "2"}))
+}

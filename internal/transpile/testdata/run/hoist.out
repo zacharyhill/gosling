@@ -1,0 +1,6 @@
+5
+caught: strconv.Atoi: parsing "x": invalid syntax
+-1
+{1 2} <nil>
+{0 0} strconv.Atoi: parsing "y": invalid syntax
+{0 0} too big
