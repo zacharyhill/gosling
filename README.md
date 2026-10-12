@@ -373,3 +373,7 @@ go test -short ./...                                  # skip tests that run the 
 ```
 
 `internal/transpile/testdata/golden` has the expected outputs. Tests run `go vet` on each one. Tests build and run the programs in `internal/transpile/testdata/run`, and compare their output with the `.out` files.
+
+## License
+
+[MPL-2.0](LICENSE)
