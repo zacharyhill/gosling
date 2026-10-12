@@ -28,6 +28,14 @@ Features:
 - Union types with exhaustive switches: `type Shape = Circle | Square`
 - Struct shorthand and spread: `User{name, age}`, `[...a, ...b]`, `Point{...p, X: 5}`
 
+## Why
+
+I like Go, but I do not like to write `if err != nil` after every call. I understand that this is an intentional pattern in Go, but I think forcing this pattern on every call is too extreme and creates a lot of super redundant code.
+
+I started with `try` / `catch`. Then I added other TypeScript features that I like.
+
+Most of the Go community will probably not like this, but gosling is a proof of concept, not a recommendation for everyone to use.
+
 ## Quick start
 
 1. Install gosling:
