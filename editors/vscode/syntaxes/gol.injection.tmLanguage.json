@@ -1,0 +1,269 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "scopeName": "gosling.injection",
+  "injectionSelector": "L:source.gol -string -comment, L:meta.template.expression.gol -string.quoted -comment",
+  "patterns": [
+    {
+      "include": "#template"
+    },
+    {
+      "include": "#catch"
+    },
+    {
+      "include": "#exception-keywords"
+    },
+    {
+      "include": "#for-of-in"
+    },
+    {
+      "include": "#let"
+    },
+    {
+      "include": "#union"
+    },
+    {
+      "include": "#arrow"
+    },
+    {
+      "include": "#optional-chaining"
+    },
+    {
+      "include": "#nullish"
+    }
+  ],
+  "repository": {
+    "template": {
+      "name": "string.template.gol",
+      "begin": "\\b(t)(`)",
+      "beginCaptures": {
+        "1": {
+          "name": "storage.type.template.gol"
+        },
+        "2": {
+          "name": "punctuation.definition.string.template.begin.gol"
+        }
+      },
+      "end": "`",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.string.template.end.gol"
+        }
+      },
+      "patterns": [
+        {
+          "match": "\\\\(?:u\\{[0-9A-Fa-f]+\\}|x[0-9A-Fa-f]{2}|.|$)",
+          "name": "constant.character.escape.gol"
+        },
+        {
+          "include": "#template-expression"
+        }
+      ]
+    },
+    "template-expression": {
+      "name": "meta.template.expression.gol",
+      "begin": "\\$\\{",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.template-expression.begin.gol"
+        }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.template-expression.end.gol"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#braces"
+        },
+        {
+          "include": "source.gol"
+        }
+      ]
+    },
+    "braces": {
+      "comment": "Keeps a composite literal's closing brace from ending a template expression.",
+      "begin": "\\{",
+      "beginCaptures": {
+        "0": {
+          "name": "punctuation.definition.begin.bracket.curly.gol"
+        }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.end.bracket.curly.gol"
+        }
+      },
+      "patterns": [
+        {
+          "include": "#braces"
+        },
+        {
+          "include": "source.gol"
+        }
+      ]
+    },
+    "catch": {
+      "match": "\\b(catch)\\s*(\\()\\s*(\\w+)\\s*(\\))",
+      "captures": {
+        "1": {
+          "name": "keyword.control.exception.gol"
+        },
+        "2": {
+          "name": "punctuation.definition.begin.bracket.round.gol"
+        },
+        "3": {
+          "name": "variable.parameter.gol"
+        },
+        "4": {
+          "name": "punctuation.definition.end.bracket.round.gol"
+        }
+      }
+    },
+    "exception-keywords": {
+      "match": "\\b(?:try|catch|finally)\\b",
+      "name": "keyword.control.exception.gol"
+    },
+    "for-of-in": {
+      "match": "\\b(for)\\s*(\\()\\s*(?:(let)|(const))\\s+((?:\\w+\\s*,\\s*)*\\w+)\\s+(?:(of)|(in))\\b",
+      "captures": {
+        "1": {
+          "name": "keyword.control.gol"
+        },
+        "2": {
+          "name": "punctuation.definition.begin.bracket.round.gol"
+        },
+        "3": {
+          "name": "keyword.let.gol"
+        },
+        "4": {
+          "name": "keyword.const.gol"
+        },
+        "5": {
+          "patterns": [
+            {
+              "match": "\\w+",
+              "name": "variable.other.declaration.gol"
+            },
+            {
+              "match": ",",
+              "name": "punctuation.separator.comma.gol"
+            }
+          ]
+        },
+        "6": {
+          "name": "keyword.operator.of.gol"
+        },
+        "7": {
+          "name": "keyword.operator.in.gol"
+        }
+      }
+    },
+    "let": {
+      "patterns": [
+        {
+          "comment": "Composite and func types fall through to the Go grammar.",
+          "match": "\\b(let)\\s+((?:\\w+\\s*,\\s*)*\\w+)(?:\\s*(:)\\s*(?!(?:func|map|chan|struct|interface)\\b)((?:\\[\\d*\\]|\\*)*)((?:\\w+\\.)?\\w+))?",
+          "captures": {
+            "1": {
+              "name": "keyword.let.gol"
+            },
+            "2": {
+              "patterns": [
+                {
+                  "match": "\\w+",
+                  "name": "variable.other.declaration.gol"
+                },
+                {
+                  "match": ",",
+                  "name": "punctuation.separator.comma.gol"
+                }
+              ]
+            },
+            "3": {
+              "name": "punctuation.separator.type.gol"
+            },
+            "4": {
+              "patterns": [
+                {
+                  "include": "source.go"
+                }
+              ]
+            },
+            "5": {
+              "name": "entity.name.type.gol",
+              "patterns": [
+                {
+                  "match": "\\b(?:any|bool|byte|comparable|complex64|complex128|error|float32|float64|int|int8|int16|int32|int64|rune|string|uint|uint8|uint16|uint32|uint64|uintptr)\\b",
+                  "name": "storage.type.gol"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "match": "\\blet\\b",
+          "name": "keyword.let.gol"
+        }
+      ]
+    },
+    "union": {
+      "begin": "\\b(type)\\s+(\\w+)\\s*(=)(?=[^|/]*\\|)",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.type.gol"
+        },
+        "2": {
+          "name": "entity.name.type.gol"
+        },
+        "3": {
+          "name": "keyword.operator.assignment.gol"
+        }
+      },
+      "end": "(?=\\s*(?://|/\\*|$))",
+      "patterns": [
+        {
+          "match": "\\|",
+          "name": "punctuation.separator.union.gol"
+        },
+        {
+          "match": "\\*",
+          "name": "keyword.operator.address.gol"
+        },
+        {
+          "match": "(?:\\w+\\.)?\\w+",
+          "name": "entity.name.type.gol"
+        }
+      ]
+    },
+    "arrow": {
+      "patterns": [
+        {
+          "match": "\\b(\\w+)\\s*(=>)",
+          "captures": {
+            "1": {
+              "name": "variable.parameter.gol"
+            },
+            "2": {
+              "name": "storage.type.function.arrow.gol"
+            }
+          }
+        },
+        {
+          "match": "=>",
+          "name": "storage.type.function.arrow.gol"
+        }
+      ]
+    },
+    "optional-chaining": {
+      "match": "\\?\\.",
+      "name": "punctuation.accessor.optional.gol"
+    },
+    "nullish": {
+      "match": "\\?\\?",
+      "name": "keyword.operator.nullish.gol"
+    }
+  }
+}

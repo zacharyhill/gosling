@@ -94,6 +94,28 @@ To use `go generate`, add `//go:generate gosling` to a `.go` file in the package
 
 `examples/config` has a program and its generated output.
 
+## Editor support
+
+`editors/vscode` has a VS Code extension. It highlights `.gol` files as Go plus the gosling syntax. It also gives `.gol` files their own language ID, so gopls does not report errors in them.
+
+The extension is not on the Marketplace. To build it, you need Node.js. Run these commands in a clone of this repository:
+
+```sh
+cd editors/vscode
+npm install
+npm run package
+code --install-extension gosling-0.1.0.vsix
+```
+
+Then run **Developer: Reload Window** in VS Code.
+
+If VS Code runs on a different machine than the repository, install the extension on the machine that runs VS Code:
+
+- With Remote-SSH, right-click `gosling-0.1.0.vsix` in the Explorer and select **Install Extension VSIX**.
+- Without Remote-SSH, copy `gosling-0.1.0.vsix` to that machine and run `code --install-extension` there.
+
+The extension does syntax highlighting only. Go to Definition (Ctrl+click), hover, and completion need a language server. I am working on a gosling language server.
+
 ## Language
 
 ### try / catch
@@ -363,7 +385,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - Arrow functions cannot declare a return type. Arrays do not have array methods, only slices.
 - In a slice spread, untyped constants get their default type. Write `int64(1)`, not `1`, in `[...int64s, 1]`.
 - gosling ignores build constraints in `.gol` files.
-- There is no gopls support. Editors show `.gol` files with Go highlighting only.
+- There is no language server yet. Go to Definition, hover, and completion do not work in `.gol` files.
 
 ## How it works
 
@@ -379,6 +401,8 @@ go test ./...                                         # all tests
 go test ./internal/transpile -run TestGolden -update  # rewrite golden files
 go test -short ./...                                  # skip tests that run the go tool
 ```
+
+To test the VS Code extension, run `npm test` in `editors/vscode`.
 
 `internal/transpile/testdata/golden` has the expected outputs. Tests run `go vet` on each one. Tests build and run the programs in `internal/transpile/testdata/run`, and compare their output with the `.out` files.
 
