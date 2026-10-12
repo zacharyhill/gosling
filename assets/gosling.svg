@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 470" width="400" height="470">
+  <!-- feet -->
+  <path stroke="#1d1d1b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M122 418 q-30 22 -6 30 q14 4 22 -6 q10 10 24 2 q12 -10 -4 -26 z" fill="#F29A2E"/>
+  <path stroke="#1d1d1b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M278 418 q30 22 6 30 q-14 4 -22 -6 q-10 10 -24 2 q-12 -10 4 -26 z" fill="#F29A2E"/>
+
+  <!-- body -->
+  <path stroke="#1d1d1b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M200 52
+           C 300 52, 318 130, 316 210
+           C 314 290, 350 330, 330 380
+           C 310 424, 250 430, 200 430
+           C 150 430, 90 424, 70 380
+           C 50 330, 86 290, 84 210
+           C 82 130, 100 52, 200 52 z" fill="#6AD7E5"/>
+
+  <!-- belly -->
+  <path d="M200 270 C 260 270, 290 320, 282 370 C 276 405, 240 414, 200 414 C 160 414, 124 405, 118 370 C 110 320, 140 270, 200 270 z" fill="#E4F8FB"/>
+
+  <!-- head fluff -->
+  <path stroke="#1d1d1b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M192 56 q-6 -28 -24 -30" fill="none"/>
+  <path stroke="#1d1d1b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M204 54 q4 -30 22 -36" fill="none"/>
+  <path stroke="#1d1d1b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M198 55 q0 -22 4 -32" fill="none"/>
+
+  <!-- wings -->
+  <path stroke="#1d1d1b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M86 250 C 50 262, 42 312, 58 334 C 70 318, 86 300, 92 282" fill="#3FBCD2"/>
+  <path stroke="#1d1d1b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M314 250 C 350 262, 358 312, 342 334 C 330 318, 314 300, 308 282" fill="#3FBCD2"/>
+
+  <!-- eyes -->
+  <circle stroke="#1d1d1b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" cx="140" cy="150" r="46" fill="#ffffff"/>
+  <circle stroke="#1d1d1b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" cx="262" cy="146" r="50" fill="#ffffff"/>
+
+  <!-- pupils, intentionally a little mismatched -->
+  <circle cx="156" cy="146" r="14" fill="#1d1d1b"/>
+  <circle cx="161" cy="141" r="4.5" fill="#ffffff"/>
+  <circle cx="280" cy="140" r="15" fill="#1d1d1b"/>
+  <circle cx="285" cy="135" r="5" fill="#ffffff"/>
+
+  <!-- beak -->
+  <path stroke="#1d1d1b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" d="M168 208 C 172 190, 232 188, 238 206 C 244 222, 222 236, 204 236 C 184 236, 162 226, 168 208 z" fill="#F29A2E"/>
+  <path stroke="#1d1d1b" stroke-linecap="round" stroke-linejoin="round" d="M176 222 C 192 230, 218 230, 232 220" fill="none" stroke-width="4"/>
+  <circle cx="192" cy="204" r="3" fill="#1d1d1b"/>
+  <circle cx="214" cy="203" r="3" fill="#1d1d1b"/>
+
+  <!-- cheeks -->
+  <ellipse cx="110" cy="214" rx="16" ry="9" fill="#FF9EB5" opacity="0.85"/>
+  <ellipse cx="294" cy="212" rx="16" ry="9" fill="#FF9EB5" opacity="0.85"/>
+</svg>

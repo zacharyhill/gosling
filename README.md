@@ -1,5 +1,9 @@
 # gosling
 
+<p align="center">
+  <img src="assets/gosling.svg" alt="gosling mascot" width="230">
+</p>
+
 gosling adds some TypeScript syntax to Go. Write `.gol` files. gosling converts each one to a plain, gofmt-formatted `.go` file in the same directory.
 
 ```go
