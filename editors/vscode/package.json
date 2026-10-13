@@ -2,7 +2,7 @@
   "name": "gosling",
   "displayName": "gosling",
   "description": "Syntax highlighting and a language server for gosling (.gol) files",
-  "version": "0.1.0",
+  "version": "0.2.2",
   "publisher": "zacharyhill",
   "license": "MPL-2.0",
   "repository": {

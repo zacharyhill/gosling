@@ -45,3 +45,16 @@ jobs:
           else
             gh release create "$GITHUB_REF_NAME" gosling.vsix --title "$GITHUB_REF_NAME" --generate-notes
           fi
+
+      # GitHub marks a published release as latest even without assets. A draft
+      # never counts as latest, so the README download keeps the last good build.
+      - name: Turn the release back into a draft if the build failed
+        if: failure()
+        # The checkout step can fail before editors/vscode exists.
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" > /dev/null 2>&1; then
+            gh release edit "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" --draft
+          fi
