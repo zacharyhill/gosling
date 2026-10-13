@@ -13,30 +13,30 @@ import (
 const errUncheckableCall = "this call can fail, but its error cannot be checked here; move it into its own statement"
 
 type tryContext struct {
-	id        int
-	catchVar  string
-	binding   bool
-	jumps     int
-	needsDecl bool
-	// checked is true if generated code reads catchVar. Then catchVar needs no blank use.
-	checked bool
+	id         int
+	catchVar   string
+	hasBinding bool
+	jumps      int
+	needsDecl  bool
+	// If generated code reads catchVar, catchVar needs no blank use.
+	isCatchVarRead bool
 	// rebind is the user's catch variable name if catchVar is a hidden
 	// stand-in for it.
 	rebind string
-	// catching marks the context of a catch body. It reserves the catch
-	// variable's name but is not a jump target.
-	catching bool
-	// noCatch marks a try with only a finally block. It is also not a jump
-	// target. Failures go to an enclosing try.
-	noCatch bool
-	finally *finallyLayer
-	outer   *tryContext
+	// A catch body context reserves the name of the catch variable.
+	// It is not a jump target.
+	isCatchBody bool
+	// A try with only a finally block is not a jump target. Failures go
+	// to an enclosing try.
+	isFinallyOnly bool
+	finally       *finallyLayer
+	outer         *tryContext
 }
 
 // target returns the try block that a failing call jumps to, if any.
 func (tryContext *tryContext) target() *tryContext {
 	for ; tryContext != nil; tryContext = tryContext.outer {
-		if !tryContext.catching && !tryContext.noCatch {
+		if !tryContext.isCatchBody && !tryContext.isFinallyOnly {
 			return tryContext
 		}
 	}
@@ -74,47 +74,47 @@ func (lowerer *lowerer) callSite(stmt ast.Stmt) (callSite, bool) {
 	return callSite{}, false
 }
 
-// tryStatement holds the pieces of one try statement while it is lowered.
+// tryStatement holds the pieces of one try statement during lowering.
 type tryStatement struct {
-	stmt         *ast.IfStmt
-	catch        *ast.BlockStmt // nil without a catch clause
-	catchBody    []ast.Stmt     // the user's catch code, without generated lines
-	catchEnd     int            // offset after the generated catch prologue
-	finallyBlock *ast.BlockStmt // nil without a finally clause
-	context      *tryContext
-	prologue     string // code that starts the catch block
-	dropCatch    bool
+	stmt           *ast.IfStmt
+	catch          *ast.BlockStmt // nil without a catch clause
+	catchBody      []ast.Stmt     // the user's catch code, without generated lines
+	catchEnd       int            // offset after the generated catch prologue
+	finallyBlock   *ast.BlockStmt // nil without a finally clause
+	context        *tryContext
+	prologue       string // code that starts the catch block
+	isCatchDropped bool
 }
 
-func (lowerer *lowerer) lowerTry(stmt *ast.IfStmt, tryInfo preprocess.Try, outerTry *tryContext) {
-	parts := lowerer.newTryStatement(stmt, tryInfo, outerTry)
-	lowerer.walkTryStatement(parts, tryInfo.Binding, outerTry)
+func (lowerer *lowerer) lowerTry(stmt *ast.IfStmt, preprocessedTry preprocess.Try, outerTry *tryContext) {
+	parts := lowerer.newTryStatement(stmt, preprocessedTry, outerTry)
+	lowerer.walkTryStatement(parts, preprocessedTry.Binding, outerTry)
 	// If nothing in the try can fail, the catch block never runs.
-	parts.dropCatch = parts.catch != nil && parts.context.jumps == 0
+	parts.isCatchDropped = parts.catch != nil && parts.context.jumps == 0
 	parts.prologue = lowerer.catchPrologue(parts)
 	switch {
 	case parts.finallyBlock != nil:
 		lowerer.emitFinally(parts)
-	case parts.dropCatch:
+	case parts.isCatchDropped:
 		lowerer.emitWithoutCatch(parts)
 	default:
 		lowerer.emitTry(parts)
 	}
 }
 
-func (lowerer *lowerer) newTryStatement(stmt *ast.IfStmt, tryInfo preprocess.Try, outerTry *tryContext) *tryStatement {
-	binding := tryInfo.Binding
+func (lowerer *lowerer) newTryStatement(stmt *ast.IfStmt, preprocessedTry preprocess.Try, outerTry *tryContext) *tryStatement {
+	binding := preprocessedTry.Binding
 	parts := &tryStatement{
 		stmt:         stmt,
-		catchEnd:     tryInfo.CatchEnd,
+		catchEnd:     preprocessedTry.CatchEnd,
 		finallyBlock: lowerer.file.finallyOf[stmt],
 		context: &tryContext{
-			id:        lowerer.nextTryID(),
-			catchVar:  binding,
-			binding:   binding != "",
-			needsDecl: binding != "",
-			noCatch:   !tryInfo.HasCatch,
-			outer:     outerTry,
+			id:            lowerer.nextTryID(),
+			catchVar:      binding,
+			hasBinding:    binding != "",
+			needsDecl:     binding != "",
+			isFinallyOnly: !preprocessedTry.HasCatch,
+			outer:         outerTry,
 		},
 	}
 	if parts.finallyBlock != nil {
@@ -125,11 +125,11 @@ func (lowerer *lowerer) newTryStatement(stmt *ast.IfStmt, tryInfo preprocess.Try
 			terminates: isTerminating(parts.finallyBlock),
 		}
 	}
-	if tryInfo.HasCatch {
+	if preprocessedTry.HasCatch {
 		parts.catch, _ = stmt.Else.(*ast.BlockStmt)
 		parts.catchBody = parts.catch.List
 	}
-	if parts.context.binding {
+	if parts.context.hasBinding {
 		parts.catchBody = parts.catchBody[2:] // skip the generated declaration and blank use
 		lowerer.hideShadowedBinding(parts)
 	}
@@ -150,7 +150,7 @@ func (lowerer *lowerer) hideShadowedBinding(parts *tryStatement) {
 func (lowerer *lowerer) walkTryStatement(parts *tryStatement, binding string, outerTry *tryContext) {
 	lowerer.walkBlock(parts.stmt.Body.List, parts.context)
 	if parts.catch != nil {
-		catchContext := &tryContext{catchVar: binding, catching: true, finally: parts.context.finally, outer: outerTry}
+		catchContext := &tryContext{catchVar: binding, isCatchBody: true, finally: parts.context.finally, outer: outerTry}
 		lowerer.walkBlock(parts.catchBody, catchContext)
 	}
 	if parts.finallyBlock != nil {
@@ -160,11 +160,11 @@ func (lowerer *lowerer) walkTryStatement(parts *tryStatement, binding string, ou
 
 func (lowerer *lowerer) catchPrologue(parts *tryStatement) string {
 	try := parts.context
-	bindingUsed := parts.catch != nil && lowerer.usesObject(parts.catchBody, lowerer.bindingObj(parts.catch))
+	isBindingUsed := parts.catch != nil && lowerer.usesObject(parts.catchBody, lowerer.bindingObject(parts.catch))
 	switch {
-	case try.rebind != "" && bindingUsed:
+	case try.rebind != "" && isBindingUsed:
 		return "\n" + try.rebind + " := " + try.catchVar
-	case try.needsDecl && !try.checked && !bindingUsed:
+	case try.needsDecl && !try.isCatchVarRead && !isBindingUsed:
 		return "\n_ = " + try.catchVar
 	}
 	return ""
@@ -192,10 +192,10 @@ func (lowerer *lowerer) emitTry(parts *tryStatement) {
 	// A try block that cannot complete normally needs no jump over the
 	// catch block. With a jump, the end label is unused and the function
 	// fails Go's terminating statement check.
-	skipEnd := isTerminating(stmt.Body)
+	bodyTerminates := isTerminating(stmt.Body)
 	var middle strings.Builder
 	middle.WriteString("}\n")
-	if !skipEnd {
+	if !bodyTerminates {
 		fmt.Fprintf(&middle, "goto %s\n", try.endLabel())
 	}
 	fmt.Fprintf(&middle, "%s:\n{", try.catchLabel())
@@ -203,13 +203,13 @@ func (lowerer *lowerer) emitTry(parts *tryStatement) {
 	lowerer.replaceOffsets(lowerer.offset(stmt.Body.Rbrace), parts.catchEnd, middle.String(), lowerer.line(stmt.Body.Rbrace))
 
 	tail := "}\n}"
-	if !skipEnd {
+	if !bodyTerminates {
 		tail = fmt.Sprintf("}\n%s:\n}", try.endLabel())
 	}
 	lowerer.replace(parts.catch.Rbrace, parts.catch.Rbrace+1, tail, lowerer.line(parts.catch.Rbrace))
 }
 
-func (lowerer *lowerer) bindingObj(catch *ast.BlockStmt) types.Object {
+func (lowerer *lowerer) bindingObject(catch *ast.BlockStmt) types.Object {
 	if len(catch.List) == 0 {
 		return nil
 	}
@@ -218,7 +218,7 @@ func (lowerer *lowerer) bindingObj(catch *ast.BlockStmt) types.Object {
 		return nil
 	}
 	spec := decl.Decl.(*ast.GenDecl).Specs[0].(*ast.ValueSpec)
-	return lowerer.info.Defs[spec.Names[0]]
+	return lowerer.typeInfo.Defs[spec.Names[0]]
 }
 
 func (lowerer *lowerer) usesObject(list []ast.Stmt, object types.Object) bool {
@@ -228,7 +228,7 @@ func (lowerer *lowerer) usesObject(list []ast.Stmt, object types.Object) bool {
 	found := false
 	for _, stmt := range list {
 		ast.Inspect(stmt, func(node ast.Node) bool {
-			if ident, ok := node.(*ast.Ident); ok && lowerer.info.Uses[ident] == object {
+			if ident, ok := node.(*ast.Ident); ok && lowerer.typeInfo.Uses[ident] == object {
 				found = true
 			}
 			return !found
@@ -278,7 +278,7 @@ func (lowerer *lowerer) lowerTryStmt(stmt ast.Stmt, try *tryContext) {
 			target.catchVar = lowerer.fresh("tryErr")
 			target.needsDecl = true
 		}
-		target.checked = true
+		target.isCatchVarRead = true
 		lowerer.checkAssign(stmt, site, target.catchVar, jump(target.catchVar))
 	}
 }
@@ -291,12 +291,12 @@ func (lowerer *lowerer) checkableCall(stmt ast.Stmt) (callSite, int, bool) {
 	if !ok {
 		return callSite{}, 0, false
 	}
-	if site.assign == nil && errorBeforeLast(lowerer.info, site.call) {
+	if site.assign == nil && errorBeforeLast(lowerer.typeInfo, site.call) {
 		callee := ast.Unparen(site.call).(*ast.CallExpr).Fun
 		lowerer.errorf(lowerer.file, stmt.Pos(), "error is not the last result of %s, so try cannot check it; assign the results and check the error explicitly", lowerer.file.text(callee))
 		return callSite{}, 0, false
 	}
-	resultCount, ok := fallible(lowerer.info, site.call)
+	resultCount, ok := fallible(lowerer.typeInfo, site.call)
 	if !ok || (site.assign != nil && len(site.leftSide) != resultCount-1) {
 		return callSite{}, 0, false
 	}
@@ -309,9 +309,9 @@ func (lowerer *lowerer) checkableCall(stmt ast.Stmt) (callSite, int, bool) {
 
 func blanks(count int) string { return strings.Repeat("_, ", count) }
 
-// addBlankForErrors turns `x := f()`, where f returns (T, error), into
-// `x, _ := f()` so the type checker accepts it.
-func addBlankForErrors(file *file, info *types.Info) bool {
+// addBlankForErrors turns `x := f()` into `x, _ := f()` if f returns
+// (T, error). Then the type checker accepts it.
+func addBlankForErrors(file *file, typeInfo *types.Info) bool {
 	changed := false
 	ast.Inspect(file.ast, func(node ast.Node) bool {
 		assign, ok := node.(*ast.AssignStmt)
@@ -321,7 +321,7 @@ func addBlankForErrors(file *file, info *types.Info) bool {
 		if _, done := file.augmented[assign]; done {
 			return true
 		}
-		resultCount, ok := fallible(info, assign.Rhs[0])
+		resultCount, ok := fallible(typeInfo, assign.Rhs[0])
 		if ok && len(assign.Lhs) == resultCount-1 {
 			file.augmented[assign] = len(assign.Lhs)
 			assign.Lhs = append(assign.Lhs, ast.NewIdent("_"))
@@ -336,7 +336,7 @@ var errorType = types.Universe.Lookup("error").Type()
 
 // fallible reports whether expr is a call whose last result is error, and
 // how many results it has.
-func fallible(info *types.Info, expr ast.Expr) (int, bool) {
+func fallible(typeInfo *types.Info, expr ast.Expr) (int, bool) {
 	call, ok := ast.Unparen(expr).(*ast.CallExpr)
 	if !ok {
 		return 0, false
@@ -344,7 +344,7 @@ func fallible(info *types.Info, expr ast.Expr) (int, bool) {
 	if ident, ok := call.Fun.(*ast.Ident); ok && strings.HasPrefix(ident.Name, arrayMarkerPrefix) {
 		return 0, false // a find over errors returns an element, not a failure
 	}
-	switch resultType := info.Types[expr].Type.(type) {
+	switch resultType := typeInfo.Types[expr].Type.(type) {
 	case *types.Tuple:
 		return resultType.Len(), resultType.Len() > 0 && types.Identical(resultType.At(resultType.Len()-1).Type(), errorType)
 	case nil:
@@ -354,10 +354,10 @@ func fallible(info *types.Info, expr ast.Expr) (int, bool) {
 	}
 }
 
-// errorBeforeLast reports whether expr is a call with an error result in a
-// position other than the last, which try cannot check.
-func errorBeforeLast(info *types.Info, expr ast.Expr) bool {
-	tuple, ok := info.Types[expr].Type.(*types.Tuple)
+// errorBeforeLast reports whether expr is a call with an error result before
+// its last result. try cannot check such an error.
+func errorBeforeLast(typeInfo *types.Info, expr ast.Expr) bool {
+	tuple, ok := typeInfo.Types[expr].Type.(*types.Tuple)
 	if !ok {
 		return false
 	}

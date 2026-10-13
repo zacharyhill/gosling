@@ -7,9 +7,9 @@ import (
 	"strconv"
 )
 
-func (lowerer *lowerer) scopeAt(pos token.Pos) *types.Scope {
-	if scope := lowerer.info.Scopes[lowerer.file.ast]; scope != nil {
-		return scope.Innermost(pos)
+func (lowerer *lowerer) scopeAt(position token.Pos) *types.Scope {
+	if scope := lowerer.typeInfo.Scopes[lowerer.file.ast]; scope != nil {
+		return scope.Innermost(position)
 	}
 	return nil
 }
@@ -49,10 +49,10 @@ func (lowerer *lowerer) nextTryID() int {
 
 // pickErrorVar picks a name for a generated error variable. The name must
 // not be a catch variable of an enclosing try block. With a scope, := declares
-// the name at pos. So the name must reuse an earlier error variable of that
+// the name at position. So the name must reuse an earlier error variable of that
 // scope, or not occur later in the scope. If end is valid, the name must not
-// occur in [pos, end).
-func (lowerer *lowerer) pickErrorVar(try *tryContext, scope *types.Scope, pos, end token.Pos) string {
+// occur in [position, end).
+func (lowerer *lowerer) pickErrorVar(try *tryContext, scope *types.Scope, position, end token.Pos) string {
 	for attempt := 1; ; attempt++ {
 		name := "err"
 		if attempt > 1 {
@@ -62,23 +62,29 @@ func (lowerer *lowerer) pickErrorVar(try *tryContext, scope *types.Scope, pos, e
 			continue
 		}
 		if scope != nil {
-			if object := scope.Lookup(name); object != nil {
-				if object.Pos() < pos && isErrorVar(object) {
-					return name
-				}
-				continue
+			canReuse, isFree := lowerer.fitsScope(name, scope, position)
+			if canReuse {
+				return name
 			}
-			if _, ok := lowerer.usedIn(name, pos, scope.End()); ok {
+			if !isFree {
 				continue
 			}
 		}
-		if end.IsValid() {
-			if _, ok := lowerer.usedIn(name, pos, end); ok {
-				continue
-			}
+		if _, ok := lowerer.usedIn(name, position, end); end.IsValid() && ok {
+			continue
 		}
 		return name
 	}
+}
+
+// fitsScope reports whether := at position can reuse name as an error
+// variable of scope. It also reports whether name is free in the rest of scope.
+func (lowerer *lowerer) fitsScope(name string, scope *types.Scope, position token.Pos) (canReuse, isFree bool) {
+	if object := scope.Lookup(name); object != nil {
+		return object.Pos() < position && isErrorVar(object), false
+	}
+	_, isUsed := lowerer.usedIn(name, position, scope.End())
+	return false, !isUsed
 }
 
 func excludedByTry(try *tryContext, name string) bool {

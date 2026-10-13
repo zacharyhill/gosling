@@ -10,7 +10,7 @@ import (
 type lowerer struct {
 	*transpiler
 	file           *file
-	info           *types.Info
+	typeInfo       *types.Info
 	edits          []edit
 	identPositions map[string][]token.Pos
 	lastTryID      int
@@ -22,22 +22,22 @@ type lowerer struct {
 	optionalRoots  map[ast.Expr]bool
 }
 
-func newLowerer(transpiler *transpiler, file *file, info *types.Info) *lowerer {
-	lowering := &lowerer{
+func newLowerer(transpiler *transpiler, file *file, typeInfo *types.Info) *lowerer {
+	lowerer := &lowerer{
 		transpiler:     transpiler,
 		file:           file,
-		info:           info,
+		typeInfo:       typeInfo,
 		identPositions: map[string][]token.Pos{},
 		consumedHoists: map[*ast.CallExpr]bool{},
 	}
 	ast.Inspect(file.ast, func(node ast.Node) bool {
 		if ident, ok := node.(*ast.Ident); ok && ident.Pos().IsValid() {
-			lowering.identPositions[ident.Name] = append(lowering.identPositions[ident.Name], ident.Pos())
+			lowerer.identPositions[ident.Name] = append(lowerer.identPositions[ident.Name], ident.Pos())
 		}
 		return true
 	})
-	lowering.findChains()
-	return lowering
+	lowerer.findChains()
+	return lowerer
 }
 
 func (lowerer *lowerer) lowerFile() {
@@ -64,7 +64,7 @@ func (lowerer *lowerer) lowerFile() {
 		lowerer.insert(body.Rbrace, "panic(\"unreachable\")\n", lowerer.line(body.Rbrace))
 	}
 	for _, splitOffset := range lowerer.file.preprocessed.Splits {
-		lowerer.edits = append(lowerer.edits, edit{start: splitOffset, end: splitOffset + len("; "), text: "\n", line: lowerer.line(lowerer.file.tokenFile.Pos(splitOffset))})
+		lowerer.replaceOffsets(splitOffset, splitOffset+len("; "), "\n", lowerer.line(lowerer.file.tokenFile.Pos(splitOffset)))
 	}
 	for tryOffset := range lowerer.file.tries {
 		lowerer.errorf(lowerer.file, lowerer.file.tokenFile.Pos(tryOffset), "try is only supported as a statement")
@@ -103,19 +103,7 @@ func (lowerer *lowerer) walkExprs(nodes ...ast.Node) {
 func (lowerer *lowerer) walkStmt(stmt ast.Stmt, try *tryContext) {
 	switch stmt := stmt.(type) {
 	case *ast.IfStmt:
-		if tryInfo, ok := lowerer.file.tries[lowerer.offset(stmt.Pos())]; ok {
-			delete(lowerer.file.tries, lowerer.offset(stmt.Pos()))
-			lowerer.lowerTry(stmt, tryInfo, try)
-			return
-		}
-		if parent, ok := lowerer.parents[stmt].(*ast.IfStmt); !ok || parent.Else != stmt {
-			lowerer.hoist(stmt, try, stmt.Init, stmt.Cond) // an else-if has no place for them
-		}
-		lowerer.walkExprs(stmt.Init, stmt.Cond)
-		lowerer.walkBlock(stmt.Body.List, try)
-		if stmt.Else != nil {
-			lowerer.walkStmt(stmt.Else, try)
-		}
+		lowerer.walkIf(stmt, try)
 	case *ast.BlockStmt:
 		if !lowerer.file.finallyBlocks[stmt] { // lowered with its try statement
 			lowerer.walkBlock(stmt.List, try)
@@ -150,6 +138,23 @@ func (lowerer *lowerer) walkStmt(stmt ast.Stmt, try *tryContext) {
 	}
 }
 
+// walkIf lowers an if statement, or the try statement that the if stands for.
+func (lowerer *lowerer) walkIf(stmt *ast.IfStmt, try *tryContext) {
+	if preprocessedTry, ok := lowerer.file.tries[lowerer.offset(stmt.Pos())]; ok {
+		delete(lowerer.file.tries, lowerer.offset(stmt.Pos()))
+		lowerer.lowerTry(stmt, preprocessedTry, try)
+		return
+	}
+	if parent, ok := lowerer.parents[stmt].(*ast.IfStmt); !ok || parent.Else != stmt {
+		lowerer.hoist(stmt, try, stmt.Init, stmt.Cond) // an else-if has no place for them
+	}
+	lowerer.walkExprs(stmt.Init, stmt.Cond)
+	lowerer.walkBlock(stmt.Body.List, try)
+	if stmt.Else != nil {
+		lowerer.walkStmt(stmt.Else, try)
+	}
+}
+
 func (lowerer *lowerer) walkClauses(body *ast.BlockStmt, try *tryContext) {
 	for _, clause := range body.List {
 		switch clause := clause.(type) {
@@ -165,9 +170,8 @@ func (lowerer *lowerer) walkClauses(body *ast.BlockStmt, try *tryContext) {
 	}
 }
 
-func (lowerer *lowerer) insert(pos token.Pos, text string, line int) {
-	offset := lowerer.offset(pos)
-	lowerer.edits = append(lowerer.edits, edit{start: offset, end: offset, text: text, line: line})
+func (lowerer *lowerer) insert(position token.Pos, text string, line int) {
+	lowerer.insertOrdered(position, text, line, 0)
 }
 
 // insertAfter adds inline directly after stmt, and block after any line
@@ -191,8 +195,8 @@ func (lowerer *lowerer) insertAfter(stmt ast.Stmt, inline, block string, line in
 	lowerer.edits = append(lowerer.edits, edit{start: offset, end: offset, text: block, line: line})
 }
 
-func (lowerer *lowerer) insertOrdered(pos token.Pos, text string, line, order int) {
-	offset := lowerer.offset(pos)
+func (lowerer *lowerer) insertOrdered(position token.Pos, text string, line, order int) {
+	offset := lowerer.offset(position)
 	lowerer.edits = append(lowerer.edits, edit{start: offset, end: offset, text: text, line: line, order: order})
 }
 
@@ -204,7 +208,9 @@ func (lowerer *lowerer) depth(node ast.Node) int {
 	return depth
 }
 
-func (lowerer *lowerer) offset(pos token.Pos) int { return lowerer.file.tokenFile.Offset(pos) }
+func (lowerer *lowerer) offset(position token.Pos) int {
+	return lowerer.file.tokenFile.Offset(position)
+}
 
 func (lowerer *lowerer) replace(from, to token.Pos, text string, line int) {
 	lowerer.replaceOffsets(lowerer.offset(from), lowerer.offset(to), text, line)
@@ -219,10 +225,10 @@ func (lowerer *lowerer) drop(from, to token.Pos, text string, line int) {
 	lowerer.drops = append(lowerer.drops, edit{start: lowerer.offset(from), end: lowerer.offset(to), text: text, line: line})
 }
 
-func (lowerer *lowerer) line(pos token.Pos) int { return lowerer.file.tokenFile.Line(pos) }
+func (lowerer *lowerer) line(position token.Pos) int { return lowerer.file.tokenFile.Line(position) }
 
-func (lowerer *lowerer) dropped(pos token.Pos) bool {
-	offset := lowerer.offset(pos)
+func (lowerer *lowerer) dropped(position token.Pos) bool {
+	offset := lowerer.offset(position)
 	for _, drop := range lowerer.drops {
 		if offset >= drop.start && offset < drop.end {
 			return true

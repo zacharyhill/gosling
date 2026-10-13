@@ -12,8 +12,8 @@ import (
 
 // arrayMethod describes a TypeScript-style method on slices.
 type arrayMethod struct {
-	callback       bool   // the first argument is a callback that takes the element
-	extra          string // parameters of the marker after xs and the callback
+	hasCallback    bool   // the first argument is a callback that takes the element
+	extraParams    string // parameters of the marker after xs and the callback
 	callbackParams string // callback parameters, before the optional index
 	callbackResult string
 	result         string
@@ -21,24 +21,24 @@ type arrayMethod struct {
 }
 
 func (method arrayMethod) argCount() int {
-	count := strings.Count(method.extra, ",")
-	if method.callback {
+	count := strings.Count(method.extraParams, ",")
+	if method.hasCallback {
 		count++
 	}
 	return count
 }
 
 var arrayMethods = map[string]arrayMethod{
-	"map":       {callback: true, callbackParams: "T", callbackResult: "R", result: "[]R", typeParams: "S ~[]T, T, R any"},
-	"filter":    {callback: true, callbackParams: "T", callbackResult: "bool", result: "S", typeParams: "S ~[]T, T any"},
-	"reduce":    {callback: true, extra: ", init R", callbackParams: "R, T", callbackResult: "R", result: "R", typeParams: "S ~[]T, T, R any"},
-	"forEach":   {callback: true, callbackParams: "T", typeParams: "S ~[]T, T any"},
-	"find":      {callback: true, callbackParams: "T", callbackResult: "bool", result: "T", typeParams: "S ~[]T, T any"},
-	"findIndex": {callback: true, callbackParams: "T", callbackResult: "bool", result: "int", typeParams: "S ~[]T, T any"},
-	"some":      {callback: true, callbackParams: "T", callbackResult: "bool", result: "bool", typeParams: "S ~[]T, T any"},
-	"every":     {callback: true, callbackParams: "T", callbackResult: "bool", result: "bool", typeParams: "S ~[]T, T any"},
-	"includes":  {extra: ", x T", result: "bool", typeParams: "S ~[]T, T comparable"},
-	"indexOf":   {extra: ", x T", result: "int", typeParams: "S ~[]T, T comparable"},
+	"map":       {hasCallback: true, callbackParams: "T", callbackResult: "R", result: "[]R", typeParams: "S ~[]T, T, R any"},
+	"filter":    {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "S", typeParams: "S ~[]T, T any"},
+	"reduce":    {hasCallback: true, extraParams: ", init R", callbackParams: "R, T", callbackResult: "R", result: "R", typeParams: "S ~[]T, T, R any"},
+	"forEach":   {hasCallback: true, callbackParams: "T", typeParams: "S ~[]T, T any"},
+	"find":      {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "T", typeParams: "S ~[]T, T any"},
+	"findIndex": {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "int", typeParams: "S ~[]T, T any"},
+	"some":      {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "bool", typeParams: "S ~[]T, T any"},
+	"every":     {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "bool", typeParams: "S ~[]T, T any"},
+	"includes":  {extraParams: ", x T", result: "bool", typeParams: "S ~[]T, T comparable"},
+	"indexOf":   {extraParams: ", x T", result: "int", typeParams: "S ~[]T, T comparable"},
 }
 
 // arrayCall is an array method call that a marker call replaces for type
@@ -66,17 +66,17 @@ func arrayMarkerDecls() string {
 		method := arrayMethods[name]
 		writeDecl := func(suffix, callbackParams, result string) {
 			callbackParam := ""
-			if method.callback {
+			if method.hasCallback {
 				callbackParam = fmt.Sprintf(", f func(%s) %s", callbackParams, method.callbackResult)
 			}
 			body := "{ panic(0) }"
 			if result == "" {
 				body = "{}"
 			}
-			fmt.Fprintf(&builder, "func %s%s%s[%s](xs S%s%s) %s %s\n", arrayMarkerPrefix, name, suffix, method.typeParams, callbackParam, method.extra, result, body)
+			fmt.Fprintf(&builder, "func %s%s%s[%s](xs S%s%s) %s %s\n", arrayMarkerPrefix, name, suffix, method.typeParams, callbackParam, method.extraParams, result, body)
 		}
 		writeDecl("", method.callbackParams, method.result)
-		if method.callback {
+		if method.hasCallback {
 			writeDecl("I", method.callbackParams+", int", method.result)
 		}
 		if name == "find" {
@@ -89,24 +89,24 @@ func arrayMarkerDecls() string {
 
 // rewriteArrayCalls replaces calls like xs.filter(f) with marker calls if xs
 // is a slice without such a method. It reports whether anything changed.
-func (transpiler *transpiler) rewriteArrayCalls(file *file, info *types.Info) bool {
+func (transpiler *transpiler) rewriteArrayCalls(file *file, typeInfo *types.Info) bool {
 	changed := false
 	ast.Inspect(file.ast, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
 		if !ok {
 			return true
 		}
-		arrayCallInfo, ok := transpiler.asArrayCall(file, info, call)
+		methodCall, ok := transpiler.asArrayCall(file, typeInfo, call)
 		if !ok {
 			return true
 		}
 		marker := &ast.CallExpr{
-			Fun:    &ast.Ident{Name: arrayCallInfo.markerName(), NamePos: arrayCallInfo.receiver.Pos()},
+			Fun:    &ast.Ident{Name: methodCall.markerName(), NamePos: methodCall.receiver.Pos()},
 			Lparen: call.Lparen,
-			Args:   append([]ast.Expr{arrayCallInfo.receiver}, call.Args...),
+			Args:   append([]ast.Expr{methodCall.receiver}, call.Args...),
 			Rparen: call.Rparen,
 		}
-		file.arrayCalls[marker] = arrayCallInfo
+		file.arrayCalls[marker] = methodCall
 		replaceNode(file.ast, call, marker)
 		changed = true
 		return false
@@ -116,7 +116,7 @@ func (transpiler *transpiler) rewriteArrayCalls(file *file, info *types.Info) bo
 
 // asArrayCall recognizes an array method call on a slice that has no real
 // method of that name.
-func (transpiler *transpiler) asArrayCall(file *file, info *types.Info, call *ast.CallExpr) (*arrayCall, bool) {
+func (transpiler *transpiler) asArrayCall(file *file, typeInfo *types.Info, call *ast.CallExpr) (*arrayCall, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
 		return nil, false
@@ -129,7 +129,7 @@ func (transpiler *transpiler) asArrayCall(file *file, info *types.Info, call *as
 	if !ok {
 		return nil, false
 	}
-	receiverType := info.Types[selector.X].Type
+	receiverType := typeInfo.Types[selector.X].Type
 	slice, ok := underlyingSlice(receiverType)
 	if !ok {
 		return nil, false
@@ -137,20 +137,20 @@ func (transpiler *transpiler) asArrayCall(file *file, info *types.Info, call *as
 	if object, _, _ := types.LookupFieldOrMethod(receiverType, true, transpiler.checkedPackage, name); object != nil {
 		return nil, false // a real method wins
 	}
-	arrayCallInfo := &arrayCall{method: name, originalCall: call, receiver: selector.X}
-	if !method.callback {
-		return arrayCallInfo, true
+	methodCall := &arrayCall{method: name, originalCall: call, receiver: selector.X}
+	if !method.hasCallback {
+		return methodCall, true
 	}
 	if len(call.Args) == 0 {
 		return nil, false
 	}
-	count, known := transpiler.callbackParams(file, info, call.Args[0])
-	if !known {
+	count, isKnown := transpiler.callbackParams(file, typeInfo, call.Args[0])
+	if !isKnown {
 		return nil, false
 	}
-	arrayCallInfo.indexed = count == strings.Count(method.callbackParams, ",")+2
-	arrayCallInfo.returnsPointer = name == "find" && !nilable(slice.Elem())
-	return arrayCallInfo, true
+	methodCall.indexed = count == strings.Count(method.callbackParams, ",")+2
+	methodCall.returnsPointer = name == "find" && !nilable(slice.Elem())
+	return methodCall, true
 }
 
 // markerName picks the marker variant. P is for a find that returns a pointer
@@ -167,13 +167,13 @@ func (call *arrayCall) markerName() string {
 }
 
 // callbackParams returns how many parameters a callback argument takes.
-func (transpiler *transpiler) callbackParams(file *file, info *types.Info, arg ast.Expr) (int, bool) {
+func (transpiler *transpiler) callbackParams(file *file, typeInfo *types.Info, arg ast.Expr) (int, bool) {
 	for _, arrowFunc := range file.arrows {
 		if arrowFunc.node() == arg {
 			return arrowFunc.paramCount(), true
 		}
 	}
-	if signature, ok := info.Types[arg].Type.(*types.Signature); ok {
+	if signature, ok := typeInfo.Types[arg].Type.(*types.Signature); ok {
 		return signature.Params().Len(), true
 	}
 	return 0, false
@@ -181,8 +181,8 @@ func (transpiler *transpiler) callbackParams(file *file, info *types.Info, arg a
 
 // callbackContext returns the parameter and result types that an array
 // method gives to its callback.
-func (transpiler *transpiler) callbackContext(info *types.Info, call *ast.CallExpr, arrayCall *arrayCall, arrowFunc *arrow) (funcContext, bool) {
-	slice, ok := underlyingSlice(info.Types[call.Args[0]].Type)
+func (transpiler *transpiler) callbackContext(typeInfo *types.Info, call *ast.CallExpr, arrayCall *arrayCall, arrowFunc *arrow) (funcContext, bool) {
+	slice, ok := underlyingSlice(typeInfo.Types[call.Args[0]].Type)
 	if !ok || len(call.Args) < 2 || call.Args[1] != arrowFunc.node() {
 		return funcContext{}, false
 	}
@@ -195,7 +195,7 @@ func (transpiler *transpiler) callbackContext(info *types.Info, call *ast.CallEx
 		if len(call.Args) < 3 {
 			return funcContext{}, false
 		}
-		accumulator := types.Default(info.Types[call.Args[2]].Type)
+		accumulator := types.Default(typeInfo.Types[call.Args[2]].Type)
 		if accumulator == nil {
 			return funcContext{}, false
 		}
@@ -224,7 +224,7 @@ func (lowerer *lowerer) lowerArrays() {
 func (lowerer *lowerer) lowerArrayCall(marker *ast.CallExpr, arrayCall *arrayCall) {
 	// The marker holds the current arguments. The original call can still hold
 	// stand-ins for arrows resolved after it.
-	receiver, args := arrayCall.receiver, marker.Args[1:]
+	receiver, arguments := arrayCall.receiver, marker.Args[1:]
 	method := arrayMethods[arrayCall.method]
 	typeText, ok := lowerer.checkArrayCall(marker, arrayCall, method)
 	if !ok {
@@ -237,12 +237,12 @@ func (lowerer *lowerer) lowerArrayCall(marker *ast.CallExpr, arrayCall *arrayCal
 	}
 	line, depth := lowerer.line(receiver.Pos()), lowerer.depth(marker)
 	lowerer.insertOrdered(receiver.Pos(), open, line, depth)
-	lowerer.replace(receiver.End(), args[0].Pos(), separator, line)
+	lowerer.replace(receiver.End(), arguments[0].Pos(), separator, line)
 	tail := arrayLoop(arrayCall, typeText)
-	if !method.callback {
+	if !method.hasCallback {
 		tail = ")" + tail
 	}
-	lowerer.replace(args[len(args)-1].End(), arrayCall.originalCall.Rparen+1, tail, line)
+	lowerer.replace(arguments[len(arguments)-1].End(), arrayCall.originalCall.Rparen+1, tail, line)
 }
 
 // checkArrayCall reports misuse of an array method. It returns the result
@@ -261,7 +261,7 @@ func (lowerer *lowerer) checkArrayCall(marker *ast.CallExpr, arrayCall *arrayCal
 	if method.result == "" {
 		return "", true
 	}
-	typeText, ok := lowerer.typeName(lowerer.info.Types[marker].Type)
+	typeText, ok := lowerer.typeName(lowerer.typeInfo.Types[marker].Type)
 	if !ok {
 		lowerer.typeNameTakenError(receiver.Pos(), arrayCall.method, typeText)
 	}
@@ -274,8 +274,8 @@ func (lowerer *lowerer) arrayBindings(arrayCall *arrayCall, method arrayMethod) 
 	switch {
 	case arrayCall.method == "reduce":
 		return "xs, f, acc", ", "
-	case !method.callback:
-		slice, _ := underlyingSlice(lowerer.info.Types[arrayCall.receiver].Type)
+	case !method.hasCallback:
+		slice, _ := underlyingSlice(lowerer.typeInfo.Types[arrayCall.receiver].Type)
 		elementType, _ := lowerer.typeName(slice.Elem())
 		return "xs, v", ", " + elementType + "("
 	}

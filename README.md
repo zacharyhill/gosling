@@ -34,11 +34,11 @@ Features:
 
 ## Why
 
-I like Go, but I do not like to write `if err != nil` after every call. I understand that this is an intentional pattern in Go, but I think forcing this pattern on every call is too extreme and creates a lot of super redundant code.
+I like Go, but I do not like to write `if err != nil` after every call. I know that this pattern is intentional in Go. But I think that it is too much on every call, and it makes a lot of repeated code.
 
 I started with `try` / `catch`. Then I added other TypeScript features that I like.
 
-Most of the Go community will probably not like this, but gosling is a proof of concept, not a recommendation for everyone to use.
+Most of the Go community will probably not like this. gosling is a proof of concept, not a recommendation for everyone.
 
 ## Quick start
 
@@ -168,7 +168,7 @@ In a try block, gosling checks each call whose last result is `error`. A failure
 | `const x = f()` | `x, err := f()`, then `if err != nil { ... }`         |
 | `x = f()`       | `x, e = f()`, then `if e != nil { goto catch_N }`     |
 
-gosling moves a call used as a value, such as `g(f())`, into its own checked statement before its statement:
+If a call is a value, such as `f()` in `g(f())`, gosling moves it into a new checked statement. The new statement comes before the original statement:
 
 ```go
 const n = strconv.Atoi(strings.TrimSpace(s)) * 2
@@ -442,7 +442,7 @@ go test ./internal/transpile -run TestGolden -update  # rewrite golden files
 go test -short ./...                                  # skip tests that run the go tool
 ```
 
-The language server tests run gopls. They are skipped if gopls is not installed, and with `-short`.
+The language server tests run gopls. They skip if gopls is not installed or if you use `-short`.
 
 To test the VS Code extension, run `npm test` in `editors/vscode`.
 

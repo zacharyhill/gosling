@@ -83,11 +83,11 @@ func (transpiler *transpiler) typeExpr(file *file, goType types.Type) (ast.Expr,
 // false if a package name is already used in the file.
 func (transpiler *transpiler) typeNameIn(file *file, goType types.Type, inAST bool) (string, bool) {
 	ok := true
-	typeText := types.TypeString(goType, func(pkg *types.Package) string {
-		if pkg.Path() == checkPath {
+	typeText := types.TypeString(goType, func(typePackage *types.Package) string {
+		if typePackage.Path() == checkPath {
 			return ""
 		}
-		packageName, found := transpiler.importName(file, pkg.Path(), pkg.Name(), inAST)
+		packageName, found := transpiler.importName(file, typePackage.Path(), typePackage.Name(), inAST)
 		ok = ok && found
 		return packageName
 	})
@@ -124,16 +124,16 @@ func containsType(list []types.Type, goType types.Type) bool {
 
 // displayName prints a type for an error message.
 func displayName(goType types.Type) string {
-	return types.TypeString(goType, func(pkg *types.Package) string {
-		if pkg.Path() == checkPath {
+	return types.TypeString(goType, func(typePackage *types.Package) string {
+		if typePackage.Path() == checkPath {
 			return ""
 		}
-		return pkg.Name()
+		return typePackage.Name()
 	})
 }
 
 // typeNameTakenError reports that this file cannot write the type that a
 // construct produces, because its package name is shadowed.
-func (lowerer *lowerer) typeNameTakenError(pos token.Pos, construct, typeText string) {
-	lowerer.errorf(lowerer.file, pos, "%s produces %s, whose package name is already used for something else in this file", construct, typeText)
+func (lowerer *lowerer) typeNameTakenError(position token.Pos, construct, typeText string) {
+	lowerer.errorf(lowerer.file, position, "%s produces %s, whose package name is already used for something else in this file", construct, typeText)
 }

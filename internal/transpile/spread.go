@@ -16,9 +16,9 @@ var spreadMarkerDecls = "func " + preprocess.CatMarker + "[S ~[]E, E any](parts 
 
 // expandShorthand changes T{name, age} into T{name: name, age: age} if the
 // plain positional literal is not valid. This is the case if the literal
-// has fewer values than the struct has fields, mixes in keyed fields, or
-// updates a struct spread. It reports whether anything changed.
-func (transpiler *transpiler) expandShorthand(file *file, info *types.Info) bool {
+// has fewer values than the struct has fields. It is also the case if the
+// literal mixes in keyed fields or updates a struct spread. It reports whether anything changed.
+func (transpiler *transpiler) expandShorthand(file *file, typeInfo *types.Info) bool {
 	changed := false
 	parentOf := parents(file.ast)
 	ast.Inspect(file.ast, func(node ast.Node) bool {
@@ -26,15 +26,15 @@ func (transpiler *transpiler) expandShorthand(file *file, info *types.Info) bool
 		if !ok || len(compositeLit.Elts) == 0 {
 			return true
 		}
-		structType, ok := underlyingStruct(info.Types[compositeLit].Type)
+		structType, ok := underlyingStruct(typeInfo.Types[compositeLit].Type)
 		if !ok {
 			return true
 		}
-		spreadUpdate := isSpreadUpdate(parentOf, compositeLit)
-		if !spreadUpdate && !hasKeyedElement(compositeLit) && len(compositeLit.Elts) >= structType.NumFields() {
+		inSpreadUpdate := isSpreadUpdate(parentOf, compositeLit)
+		if !inSpreadUpdate && !hasKeyedElement(compositeLit) && len(compositeLit.Elts) >= structType.NumFields() {
 			return true // a full positional literal keeps its Go meaning
 		}
-		changed = transpiler.keyShorthandFields(file, compositeLit, structType, spreadUpdate) || changed
+		changed = transpiler.keyShorthandFields(file, compositeLit, structType, inSpreadUpdate) || changed
 		return true
 	})
 	return changed
@@ -51,7 +51,7 @@ func hasKeyedElement(compositeLit *ast.CompositeLit) bool {
 
 // keyShorthandFields changes each bare field name in compositeLit into a
 // keyed element. It reports unnamed values after a struct spread.
-func (transpiler *transpiler) keyShorthandFields(file *file, compositeLit *ast.CompositeLit, structType *types.Struct, spreadUpdate bool) bool {
+func (transpiler *transpiler) keyShorthandFields(file *file, compositeLit *ast.CompositeLit, structType *types.Struct, inSpreadUpdate bool) bool {
 	fields := map[string]bool{}
 	for field := range structType.Fields() {
 		fields[field.Name()] = true
@@ -60,7 +60,7 @@ func (transpiler *transpiler) keyShorthandFields(file *file, compositeLit *ast.C
 	for elementIndex, element := range compositeLit.Elts {
 		ident, ok := element.(*ast.Ident)
 		if !ok || !fields[ident.Name] {
-			if _, isKeyValue := element.(*ast.KeyValueExpr); !isKeyValue && spreadUpdate && !file.badSpreads[compositeLit] {
+			if _, isKeyValue := element.(*ast.KeyValueExpr); !isKeyValue && inSpreadUpdate && !file.badSpreads[compositeLit] {
 				file.badSpreads[compositeLit] = true
 				transpiler.errorf(file, element.Pos(), "fields after a struct spread must be named")
 			}
@@ -112,17 +112,17 @@ func (lowerer *lowerer) lowerSpread() {
 // lowerCat writes [...a, x, ...b] as slices.Concat(a, []T{x}, b).
 func (lowerer *lowerer) lowerCat(call *ast.CallExpr, callee *ast.Ident) {
 	line := lowerer.line(call.Pos())
-	slice, ok := underlyingSlice(lowerer.info.Types[call].Type)
+	slice, ok := underlyingSlice(lowerer.typeInfo.Types[call].Type)
 	if !ok {
 		return // the type checker already reported the error
 	}
 	elementType, ok := lowerer.typeName(slice.Elem())
-	pkg, pkgFound := lowerer.importName(lowerer.file, "slices", "slices", false)
-	if !ok || !pkgFound {
+	slicesName, hasSlicesName := lowerer.importName(lowerer.file, "slices", "slices", false)
+	if !ok || !hasSlicesName {
 		lowerer.errorf(lowerer.file, call.Pos(), "spread needs package slices and the element type, but a needed name is already used in this file")
 		return
 	}
-	lowerer.replace(callee.Pos(), callee.End(), qualify(pkg)+"Concat", line)
+	lowerer.replace(callee.Pos(), callee.End(), qualify(slicesName)+"Concat", line)
 	for _, arg := range call.Args {
 		if oneCall, ok := callTo(arg, preprocess.OneMarker); ok {
 			lowerer.replace(oneCall.Pos(), oneCall.Lparen+1, "[]"+elementType+"{", line)
@@ -150,23 +150,23 @@ func (lowerer *lowerer) lowerWith(withCall *ast.CallExpr) {
 	typeText := strings.TrimSpace(lowerer.file.text(conversion.Fun))
 	tempVar := lowerer.pickTempVar(conversion.Pos(), conversion.End())
 	lowerer.replace(conversion.Pos(), base.Pos(), "func() "+typeText+" {\n"+tempVar+" := ", line)
-	prevEnd := base.End()
+	previousEnd := base.End()
 	for _, element := range compositeLit.Elts {
 		keyValue := element.(*ast.KeyValueExpr)
 		if ident, isShorthand := lowerer.file.shorthand[keyValue]; isShorthand {
-			lowerer.replace(prevEnd, ident.Pos(), "\n"+tempVar+"."+ident.Name+" = ", line)
+			lowerer.replace(previousEnd, ident.Pos(), "\n"+tempVar+"."+ident.Name+" = ", line)
 		} else {
-			lowerer.replace(prevEnd, keyValue.Key.Pos(), "\n"+tempVar+".", line)
+			lowerer.replace(previousEnd, keyValue.Key.Pos(), "\n"+tempVar+".", line)
 			lowerer.replace(keyValue.Key.End(), keyValue.Value.Pos(), " = ", line)
 		}
-		prevEnd = keyValue.Value.End()
+		previousEnd = keyValue.Value.End()
 	}
-	lowerer.replace(prevEnd, conversion.End(), "\nreturn "+tempVar+"\n}()", line)
+	lowerer.replace(previousEnd, conversion.End(), "\nreturn "+tempVar+"\n}()", line)
 }
 
-func (file *file) inBadSpread(pos token.Pos) bool {
+func (file *file) inBadSpread(position token.Pos) bool {
 	for compositeLit := range file.badSpreads {
-		if pos >= compositeLit.Pos() && pos < compositeLit.End() {
+		if position >= compositeLit.Pos() && position < compositeLit.End() {
 			return true
 		}
 	}

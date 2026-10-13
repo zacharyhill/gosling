@@ -248,8 +248,8 @@ func (mapper *mapper) currentPosition(file *generatedFile, golOffset int) (posit
 }
 
 // generatedFor returns the generated file at path, or nil if gosling did
-// not generate it. A file of a package without open documents is generated
-// again from disk and matched against the file on disk.
+// not generate it. For a package without open documents, the server
+// generates the file again from disk. It must match the file on disk.
 func (server *server) generatedFor(path string) *generatedFile {
 	if packageState, ok := server.packages[filepath.Dir(path)]; ok {
 		return packageState.files[path]

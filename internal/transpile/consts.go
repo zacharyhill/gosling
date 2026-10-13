@@ -13,10 +13,10 @@ import (
 // into a variable that cannot be reassigned, as in TypeScript. A const with
 // a constant value stays a Go constant. A grouped declaration stays Go. It
 // reports whether the AST changed.
-func convertConsts(file *file, info *types.Info) bool {
+func convertConsts(file *file, typeInfo *types.Info) bool {
 	changed := false
 	astutil.Apply(file.ast, func(cursor *astutil.Cursor) bool {
-		decl, spec := convertibleConst(cursor.Node(), info)
+		decl, spec := convertibleConst(cursor.Node(), typeInfo)
 		if spec == nil {
 			return true
 		}
@@ -60,8 +60,8 @@ func (file *file) recordConstNames() {
 }
 
 // convertibleConst returns node and its spec if node is a single const
-// declaration with a value that type-checks but is not constant.
-func convertibleConst(node ast.Node, info *types.Info) (*ast.GenDecl, *ast.ValueSpec) {
+// declaration. The value must type-check but not be constant.
+func convertibleConst(node ast.Node, typeInfo *types.Info) (*ast.GenDecl, *ast.ValueSpec) {
 	decl, ok := node.(*ast.GenDecl)
 	if !ok || decl.Tok != token.CONST || decl.Lparen.IsValid() || len(decl.Specs) != 1 {
 		return nil, nil
@@ -69,7 +69,7 @@ func convertibleConst(node ast.Node, info *types.Info) (*ast.GenDecl, *ast.Value
 	spec := decl.Specs[0].(*ast.ValueSpec)
 	constant := true
 	for _, value := range spec.Values {
-		typeAndValue, ok := info.Types[value]
+		typeAndValue, ok := typeInfo.Types[value]
 		// A value with an unknown type may depend on a const that a later
 		// pass converts.
 		if !ok || typeAndValue.Type == nil || typeAndValue.Type == types.Typ[types.Invalid] {
@@ -94,47 +94,60 @@ func (file *file) assignPos(spec *ast.ValueSpec) token.Pos {
 }
 
 // checkConstAssignments reports assignments to the variables in constVars.
-func (transpiler *transpiler) checkConstAssignments(astFiles []*ast.File, info *types.Info) {
-	constObjects := map[types.Object]bool{}
-	for _, file := range transpiler.files {
-		for name := range file.constVars {
-			if object := info.Defs[name]; object != nil {
-				constObjects[object] = true
-			}
-		}
-		addTypeSwitchObjects(file, info, constObjects)
-	}
+func (transpiler *transpiler) checkConstAssignments(astFiles []*ast.File, typeInfo *types.Info) {
+	constObjects := transpiler.constObjects(typeInfo)
 	if len(constObjects) == 0 {
 		return
 	}
-	report := func(targets ...ast.Expr) {
-		for _, target := range targets {
-			ident, ok := ast.Unparen(target).(*ast.Ident)
-			if ok && constObjects[info.Uses[ident]] {
-				transpiler.diagnostics.Add(transpiler.position(ident.Pos()), "cannot assign to "+ident.Name+": declared with const")
-			}
-		}
-	}
 	for _, astFile := range astFiles {
 		ast.Inspect(astFile, func(node ast.Node) bool {
-			switch node := node.(type) {
-			case *ast.AssignStmt:
-				report(node.Lhs...)
-			case *ast.IncDecStmt:
-				report(node.X)
-			case *ast.RangeStmt:
-				if node.Tok == token.ASSIGN {
-					report(node.Key, node.Value)
-				}
-			}
+			transpiler.reportConstTargets(assignTargets(node), constObjects, typeInfo)
 			return true
 		})
 	}
 }
 
+func (transpiler *transpiler) reportConstTargets(targets []ast.Expr, constObjects map[types.Object]bool, typeInfo *types.Info) {
+	for _, target := range targets {
+		ident, ok := ast.Unparen(target).(*ast.Ident)
+		if ok && constObjects[typeInfo.Uses[ident]] {
+			transpiler.diagnostics.Add(transpiler.position(ident.Pos()), "cannot assign to "+ident.Name+": declared with const")
+		}
+	}
+}
+
+// constObjects returns the objects of the variables that a const declares.
+func (transpiler *transpiler) constObjects(typeInfo *types.Info) map[types.Object]bool {
+	constObjects := map[types.Object]bool{}
+	for _, file := range transpiler.files {
+		for name := range file.constVars {
+			if object := typeInfo.Defs[name]; object != nil {
+				constObjects[object] = true
+			}
+		}
+		addTypeSwitchObjects(file, typeInfo, constObjects)
+	}
+	return constObjects
+}
+
+// assignTargets returns the expressions that node assigns to.
+func assignTargets(node ast.Node) []ast.Expr {
+	switch node := node.(type) {
+	case *ast.AssignStmt:
+		return node.Lhs
+	case *ast.IncDecStmt:
+		return []ast.Expr{node.X}
+	case *ast.RangeStmt:
+		if node.Tok == token.ASSIGN {
+			return []ast.Expr{node.Key, node.Value}
+		}
+	}
+	return nil
+}
+
 // addTypeSwitchObjects adds the variables of each case of a type switch
 // that a const declares. Each case has its own variable.
-func addTypeSwitchObjects(file *file, info *types.Info, constObjects map[types.Object]bool) {
+func addTypeSwitchObjects(file *file, typeInfo *types.Info, constObjects map[types.Object]bool) {
 	ast.Inspect(file.ast, func(node ast.Node) bool {
 		typeSwitch, ok := node.(*ast.TypeSwitchStmt)
 		if !ok {
@@ -145,7 +158,7 @@ func addTypeSwitchObjects(file *file, info *types.Info, constObjects map[types.O
 			return true
 		}
 		for _, clause := range typeSwitch.Body.List {
-			if object := info.Implicits[clause]; object != nil {
+			if object := typeInfo.Implicits[clause]; object != nil {
 				constObjects[object] = true
 			}
 		}

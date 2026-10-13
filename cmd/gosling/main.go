@@ -45,14 +45,14 @@ func run(args []string, stderr io.Writer) int {
 		return 2
 	}
 	patterns := flags.Args()
-	implicit := len(patterns) == 0
-	if implicit {
+	isDefaultDir := len(patterns) == 0
+	if isDefaultDir {
 		patterns = []string{"."}
 	}
 	options := generateOptions{check: *check, lineDirectives: *lines, verbose: *verbose || *check, stderr: stderr}
 	if err := generate(patterns, options); err != nil {
 		fmt.Fprintln(stderr, err)
-		if implicit && errors.Is(err, errNoSource) {
+		if isDefaultDir && errors.Is(err, errNoSource) {
 			fmt.Fprintln(stderr, `run "gosling ./..." to include subdirectories`)
 		}
 		return 1
@@ -74,7 +74,7 @@ func generate(patterns []string, options generateOptions) error {
 	if err != nil {
 		return err
 	}
-	stale, err := removeOrphans(dirs, options)
+	foundStale, err := removeOrphans(dirs, options)
 	if err != nil {
 		return err
 	}
@@ -82,7 +82,7 @@ func generate(patterns []string, options generateOptions) error {
 	if err != nil {
 		return err
 	}
-	return writeOutputs(outputs, options, stale)
+	return writeOutputs(outputs, options, foundStale)
 }
 
 // withSources returns the directories that have .gol files. A directory can
@@ -100,12 +100,12 @@ func withSources(dirs []*packageDir) []*packageDir {
 // removeOrphans deletes generated files whose .gol file no longer exists. In
 // -check mode, it reports them instead. It returns true if it reports one.
 func removeOrphans(dirs []*packageDir, options generateOptions) (bool, error) {
-	stale := false
+	foundStale := false
 	for _, dirInfo := range dirs {
 		for _, orphan := range dirInfo.orphans {
 			if options.check {
 				fmt.Fprintf(options.stderr, "%s has no source file; run gosling to remove it\n", orphan)
-				stale = true
+				foundStale = true
 				continue
 			}
 			if err := os.Remove(orphan); err != nil {
@@ -114,7 +114,7 @@ func removeOrphans(dirs []*packageDir, options generateOptions) (bool, error) {
 			fmt.Fprintf(options.stderr, "removed %s: its %s file no longer exists\n", orphan, sourceExt)
 		}
 	}
-	return stale, nil
+	return foundStale, nil
 }
 
 func loadDirs(patterns []string) ([]*packageDir, error) {
@@ -134,8 +134,8 @@ func loadDirs(patterns []string) ([]*packageDir, error) {
 }
 
 // transpileDirs converts dirs in dependency order. Each output goes into the
-// overlay when it is produced. Packages that import it then type-check
-// against the new code, also in -check mode.
+// overlay at once. Packages that import it then type-check against the new
+// code, also in -check mode.
 func transpileDirs(dirs []*packageDir, options generateOptions) ([]transpile.Output, error) {
 	action := "generating"
 	if options.check {
@@ -168,20 +168,20 @@ func transpileDir(dirInfo *packageDir, overlay map[string][]byte, lineDirectives
 			return nil, err
 		}
 		for _, output := range groupOutputs {
-			absPath, err := filepath.Abs(output.Path)
+			absolutePath, err := filepath.Abs(output.Path)
 			if err != nil {
 				return nil, err
 			}
-			overlay[absPath] = output.Src
+			overlay[absolutePath] = output.Src
 		}
 		outputs = append(outputs, groupOutputs...)
 	}
 	return outputs, nil
 }
 
-// writeOutputs writes changed outputs, or in -check mode reports them. stale
-// is true if an earlier step found out-of-date files.
-func writeOutputs(outputs []transpile.Output, options generateOptions, stale bool) error {
+// writeOutputs writes changed outputs, or in -check mode reports them.
+// foundStale is true if an earlier step found out-of-date files.
+func writeOutputs(outputs []transpile.Output, options generateOptions, foundStale bool) error {
 	written := 0
 	for _, output := range outputs {
 		changed, err := needsWrite(output)
@@ -193,7 +193,7 @@ func writeOutputs(outputs []transpile.Output, options generateOptions, stale boo
 		}
 		if options.check {
 			fmt.Fprintf(options.stderr, "%s is out of date\n", output.Path)
-			stale = true
+			foundStale = true
 			continue
 		}
 		if err := os.WriteFile(output.Path, output.Src, 0o644); err != nil {
@@ -201,7 +201,7 @@ func writeOutputs(outputs []transpile.Output, options generateOptions, stale boo
 		}
 		written++
 	}
-	if stale {
+	if foundStale {
 		return errStale
 	}
 	switch {

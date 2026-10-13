@@ -44,25 +44,25 @@ func TestTextShift(test *testing.T) {
 	if got, ok := shift.toOld(beforeChange); !ok || got != beforeChange {
 		test.Errorf("toOld before the change = %d, %v", got, ok)
 	}
-	newB := len("func a() {\n\tfooBar(1)\n}\nfunc ")
-	oldB := len("func a() {\n\tfoo()\n}\nfunc ")
-	if got, ok := shift.toOld(newB); !ok || got != oldB {
-		test.Errorf("toOld after the change = %d, %v, want %d", got, ok, oldB)
+	newFuncB := len("func a() {\n\tfooBar(1)\n}\nfunc ")
+	oldFuncB := len("func a() {\n\tfoo()\n}\nfunc ")
+	if got, ok := shift.toOld(newFuncB); !ok || got != oldFuncB {
+		test.Errorf("toOld after the change = %d, %v, want %d", got, ok, oldFuncB)
 	}
-	if got, ok := shift.toNew(oldB); !ok || got != newB {
-		test.Errorf("toNew after the change = %d, %v, want %d", got, ok, newB)
+	if got, ok := shift.toNew(oldFuncB); !ok || got != newFuncB {
+		test.Errorf("toNew after the change = %d, %v, want %d", got, ok, newFuncB)
 	}
 	if _, ok := shift.toOld(len("func a() {\n\tfooB")); ok {
 		test.Error("toOld inside the change must fail")
 	}
 	twoChanges := []byte("// new\nfunc a() {\n\tfoo()\n}\nfunc b() {}\nextra\n")
-	twoShift := diffText(oldText, twoChanges)
+	twoChangeShift := diffText(oldText, twoChanges)
 	oldFoo := strings.Index(string(oldText), "foo")
-	if got, ok := twoShift.toOld(strings.Index(string(twoChanges), "foo")); !ok || got != oldFoo {
+	if got, ok := twoChangeShift.toOld(strings.Index(string(twoChanges), "foo")); !ok || got != oldFoo {
 		test.Errorf("toOld between two changes = %d, %v, want %d", got, ok, oldFoo)
 	}
-	same := diffText(oldText, oldText)
-	if got, ok := same.toOld(5); !ok || got != 5 {
+	unchangedShift := diffText(oldText, oldText)
+	if got, ok := unchangedShift.toOld(5); !ok || got != 5 {
 		test.Errorf("toOld with no change = %d, %v", got, ok)
 	}
 }

@@ -78,7 +78,7 @@ func (lowerer *lowerer) links(root ast.Expr) ([]*ast.SelectorExpr, bool) {
 	}
 	slices.Reverse(links)
 	for _, link := range links {
-		if leftType := lowerer.info.Types[link.X].Type; !nilable(leftType) {
+		if leftType := lowerer.typeInfo.Types[link.X].Type; !nilable(leftType) {
 			lowerer.errorf(lowerer.file, link.X.End(), "?. needs a pointer or interface on its left, not %s", displayName(leftType))
 			return nil, false
 		}
@@ -136,7 +136,7 @@ func (lowerer *lowerer) lowerNullish() {
 	}
 }
 
-// coalesceOperand reports whether operand is lowered as part of a ?? chain.
+// coalesceOperand reports whether the lowering of a ?? chain includes operand.
 // This is true for a left side, or for the right side of a ?? that is a left side.
 func (lowerer *lowerer) coalesceOperand(operand ast.Expr) bool {
 	call, ok := lowerer.parents[operand].(*ast.CallExpr)
@@ -198,7 +198,7 @@ func (lowerer *lowerer) lowerCoalesce(call *ast.CallExpr) {
 		lowerer.errorf(lowerer.file, allOperands[0].Pos(), "?? cannot be mixed with || or && without parentheses")
 		return
 	}
-	resultType := lowerer.info.Types[call].Type
+	resultType := lowerer.typeInfo.Types[call].Type
 	typeText, ok := lowerer.typeName(resultType)
 	if !ok {
 		lowerer.typeNameTakenError(allOperands[0].Pos(), "??", typeText)
@@ -252,18 +252,18 @@ func (lowerer *lowerer) coalesceGuard(chain coalesceChain, leftOperand ast.Expr,
 			return "", false
 		}
 	}
-	operandType := lowerer.info.Types[leftOperand].Type
-	finalNilable := nilable(operandType)
-	if !finalNilable && len(links) == 0 {
+	operandType := lowerer.typeInfo.Types[leftOperand].Type
+	isOperandNilable := nilable(operandType)
+	if !isOperandNilable && len(links) == 0 {
 		lowerer.errorf(lowerer.file, leftOperand.Pos(), "left side of ?? is never nil")
 		return "", false
 	}
-	value, ok := lowerer.coalescedValue(chain, leftOperand, finalNilable)
+	value, ok := lowerer.coalescedValue(chain, leftOperand, isOperandNilable)
 	if !ok {
 		return "", false
 	}
 	tempVar := chain.tempVar
-	if !finalNilable {
+	if !isOperandNilable {
 		return lowerer.guards(leftOperand, open, links, tempVar, "return "), true
 	}
 	closing := lowerer.guards(leftOperand, open, links, tempVar, "if "+tempVar+" := ")
@@ -273,10 +273,10 @@ func (lowerer *lowerer) coalesceGuard(chain coalesceChain, leftOperand ast.Expr,
 
 // coalescedValue returns the expression for a non-nil left operand. It
 // dereferences the operand if ?? unwraps a pointer to the result type.
-func (lowerer *lowerer) coalescedValue(chain coalesceChain, leftOperand ast.Expr, finalNilable bool) (string, bool) {
-	operandType := lowerer.info.Types[leftOperand].Type
+func (lowerer *lowerer) coalescedValue(chain coalesceChain, leftOperand ast.Expr, isOperandNilable bool) (string, bool) {
+	operandType := lowerer.typeInfo.Types[leftOperand].Type
 	pointerType, isPointer := operandType.Underlying().(*types.Pointer)
-	if finalNilable && isPointer && !types.Identical(operandType, chain.resultType) && types.AssignableTo(pointerType.Elem(), chain.resultType) {
+	if isOperandNilable && isPointer && !types.Identical(operandType, chain.resultType) && types.AssignableTo(pointerType.Elem(), chain.resultType) {
 		return "*" + chain.tempVar, true
 	}
 	if !types.AssignableTo(operandType, chain.resultType) {
@@ -297,7 +297,7 @@ func (lowerer *lowerer) lowerChain(root ast.Expr) {
 		lowerer.insertOrdered(root.End(), closing, lowerer.line(root.Pos()), -lowerer.depth(root))
 		return
 	}
-	resultType := lowerer.info.Types[root].Type
+	resultType := lowerer.typeInfo.Types[root].Type
 	if _, isTuple := resultType.(*types.Tuple); isTuple || resultType == nil {
 		lowerer.errorf(lowerer.file, root.Pos(), "an optional call with zero or multiple results can only be used as a statement")
 		return

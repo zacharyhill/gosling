@@ -24,18 +24,18 @@ func (processor *processor) closeBrace(tokenIndex int) (int, error) {
 	processor.braceStack = processor.braceStack[:len(processor.braceStack)-1]
 	switch closedFrame.kind {
 	case frameTry:
-		tryInfo := &processor.result.Tries[closedFrame.tryIndex]
+		tryStatement := &processor.result.Tries[closedFrame.tryIndex]
 		if processor.tokenAt(tokenIndex + 1).isIdent("finally") {
-			return processor.finally(tokenIndex, tryInfo)
+			return processor.finally(tokenIndex, tryStatement)
 		}
-		next, err := processor.catch(tokenIndex, tryInfo)
+		next, err := processor.catch(tokenIndex, tryStatement)
 		if err != nil {
 			return 0, err
 		}
 		processor.braceStack = append(processor.braceStack, frame{kind: frameCatch, tryIndex: closedFrame.tryIndex})
 		return next, nil
 	case frameCatch:
-		if next := processor.tokenAt(tokenIndex + 1); next.isIdent("finally") {
+		if processor.tokenAt(tokenIndex + 1).isIdent("finally") {
 			return processor.finally(tokenIndex, &processor.result.Tries[closedFrame.tryIndex])
 		}
 		if processor.tokenAt(tokenIndex+1).is(token.SEMICOLON) && processor.tokenAt(tokenIndex+2).isIdent("finally") {
@@ -47,19 +47,19 @@ func (processor *processor) closeBrace(tokenIndex int) (int, error) {
 
 // finally rewrites the "finally {" after the brace at token tokenIndex into
 // "; {". It returns the index of the opening brace of the finally block.
-func (processor *processor) finally(tokenIndex int, tryInfo *Try) (int, error) {
+func (processor *processor) finally(tokenIndex int, tryStatement *Try) (int, error) {
 	keyword, lbrace := processor.tokenAt(tokenIndex+1), processor.tokenAt(tokenIndex+2)
 	if !lbrace.is(token.LBRACE) {
 		return 0, &Error{keyword.offset, "finally must be followed by a block"}
 	}
-	tryInfo.Finally = processor.replace(keyword.offset, lbrace.end(), "; {") + len("; ")
+	tryStatement.Finally = processor.replace(keyword.offset, lbrace.end(), "; {") + len("; ")
 	processor.braceStack = append(processor.braceStack, frame{kind: frameBlock})
 	return tokenIndex + 2, nil
 }
 
 // catch rewrites the catch clause after the try block that closes at token
 // tokenIndex. It returns the index of the opening brace of the catch block.
-func (processor *processor) catch(tokenIndex int, tryInfo *Try) (int, error) {
+func (processor *processor) catch(tokenIndex int, tryStatement *Try) (int, error) {
 	keyword := processor.tokenAt(tokenIndex + 1)
 	if keyword.is(token.SEMICOLON) && (processor.tokenAt(tokenIndex+2).isIdent("catch") || processor.tokenAt(tokenIndex+2).isIdent("finally")) {
 		return 0, &Error{processor.tokenAt(tokenIndex + 2).offset, processor.tokenAt(tokenIndex+2).text + " must be on the same line as the closing brace of try"}
@@ -67,9 +67,9 @@ func (processor *processor) catch(tokenIndex int, tryInfo *Try) (int, error) {
 	if !keyword.isIdent("catch") {
 		return 0, &Error{processor.tokens[tokenIndex].offset, "try block must be followed by catch or finally"}
 	}
-	tryInfo.HasCatch = true
+	tryStatement.HasCatch = true
 	if lbrace := processor.tokenAt(tokenIndex + 2); lbrace.is(token.LBRACE) {
-		tryInfo.CatchEnd = len("else {") + processor.replace(keyword.offset, lbrace.end(), "else {")
+		tryStatement.CatchEnd = len("else {") + processor.replace(keyword.offset, lbrace.end(), "else {")
 		return tokenIndex + 2, nil
 	}
 	lparen, name, rparen, lbrace := processor.tokenAt(tokenIndex+2), processor.tokenAt(tokenIndex+3), processor.tokenAt(tokenIndex+4), processor.tokenAt(tokenIndex+5)
@@ -79,7 +79,7 @@ func (processor *processor) catch(tokenIndex int, tryInfo *Try) (int, error) {
 	// The declaration gives the catch variable a type for go/types. The
 	// blank assignment stops go/types from reporting it as unused.
 	text := fmt.Sprintf("else { var %s error; _ = %s;", name.text, name.text)
-	tryInfo.CatchEnd = len(text) + processor.replace(keyword.offset, lbrace.end(), text)
-	tryInfo.Binding = name.text
+	tryStatement.CatchEnd = len(text) + processor.replace(keyword.offset, lbrace.end(), text)
+	tryStatement.Binding = name.text
 	return tokenIndex + 5, nil
 }

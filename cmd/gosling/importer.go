@@ -19,15 +19,15 @@ func newImporter(dir string, files []sourceFile, overlay map[string][]byte) (typ
 		if requestedPath == "unsafe" {
 			return types.Unsafe, nil
 		}
-		if pkg, ok := packagesByPath[requestedPath]; ok {
-			return pkg, nil
+		if typesPackage, ok := packagesByPath[requestedPath]; ok {
+			return typesPackage, nil
 		}
 		return nil, fmt.Errorf("package %s was not loaded", requestedPath)
 	}), nil
 }
 
 // uniqueImports lists each path that files import, one time. It skips unsafe
-// and C, because they are not loaded as packages.
+// and C, because gosling does not load them as packages.
 func uniqueImports(files []sourceFile) []string {
 	seen := map[string]bool{"unsafe": true, "C": true}
 	var importPaths []string
@@ -60,20 +60,22 @@ func loadImports(dir string, importPaths []string, overlay map[string][]byte) (m
 		return nil, err
 	}
 	var loadErrors []error
-	for _, loadedPkg := range loaded {
-		for _, pkgError := range loadedPkg.Errors {
-			loadErrors = append(loadErrors, errors.New(pkgError.Error()))
+	for _, loadedPackage := range loaded {
+		for _, packageError := range loadedPackage.Errors {
+			loadErrors = append(loadErrors, errors.New(packageError.Error()))
 		}
 	}
 	if len(loadErrors) > 0 {
 		return nil, errors.Join(loadErrors...)
 	}
-	packages.Visit(loaded, nil, func(loadedPkg *packages.Package) {
-		packagesByPath[loadedPkg.PkgPath] = loadedPkg.Types
+	packages.Visit(loaded, nil, func(loadedPackage *packages.Package) {
+		packagesByPath[loadedPackage.PkgPath] = loadedPackage.Types
 	})
 	return packagesByPath, nil
 }
 
 type importerFunc func(path string) (*types.Package, error)
 
-func (importFunc importerFunc) Import(path string) (*types.Package, error) { return importFunc(path) }
+func (importerFunc importerFunc) Import(path string) (*types.Package, error) {
+	return importerFunc(path)
+}

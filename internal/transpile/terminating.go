@@ -62,7 +62,7 @@ func lastStmt(list []ast.Stmt) ast.Stmt {
 	return nil
 }
 
-func clausesTerminate(body *ast.BlockStmt, needDefault bool, noReturn func(*ast.CallExpr) bool) bool {
+func clausesTerminate(body *ast.BlockStmt, needsDefault bool, noReturn func(*ast.CallExpr) bool) bool {
 	hasDefault := false
 	for _, clause := range body.List {
 		var clauseBody []ast.Stmt
@@ -77,7 +77,7 @@ func clausesTerminate(body *ast.BlockStmt, needDefault bool, noReturn func(*ast.
 			return false
 		}
 	}
-	return hasDefault || !needDefault
+	return hasDefault || !needsDefault
 }
 
 // hasBreak reports whether node contains a break statement. It is
@@ -136,7 +136,7 @@ var noReturnFuncs = map[string]bool{
 }
 
 // neverReturns reports calls to panic and to noReturnFuncs.
-func neverReturns(info *types.Info) func(*ast.CallExpr) bool {
+func neverReturns(typeInfo *types.Info) func(*ast.CallExpr) bool {
 	return func(call *ast.CallExpr) bool {
 		var ident *ast.Ident
 		switch callee := ast.Unparen(call.Fun).(type) {
@@ -147,7 +147,7 @@ func neverReturns(info *types.Info) func(*ast.CallExpr) bool {
 		default:
 			return false
 		}
-		switch object := info.Uses[ident].(type) {
+		switch object := typeInfo.Uses[ident].(type) {
 		case *types.Builtin:
 			return object.Name() == "panic"
 		case *types.Func:

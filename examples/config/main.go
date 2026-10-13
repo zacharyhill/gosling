@@ -20,16 +20,16 @@ type Config struct {
 
 // load uses one catch block to wrap each failure in its try block.
 func load(path string) (Config, error) {
-	var cfg Config
+	var config Config
 	{
 		/*line main.gol:20*/ var e error
 		{
-			/*line main.gol:21*/ data, err := os.ReadFile(path)
+			/*line main.gol:21*/ contents, err := os.ReadFile(path)
 			/*line main.gol:21*/ if err != nil {
 				e = err
 				goto catch_1
 			}
-			/*line main.gol:22*/ if err := json.Unmarshal(data, &cfg); err != nil {
+			/*line main.gol:22*/ if err := json.Unmarshal(contents, &config); err != nil {
 				/*line main.gol:22*/ e = err
 				goto catch_1
 			}
@@ -42,22 +42,22 @@ func load(path string) (Config, error) {
 		}
 		/*line main.gol:25*/ end_1:
 	}
-	/*line main.gol:26*/ return cfg, nil
+	/*line main.gol:26*/ return config, nil
 }
 
 // loadAll uses try/catch to send each failed call in the block to one handler.
 func loadAll(paths []string) ([]Config, error) {
-	var out []Config
+	var configs []Config
 	{
 		/*line main.gol:32*/ var e error
 		{
-			/*line main.gol:33*/ for _, p := range paths {
-				cfg, err := load(p)
+			/*line main.gol:33*/ for _, path := range paths {
+				config, err := load(path)
 				/*line main.gol:34*/ if err != nil {
 					e = err
 					goto catch_2
 				}
-				/*line main.gol:35*/ out = append(out, cfg)
+				/*line main.gol:35*/ configs = append(configs, config)
 			}
 		}
 		/*line main.gol:37*/ goto end_2
@@ -67,25 +67,25 @@ func loadAll(paths []string) ([]Config, error) {
 		}
 		/*line main.gol:39*/ end_2:
 	}
-	/*line main.gol:40*/ return out, nil
+	/*line main.gol:40*/ return configs, nil
 }
 
 // describe uses destructuring, for...of, template literals, ??, and array methods.
 // Code cannot assign to the names that const declares.
-func describe(cfgs []Config) {
-	for _, cfg := range cfgs {
-		name, port := cfg.Name, cfg.Port
+func describe(configs []Config) {
+	for _, config := range configs {
+		name, port := config.Name, config.Port
 		fmt.Println(fmt.Sprintf("%s listens on %s:%d", name, func() string {
-			/*line main.gol:48*/ if v := /*line main.gol:48*/ cfg.Host; v != nil {
+			/*line main.gol:48*/ if v := /*line main.gol:48*/ config.Host; v != nil {
 				/*line main.gol:48*/ return *v
 			} /*line main.gol:47*/
 			/*line main.gol:48*/ return /*line main.gol:48*/ "localhost"
 			/*line main.gol:47*/
 		}(), /*line main.gol:48*/ port))
 	}
-	public := func() []string {
+	publicNames := func() []string {
 		/*line main.gol:50*/ xs, f := /*line main.gol:50*/ func() []Config {
-			/*line main.gol:50*/ xs, f := /*line main.gol:50*/ cfgs, func(c Config) bool { return c.Port < 10000 }
+			/*line main.gol:50*/ xs, f := /*line main.gol:50*/ configs, func(config Config) bool { return config.Port < 10000 }
 			/*line main.gol:50*/ var out []Config
 			for _, x := range xs {
 				if f(x) {
@@ -93,14 +93,14 @@ func describe(cfgs []Config) {
 				}
 			}
 			return out
-		}(), /*line main.gol:50*/ func(c Config) string { return c.Name }
+		}(), /*line main.gol:50*/ func(config Config) string { return config.Name }
 		/*line main.gol:50*/ out := make([]string, 0, len(xs))
 		for _, x := range xs {
 			out = append(out, f(x))
 		}
 		return out
 	}()
-	/*line main.gol:51*/ fmt.Println(fmt.Sprintf("public services: %v", public))
+	/*line main.gol:51*/ fmt.Println(fmt.Sprintf("public services: %v", publicNames))
 }
 
 func main() {
@@ -113,12 +113,12 @@ func main() {
 				/*line main.gol:58*/ e = err
 				goto catch_3
 			}
-			/*line main.gol:59*/ cfgs, err := loadAll([]string{good})
+			/*line main.gol:59*/ configs, err := loadAll([]string{good})
 			/*line main.gol:59*/ if err != nil {
 				e = err
 				goto catch_3
 			}
-			/*line main.gol:60*/ describe(cfgs)
+			/*line main.gol:60*/ describe(configs)
 			if _, err := loadAll([]string{good, filepath.Join(dir, "gosling-missing.json")}); err != nil {
 				/*line main.gol:61*/ e = err
 				goto catch_3

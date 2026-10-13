@@ -31,8 +31,8 @@ func offsetAt(text []byte, target position) (int, bool) {
 	}
 	offset := lineStart
 	for units := 0; units < target.Character && offset < len(text) && text[offset] != '\n'; {
-		char, size := utf8.DecodeRune(text[offset:])
-		units += utf16.RuneLen(char)
+		codePoint, size := utf8.DecodeRune(text[offset:])
+		units += utf16.RuneLen(codePoint)
 		if units > target.Character {
 			break
 		}
@@ -45,8 +45,8 @@ func positionAt(text []byte, offset int) position {
 	offset = min(max(offset, 0), len(text))
 	lineStart := bytes.LastIndexByte(text[:offset], '\n') + 1
 	character := 0
-	for _, char := range string(text[lineStart:offset]) {
-		character += utf16.RuneLen(char)
+	for _, codePoint := range string(text[lineStart:offset]) {
+		character += utf16.RuneLen(codePoint)
 	}
 	return position{Line: bytes.Count(text[:offset], []byte("\n")), Character: character}
 }
@@ -100,19 +100,19 @@ func splitLines(text []byte) [][]byte {
 // each changed region, so an edit in a line keeps the rest of the line.
 func refineGaps(runs []matchedRun, oldText, newText []byte) []matchedRun {
 	var refined []matchedRun
-	oldPos, newPos := 0, 0
+	oldOffset, newOffset := 0, 0
 	for _, run := range append(runs, matchedRun{oldStart: len(oldText), newStart: len(newText)}) {
-		refined = append(refined, gapRuns(oldText[oldPos:run.oldStart], newText[newPos:run.newStart], oldPos, newPos)...)
+		refined = append(refined, gapRuns(oldText[oldOffset:run.oldStart], newText[newOffset:run.newStart], oldOffset, newOffset)...)
 		if run.length > 0 {
 			refined = append(refined, run)
 		}
-		oldPos, newPos = run.oldStart+run.length, run.newStart+run.length
+		oldOffset, newOffset = run.oldStart+run.length, run.newStart+run.length
 	}
 	return refined
 }
 
 // gapRuns matches the common prefix and suffix of one changed region.
-func gapRuns(oldGap, newGap []byte, oldPos, newPos int) []matchedRun {
+func gapRuns(oldGap, newGap []byte, oldOffset, newOffset int) []matchedRun {
 	prefix := 0
 	for prefix < len(oldGap) && prefix < len(newGap) && oldGap[prefix] == newGap[prefix] {
 		prefix++
@@ -123,16 +123,16 @@ func gapRuns(oldGap, newGap []byte, oldPos, newPos int) []matchedRun {
 	}
 	var runs []matchedRun
 	if prefix > 0 {
-		runs = append(runs, matchedRun{oldStart: oldPos, newStart: newPos, length: prefix})
+		runs = append(runs, matchedRun{oldStart: oldOffset, newStart: newOffset, length: prefix})
 	}
 	if suffix > 0 {
-		runs = append(runs, matchedRun{oldStart: oldPos + len(oldGap) - suffix, newStart: newPos + len(newGap) - suffix, length: suffix})
+		runs = append(runs, matchedRun{oldStart: oldOffset + len(oldGap) - suffix, newStart: newOffset + len(newGap) - suffix, length: suffix})
 	}
 	return runs
 }
 
 // matchLines returns the index pairs of a longest common subsequence of
-// oldLines and newLines. base is added to each index.
+// oldLines and newLines. It adds base to each index.
 func matchLines(oldLines, newLines [][]byte, base int) [][2]int {
 	if len(oldLines)*len(newLines) > maxDiffCells || len(oldLines) == 0 || len(newLines) == 0 {
 		return nil

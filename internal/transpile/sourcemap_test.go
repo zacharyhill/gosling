@@ -29,17 +29,22 @@ func TestSourceMapSpansMatchText(test *testing.T) {
 			test.Fatal(err)
 		}
 		for _, lineDirectives := range []bool{true, false} {
-			output := transpileWithMap(test, path, src, lineDirectives)
-			if len(output.SourceMap.byGo) == 0 {
-				test.Errorf("%s: source map is empty", path)
-			}
-			for _, span := range output.SourceMap.byGo {
-				golText := string(src[span.golOffset : span.golOffset+span.length])
-				goText := string(output.Src[span.goOffset : span.goOffset+span.length])
-				if golText != goText {
-					test.Errorf("%s (lines %v): span maps %q to %q", path, lineDirectives, golText, goText)
-				}
-			}
+			checkSpansMatchText(test, path, src, lineDirectives)
+		}
+	}
+}
+
+func checkSpansMatchText(test *testing.T, path string, src []byte, lineDirectives bool) {
+	test.Helper()
+	output := transpileWithMap(test, path, src, lineDirectives)
+	if len(output.SourceMap.byGo) == 0 {
+		test.Errorf("%s: source map is empty", path)
+	}
+	for _, span := range output.SourceMap.byGo {
+		golText := string(src[span.golOffset : span.golOffset+span.length])
+		goText := string(output.Src[span.goOffset : span.goOffset+span.length])
+		if golText != goText {
+			test.Errorf("%s (lines %v): span maps %q to %q", path, lineDirectives, golText, goText)
 		}
 	}
 }

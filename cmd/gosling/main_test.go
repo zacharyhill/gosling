@@ -24,8 +24,20 @@ func writeTree(test *testing.T, root string, files map[string]string) {
 	}
 }
 
+// enterModule writes files to a new temporary directory and makes it the
+// working directory.
+func enterModule(test *testing.T, files map[string]string) string {
+	test.Helper()
+	dir := test.TempDir()
+	writeTree(test, dir, files)
+	test.Chdir(dir)
+	return dir
+}
+
+const goModFile = "module example.com/app\n\ngo 1.26\n"
+
 var moduleFiles = map[string]string{
-	"go.mod": "module example.com/app\n\ngo 1.26\n",
+	"go.mod": goModFile,
 	"lib/lib.gol": `package lib
 
 import "strconv"
@@ -103,9 +115,7 @@ func TestRunModule(test *testing.T) {
 	if testing.Short() {
 		test.Skip("runs the go tool")
 	}
-	dir := test.TempDir()
-	writeTree(test, dir, moduleFiles)
-	test.Chdir(dir)
+	dir := enterModule(test, moduleFiles)
 
 	var stderr bytes.Buffer
 	if code := run([]string{"./..."}, &stderr); code != 0 {
@@ -117,16 +127,16 @@ func TestRunModule(test *testing.T) {
 		}
 	}
 
-	out, err := exec.Command("go", "run", ".").CombinedOutput()
+	output, err := exec.Command("go", "run", ".").CombinedOutput()
 	if err != nil {
-		test.Fatalf("go run: %v\n%s", err, out)
+		test.Fatalf("go run: %v\n%s", err, output)
 	}
 	want := "10\nerror: strconv.Atoi: parsing \"nope\": invalid syntax\n"
-	if string(out) != want {
-		test.Errorf("output %q, want %q", out, want)
+	if string(output) != want {
+		test.Errorf("output %q, want %q", output, want)
 	}
-	if out, err := exec.Command("go", "test", "./...").CombinedOutput(); err != nil {
-		test.Fatalf("go test: %v\n%s", err, out)
+	if output, err := exec.Command("go", "test", "./...").CombinedOutput(); err != nil {
+		test.Fatalf("go test: %v\n%s", err, output)
 	}
 
 	stderr.Reset()
@@ -144,9 +154,7 @@ func TestVerboseGenerate(test *testing.T) {
 	if testing.Short() {
 		test.Skip("runs the go tool")
 	}
-	dir := test.TempDir()
-	writeTree(test, dir, moduleFiles)
-	test.Chdir(dir)
+	enterModule(test, moduleFiles)
 
 	var stderr bytes.Buffer
 	if code := run([]string{"./..."}, &stderr); code != 0 {
@@ -168,12 +176,10 @@ func TestVerboseGenerate(test *testing.T) {
 }
 
 func TestNoArgsHintsRecursive(test *testing.T) {
-	dir := test.TempDir()
-	writeTree(test, dir, map[string]string{
-		"go.mod":      "module example.com/app\n\ngo 1.26\n",
+	enterModule(test, map[string]string{
+		"go.mod":      goModFile,
 		"lib/lib.gol": "package lib\n",
 	})
-	test.Chdir(dir)
 	var stderr bytes.Buffer
 	if code := run(nil, &stderr); code != 1 {
 		test.Fatalf("exit %d, want 1: %s", code, stderr.String())
@@ -187,12 +193,10 @@ func TestCheckReportsStale(test *testing.T) {
 	if testing.Short() {
 		test.Skip("runs the go tool")
 	}
-	dir := test.TempDir()
-	writeTree(test, dir, map[string]string{
-		"go.mod":   "module example.com/app\n\ngo 1.26\n",
+	dir := enterModule(test, map[string]string{
+		"go.mod":   goModFile,
 		"main.gol": "package main\n\nimport \"os\"\n\nfunc main() {\n\ttry {\n\t\tos.Remove(\"x\")\n\t} catch {\n\t}\n}\n",
 	})
-	test.Chdir(dir)
 	var stderr bytes.Buffer
 	if code := run([]string{"-check", "."}, &stderr); code != 1 {
 		test.Fatalf("exit %d, want 1: %s", code, stderr.String())
@@ -209,13 +213,11 @@ func TestRefusesHandWrittenFile(test *testing.T) {
 	if testing.Short() {
 		test.Skip("runs the go tool")
 	}
-	dir := test.TempDir()
-	writeTree(test, dir, map[string]string{
-		"go.mod":   "module example.com/app\n\ngo 1.26\n",
+	dir := enterModule(test, map[string]string{
+		"go.mod":   goModFile,
 		"main.gol": "package main\n\nimport \"os\"\n\nfunc run() error {\n\ttry {\n\t\tos.Remove(\"x\")\n\t} catch (e) {\n\t\treturn e\n\t}\n\treturn nil\n}\n",
 		"main.go":  "package main\n\nfunc main() {}\n",
 	})
-	test.Chdir(dir)
 	var stderr bytes.Buffer
 	if code := run([]string{"."}, &stderr); code != 1 {
 		test.Fatalf("exit %d, want 1: %s", code, stderr.String())
@@ -235,7 +237,7 @@ func TestRefusesHandWrittenFile(test *testing.T) {
 // renamedTree is a module after a rename of foo.gol to bar.gol. foo.go is
 // the output of the old name, and it declares the same function as bar.gol.
 var renamedTree = map[string]string{
-	"go.mod":  "module example.com/app\n\ngo 1.26\n",
+	"go.mod":  goModFile,
 	"bar.gol": "package main\n\nfunc helper() int { return 2 }\n\nfunc main() { println(helper(), keep()) }\n",
 	"foo.go":  transpile.GeneratedPrefix + " from foo.gol. DO NOT EDIT.\n\npackage main\n\nfunc helper() int { return 1 }\n",
 	"keep.go": "package main\n\nfunc keep() int { return 3 }\n",
@@ -245,9 +247,7 @@ func TestRemovesOrphanedGeneratedFile(test *testing.T) {
 	if testing.Short() {
 		test.Skip("runs the go tool")
 	}
-	dir := test.TempDir()
-	writeTree(test, dir, renamedTree)
-	test.Chdir(dir)
+	dir := enterModule(test, renamedTree)
 	var stderr bytes.Buffer
 	if code := run([]string{"."}, &stderr); code != 0 {
 		test.Fatalf("exit %d, want 0: %s", code, stderr.String())
@@ -269,9 +269,7 @@ func TestCheckReportsOrphanedGeneratedFile(test *testing.T) {
 	if testing.Short() {
 		test.Skip("runs the go tool")
 	}
-	dir := test.TempDir()
-	writeTree(test, dir, renamedTree)
-	test.Chdir(dir)
+	dir := enterModule(test, renamedTree)
 	var stderr bytes.Buffer
 	if code := run([]string{"-check", "."}, &stderr); code != 1 {
 		test.Fatalf("exit %d, want 1: %s", code, stderr.String())
@@ -287,7 +285,7 @@ func TestCheckReportsOrphanedGeneratedFile(test *testing.T) {
 // orphanOnlyTree has a directory whose last .gol file is gone. Only the
 // output of that file is left.
 var orphanOnlyTree = map[string]string{
-	"go.mod":     "module example.com/app\n\ngo 1.26\n",
+	"go.mod":     goModFile,
 	"main.gol":   "package main\n\nfunc main() {}\n",
 	"lib/old.go": transpile.GeneratedPrefix + " from old.gol. DO NOT EDIT.\n\npackage lib\n",
 }
@@ -296,9 +294,7 @@ func TestRemovesOrphansInDirectoryWithoutSources(test *testing.T) {
 	if testing.Short() {
 		test.Skip("runs the go tool")
 	}
-	dir := test.TempDir()
-	writeTree(test, dir, orphanOnlyTree)
-	test.Chdir(dir)
+	dir := enterModule(test, orphanOnlyTree)
 	var stderr bytes.Buffer
 	if code := run([]string{"."}, &stderr); code != 0 {
 		test.Fatalf("generate main.go: exit %d: %s", code, stderr.String())
@@ -340,12 +336,10 @@ func TestReportsSourceErrors(test *testing.T) {
 	if testing.Short() {
 		test.Skip("runs the go tool")
 	}
-	dir := test.TempDir()
-	writeTree(test, dir, map[string]string{
-		"go.mod":   "module example.com/app\n\ngo 1.26\n",
+	enterModule(test, map[string]string{
+		"go.mod":   goModFile,
 		"main.gol": "package main\n\nfunc main() {\n\tmissing()\n}\n",
 	})
-	test.Chdir(dir)
 	var stderr bytes.Buffer
 	if code := run([]string{"."}, &stderr); code != 1 {
 		test.Fatalf("exit %d, want 1", code)
@@ -361,18 +355,16 @@ func TestImportsTransitiveTypes(test *testing.T) {
 	if testing.Short() {
 		test.Skip("runs the go tool")
 	}
-	dir := test.TempDir()
-	writeTree(test, dir, map[string]string{
-		"go.mod":   "module example.com/app\n\ngo 1.26\n",
+	enterModule(test, map[string]string{
+		"go.mod":   goModFile,
 		"main.gol": "package main\n\nimport \"net/http\"\n\nfunc main() {\n\tconst requests = []*http.Request{{Method: \"GET\"}}\n\tprintln(len(requests.map(request => request.URL).map(address => address?.Path ?? \"/\")))\n}\n",
 	})
-	test.Chdir(dir)
 	var stderr bytes.Buffer
 	if code := run([]string{"."}, &stderr); code != 0 {
 		test.Fatalf("exit %d: %s", code, stderr.String())
 	}
-	out, err := exec.Command("go", "run", ".").CombinedOutput()
-	if err != nil || string(out) != "1\n" {
-		test.Fatalf("go run: %v\n%s", err, out)
+	output, err := exec.Command("go", "run", ".").CombinedOutput()
+	if err != nil || string(output) != "1\n" {
+		test.Fatalf("go run: %v\n%s", err, output)
 	}
 }

@@ -19,27 +19,38 @@ func (transpiler *transpiler) collectUnions() map[*file]map[int]bool {
 	}
 	for _, sourceFile := range transpiler.files {
 		for _, union := range sourceFile.preprocessed.Unions {
-			unionType, ok := transpiler.checkedPackage.Scope().Lookup(union.Name).(*types.TypeName)
-			marker, isFunc := transpiler.checkedPackage.Scope().Lookup(preprocess.VariantsPrefix + union.Name).(*types.Func)
-			if !ok || !isFunc {
+			if transpiler.collectUnion(sourceFile, union) {
 				continue
 			}
-			pos := sourceFile.tokenFile.Pos(union.MarkerStart)
-			var variants []types.Type
-			for variant := range marker.Signature().Params().Variables() {
-				if message := transpiler.badVariant(variant.Type()); message != "" {
-					transpiler.errorf(sourceFile, pos, "%s", message)
-					if badUnions[sourceFile] == nil {
-						badUnions[sourceFile] = map[int]bool{}
-					}
-					badUnions[sourceFile][sourceFile.preprocessed.OrigOffset(union.MarkerStart)] = true
-				}
-				variants = append(variants, variant.Type())
+			if badUnions[sourceFile] == nil {
+				badUnions[sourceFile] = map[int]bool{}
 			}
-			transpiler.unions[unionType] = variants
+			badUnions[sourceFile][sourceFile.preprocessed.OrigOffset(union.MarkerStart)] = true
 		}
 	}
 	return badUnions
+}
+
+// collectUnion records the variants of union and reports each bad variant.
+// It reports false if a variant is bad.
+func (transpiler *transpiler) collectUnion(sourceFile *file, union preprocess.Union) bool {
+	unionType, ok := transpiler.checkedPackage.Scope().Lookup(union.Name).(*types.TypeName)
+	marker, isFunc := transpiler.checkedPackage.Scope().Lookup(preprocess.VariantsPrefix + union.Name).(*types.Func)
+	if !ok || !isFunc {
+		return true
+	}
+	position := sourceFile.tokenFile.Pos(union.MarkerStart)
+	isValid := true
+	var variants []types.Type
+	for variant := range marker.Signature().Params().Variables() {
+		if message := transpiler.badVariant(variant.Type()); message != "" {
+			transpiler.errorf(sourceFile, position, "%s", message)
+			isValid = false
+		}
+		variants = append(variants, variant.Type())
+	}
+	transpiler.unions[unionType] = variants
+	return isValid
 }
 
 func (transpiler *transpiler) badVariant(variant types.Type) string {
@@ -93,7 +104,7 @@ func (lowerer *lowerer) switchedUnion(typeSwitch *ast.TypeSwitchStmt) (*types.Na
 	if !ok {
 		return nil, nil, false
 	}
-	named, ok := types.Unalias(lowerer.info.Types[assert.X].Type).(*types.Named)
+	named, ok := types.Unalias(lowerer.typeInfo.Types[assert.X].Type).(*types.Named)
 	if !ok {
 		return nil, nil, false
 	}
@@ -109,7 +120,7 @@ func (lowerer *lowerer) caseTypes(typeSwitch *ast.TypeSwitchStmt) ([]types.Type,
 			return nil, true
 		}
 		for _, expr := range clause.List {
-			covered = append(covered, lowerer.info.Types[expr].Type)
+			covered = append(covered, lowerer.typeInfo.Types[expr].Type)
 		}
 	}
 	return covered, false
@@ -118,6 +129,6 @@ func (lowerer *lowerer) caseTypes(typeSwitch *ast.TypeSwitchStmt) ([]types.Type,
 // lowerUnions removes the marker functions from the output.
 func (lowerer *lowerer) lowerUnions() {
 	for _, union := range lowerer.file.preprocessed.Unions {
-		lowerer.edits = append(lowerer.edits, edit{start: union.MarkerStart, end: union.MarkerEnd})
+		lowerer.replaceOffsets(union.MarkerStart, union.MarkerEnd, "", 0)
 	}
 }

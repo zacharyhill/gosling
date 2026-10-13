@@ -16,12 +16,12 @@ type binding struct {
 
 // destructure is a destructuring statement with a right side that the scan
 // has not finished. text is the binding assignment to insert where the right
-// side ends.
+// side isEnd.
 type destructure struct {
 	start nesting
 	text  string
-	// constNames holds the bindings to record in Result.Consts.
-	constNames []binding
+	// constBindings holds the bindings to record in Result.Consts.
+	constBindings []binding
 }
 
 // destructure recognizes `{a, b: c} := x` and `[a, b, ...rest] := x` at
@@ -29,8 +29,8 @@ type destructure struct {
 // It reports whether the tokens are a pattern.
 func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, bool, error) {
 	open := processor.tokens[tokenIndex]
-	array := open.is(token.LBRACK)
-	bindings, operatorIndex, err := processor.pattern(tokenIndex+1, array)
+	isArray := open.is(token.LBRACK)
+	bindings, operatorIndex, err := processor.pattern(tokenIndex+1, isArray)
 	if err != nil || bindings == nil {
 		return tokenIndex, false, err
 	}
@@ -39,21 +39,21 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 		return tokenIndex, false, nil
 	}
 	operatorText := operator.kind.String()
-	var constNames []binding
+	var constBindings []binding
 	if keyword != nil {
 		if operator.is(token.DEFINE) {
 			return tokenIndex, false, &Error{keyword.offset, fmt.Sprintf("use %s {...} = value, not :=", keyword.text)}
 		}
 		operatorText = ":="
 		if keyword.is(token.CONST) {
-			constNames = bindings
+			constBindings = bindings
 		}
 	}
 
 	if end, ok := processor.simpleExpr(operatorIndex + 1); ok {
 		rightSide := string(processor.src[processor.tokenAt(operatorIndex+1).offset:processor.tokenAt(end).end()])
-		namesAt := processor.replace(open.offset, processor.tokenAt(end).end(), names(bindings)+" "+operatorText+" "+values(bindings, rightSide, array))
-		processor.recordConsts(namesAt, constNames)
+		namesAt := processor.replace(open.offset, processor.tokenAt(end).end(), names(bindings)+" "+operatorText+" "+values(bindings, rightSide, isArray))
+		processor.recordConsts(namesAt, constBindings)
 		return end, true, nil
 	}
 	// Other right sides go into a temporary variable, so they run once. The
@@ -61,25 +61,25 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 	rightSideVar := processor.fresh("tmp")
 	processor.replace(open.offset, operator.end(), rightSideVar+" :=")
 	processor.pendingDestructures = append(processor.pendingDestructures, &destructure{
-		start:      processor.nesting(),
-		text:       "; " + names(bindings) + " " + operatorText + " " + values(bindings, rightSideVar, array),
-		constNames: constNames,
+		start:         processor.nesting(),
+		text:          "; " + names(bindings) + " " + operatorText + " " + values(bindings, rightSideVar, isArray),
+		constBindings: constBindings,
 	})
 	return operatorIndex, true, nil
 }
 
 // pattern parses the bindings that start at token tokenIndex, after the
 // opening bracket. It returns nil bindings if the tokens are not a pattern.
-func (processor *processor) pattern(tokenIndex int, array bool) ([]binding, int, error) {
+func (processor *processor) pattern(tokenIndex int, isArray bool) ([]binding, int, error) {
 	closing := token.RBRACE
-	if array {
+	if isArray {
 		closing = token.RBRACK
 	}
 	var bindings []binding
 	for {
 		current := processor.tokenAt(tokenIndex)
 		if current.is(token.ELLIPSIS) {
-			if !array {
+			if !isArray {
 				return nil, 0, &Error{current.offset, "rest elements are only supported in array destructuring"}
 			}
 			if !processor.tokenAt(tokenIndex+1).is(token.IDENT) || !processor.tokenAt(tokenIndex+2).is(closing) {
@@ -93,7 +93,7 @@ func (processor *processor) pattern(tokenIndex int, array bool) ([]binding, int,
 		}
 		newBinding := binding{key: current.text, name: current.text}
 		tokenIndex++
-		if !array && processor.tokenAt(tokenIndex).is(token.COLON) && processor.tokenAt(tokenIndex+1).is(token.IDENT) {
+		if !isArray && processor.tokenAt(tokenIndex).is(token.COLON) && processor.tokenAt(tokenIndex+1).is(token.IDENT) {
 			newBinding.name = processor.tokenAt(tokenIndex + 1).text
 			tokenIndex += 2
 		}
@@ -127,47 +127,47 @@ func (processor *processor) simpleExpr(tokenIndex int) (int, bool) {
 }
 
 func names(bindings []binding) string {
-	out := make([]string, len(bindings))
+	targets := make([]string, len(bindings))
 	for bindingIndex, binding := range bindings {
-		out[bindingIndex] = binding.name
+		targets[bindingIndex] = binding.name
 	}
-	return strings.Join(out, ", ")
+	return strings.Join(targets, ", ")
 }
 
-func values(bindings []binding, rightSide string, array bool) string {
-	out := make([]string, len(bindings))
+func values(bindings []binding, rightSide string, isArray bool) string {
+	sources := make([]string, len(bindings))
 	for bindingIndex, binding := range bindings {
 		switch {
 		case binding.rest:
-			out[bindingIndex] = fmt.Sprintf("%s[%d:]", rightSide, bindingIndex)
-		case array:
-			out[bindingIndex] = fmt.Sprintf("%s[%d]", rightSide, bindingIndex)
+			sources[bindingIndex] = fmt.Sprintf("%s[%d:]", rightSide, bindingIndex)
+		case isArray:
+			sources[bindingIndex] = fmt.Sprintf("%s[%d]", rightSide, bindingIndex)
 		default:
-			out[bindingIndex] = rightSide + "." + binding.key
+			sources[bindingIndex] = rightSide + "." + binding.key
 		}
 	}
-	return strings.Join(out, ", ")
+	return strings.Join(sources, ", ")
 }
 
 // finishDestructure inserts the pending binding assignment if token
-// tokenIndex ends the right side of the destructuring statement.
+// tokenIndex isEnd the right side of the destructuring statement.
 func (processor *processor) finishDestructure(tokenIndex int) error {
 	if len(processor.pendingDestructures) == 0 {
 		return nil
 	}
 	pending := processor.pendingDestructures[len(processor.pendingDestructures)-1]
 	current := processor.tokenAt(tokenIndex)
-	ends := current.is(token.EOF) || ((current.is(token.SEMICOLON) || current.is(token.RBRACE)) && processor.nesting() == pending.start)
-	if !ends {
+	isEnd := current.is(token.EOF) || ((current.is(token.SEMICOLON) || current.is(token.RBRACE)) && processor.nesting() == pending.start)
+	if !isEnd {
 		return nil
 	}
 	processor.pendingDestructures = processor.pendingDestructures[:len(processor.pendingDestructures)-1]
 	end := processor.tokenAt(tokenIndex - 1).end()
 	insertedAt := processor.replace(end, end, pending.text)
 	processor.result.Splits = append(processor.result.Splits, insertedAt)
-	processor.recordConsts(insertedAt+len("; "), pending.constNames)
+	processor.recordConsts(insertedAt+len("; "), pending.constBindings)
 	// A function literal on the right side can contain another destructuring
-	// that ends at the same token.
+	// that isEnd at the same token.
 	return processor.finishDestructure(tokenIndex)
 }
 

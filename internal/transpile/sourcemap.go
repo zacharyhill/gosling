@@ -1,7 +1,6 @@
 package transpile
 
 import (
-	"go/scanner"
 	"go/token"
 	"slices"
 	"sort"
@@ -125,12 +124,9 @@ func golOffsetOf(file *file, copies []copiedRange, unformattedToken scannedToken
 }
 
 // scanTokens returns the tokens that gofmt keeps. gofmt adds and removes
-// semicolons and parentheses, so they are left out.
+// semicolons and parentheses, so scanTokens skips them.
 func scanTokens(src []byte) []scannedToken {
-	fileSet := token.NewFileSet()
-	tokenFile := fileSet.AddFile("", -1, len(src))
-	var sourceScanner scanner.Scanner
-	sourceScanner.Init(tokenFile, src, nil, 0)
+	sourceScanner, tokenFile := newScanner(src, 0)
 	var tokens []scannedToken
 	for {
 		tokenPosition, kind, literal := sourceScanner.Scan()

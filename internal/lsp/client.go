@@ -22,7 +22,7 @@ var positionMethods = map[string]bool{
 }
 
 // serverCapabilities lists only the features that work on .gol files.
-// Formatting would change generated code, so it is left out.
+// Formatting would change generated code, so the server does not include it.
 var serverCapabilities = map[string]any{
 	"textDocumentSync": map[string]any{
 		"openClose": true,
@@ -183,19 +183,27 @@ func (server *server) forwardInitialize(message *rpcMessage) error {
 	if err != nil {
 		return server.respondError(message.ID, invalidRequest, err)
 	}
-	if paramsObject, ok := params.(map[string]any); ok {
-		if capabilities, ok := paramsObject["capabilities"].(map[string]any); ok {
-			if general, ok := capabilities["general"].(map[string]any); ok {
-				delete(general, "positionEncodings")
-			}
-		}
-	}
+	removePositionEncodings(params)
 	message.Params, err = json.Marshal(params)
 	if err != nil {
 		return err
 	}
 	server.pending[string(message.ID)] = pendingRequest{method: message.Method}
 	return server.writeGopls(message)
+}
+
+func removePositionEncodings(params any) {
+	paramsObject, ok := params.(map[string]any)
+	if !ok {
+		return
+	}
+	capabilities, ok := paramsObject["capabilities"].(map[string]any)
+	if !ok {
+		return
+	}
+	if general, ok := capabilities["general"].(map[string]any); ok {
+		delete(general, "positionEncodings")
+	}
 }
 
 // JSON-RPC error codes. invalidRequest is for a request that the server

@@ -44,9 +44,9 @@ type finallyLayer struct {
 // the output.
 func (file *file) prepareFinally() {
 	finallyToTry := map[int]int{}
-	for _, tryInfo := range file.preprocessed.Tries {
-		if tryInfo.Finally != 0 {
-			finallyToTry[tryInfo.Finally] = tryInfo.If
+	for _, preprocessedTry := range file.preprocessed.Tries {
+		if preprocessedTry.Finally != 0 {
+			finallyToTry[preprocessedTry.Finally] = preprocessedTry.If
 		}
 	}
 	if len(finallyToTry) == 0 {
@@ -66,7 +66,7 @@ func (file *file) prepareFinally() {
 }
 
 // moveFinallyBlocks swaps each finally block in list with the try
-// statement just before it.
+// statement directly before it.
 func (file *file) moveFinallyBlocks(list []ast.Stmt, finallyToTry map[int]int) {
 	for stmtIndex := 1; stmtIndex < len(list); stmtIndex++ {
 		block, ok := list[stmtIndex].(*ast.BlockStmt)
@@ -95,7 +95,7 @@ func (lowerer *lowerer) stateVar(layer *finallyLayer) string {
 	return layer.state
 }
 
-func (lowerer *lowerer) ensureRets(layer *finallyLayer, signature *types.Signature) {
+func (lowerer *lowerer) ensureReturnVars(layer *finallyLayer, signature *types.Signature) {
 	if layer.returnVars != nil {
 		return
 	}
@@ -225,18 +225,18 @@ func (lowerer *lowerer) lowerExit(stmt ast.Stmt, try *tryContext) bool {
 	line := lowerer.line(stmt.Pos())
 	returnStmt, isReturn := stmt.(*ast.ReturnStmt)
 	if !isReturn || len(returnStmt.Results) == 0 {
-		final := string(lowerer.file.preprocessed.Src[lowerer.offset(stmt.Pos()):lowerer.offset(stmt.End())])
+		final := lowerer.file.text(stmt)
 		lowerer.replace(stmt.Pos(), stmt.End(), "{\n"+lowerer.enter(layers, 0, final, false)+"\n}", line)
 		return true
 	}
 	// The output evaluates the return values before the finally code runs.
-	signature := enclosingSig(lowerer.info, lowerer.parents, stmt)
+	signature := enclosingSignature(lowerer.typeInfo, lowerer.parents, stmt)
 	if signature == nil {
 		return false
 	}
 	for _, layer := range layers {
 		if !layer.terminates {
-			lowerer.ensureRets(layer, signature)
+			lowerer.ensureReturnVars(layer, signature)
 		}
 	}
 	outermost := layers[len(layers)-1]
@@ -271,7 +271,7 @@ func (lowerer *lowerer) jumpOut(try, target *tryContext, final string) string {
 // statement with a finally block.
 func (lowerer *lowerer) emitFinally(parts *tryStatement) {
 	stmt, layer := parts.stmt, parts.context.finally
-	hasCatch := parts.catch != nil && !parts.dropCatch
+	hasCatch := parts.catch != nil && !parts.isCatchDropped
 	tryTerminates := isTerminating(stmt.Body)
 	if hasCatch && !tryTerminates {
 		layer.gotos++ // the jump over the catch block
@@ -280,9 +280,9 @@ func (lowerer *lowerer) emitFinally(parts *tryStatement) {
 	lowerer.emitFinallyOpening(parts, hasCatch, tryTerminates)
 	// If no path falls through the try statement, the output must not fall
 	// through. Otherwise Go reports a missing return.
-	unreachableEnd := !layer.terminates && tryTerminates && (!hasCatch || isTerminating(parts.catch))
+	isEndUnreachable := !layer.terminates && tryTerminates && (!hasCatch || isTerminating(parts.catch))
 	finallyBlock := parts.finallyBlock
-	lowerer.replace(finallyBlock.Rbrace, finallyBlock.Rbrace+1, finallyTail(layer, unreachableEnd), lowerer.line(finallyBlock.Rbrace))
+	lowerer.replace(finallyBlock.Rbrace, finallyBlock.Rbrace+1, finallyTail(layer, isEndUnreachable), lowerer.line(finallyBlock.Rbrace))
 }
 
 // finallyHead declares the catch variable, the pending-exit state, and the
@@ -306,7 +306,7 @@ func (lowerer *lowerer) finallyHead(parts *tryStatement, hasCatch bool) string {
 }
 
 // emitFinallyOpening rewrites the text between the try body and the finally
-// body: the catch block, if kept, and the finally label.
+// body. This text holds the catch block, if kept, and the finally label.
 func (lowerer *lowerer) emitFinallyOpening(parts *tryStatement, hasCatch, tryTerminates bool) {
 	stmt, layer, finallyBlock := parts.stmt, parts.context.finally, parts.finallyBlock
 	label := ""
@@ -323,7 +323,7 @@ func (lowerer *lowerer) emitFinallyOpening(parts *tryStatement, hasCatch, tryTer
 		}
 		lowerer.replaceOffsets(lowerer.offset(stmt.Body.Rbrace), parts.catchEnd, middle+parts.context.catchLabel()+":\n{"+parts.prologue, bodyEnd)
 		lowerer.replace(parts.catch.Rbrace, finallyBlock.Lbrace+1, opening, lowerer.line(parts.catch.Rbrace))
-	case parts.dropCatch:
+	case parts.isCatchDropped:
 		lowerer.drop(stmt.Body.Rbrace, finallyBlock.Lbrace+1, opening, bodyEnd)
 	default:
 		lowerer.replace(stmt.Body.Rbrace, finallyBlock.Lbrace+1, opening, bodyEnd)
@@ -331,13 +331,13 @@ func (lowerer *lowerer) emitFinallyOpening(parts *tryStatement, hasCatch, tryTer
 }
 
 // finallyTail resumes each pending exit after the finally body.
-func finallyTail(layer *finallyLayer, unreachableEnd bool) string {
+func finallyTail(layer *finallyLayer, isEndUnreachable bool) string {
 	var tail strings.Builder
 	tail.WriteString("}\n")
 	for caseIndex, caseCode := range layer.cases {
 		fmt.Fprintf(&tail, "if %s == %d {\n%s\n}\n", layer.state, caseIndex+1, caseCode)
 	}
-	if unreachableEnd {
+	if isEndUnreachable {
 		tail.WriteString("panic(\"unreachable\")\n")
 	}
 	tail.WriteString("}")

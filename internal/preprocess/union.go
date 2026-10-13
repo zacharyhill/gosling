@@ -70,8 +70,8 @@ func (processor *processor) unionHeader(tokenIndex int) (int, int, bool) {
 func (processor *processor) emitUnion(keyword, last lexeme, name string, variants []string) {
 	declarations := unionDeclarations(name, variants)
 	marker := fmt.Sprintf("; func %s%s(%s) {}", VariantsPrefix, name, strings.Join(variants, ", "))
-	text := strings.Join(declarations, "; ")
-	start := processor.replace(keyword.offset, last.end(), text+marker)
+	declarationText := strings.Join(declarations, "; ")
+	start := processor.replace(keyword.offset, last.end(), declarationText+marker)
 
 	offset := start
 	for _, declaration := range declarations[:len(declarations)-1] {
@@ -81,8 +81,8 @@ func (processor *processor) emitUnion(keyword, last lexeme, name string, variant
 	}
 	processor.result.Unions = append(processor.result.Unions, Union{
 		Name:        name,
-		MarkerStart: start + len(text),
-		MarkerEnd:   start + len(text) + len(marker),
+		MarkerStart: start + len(declarationText),
+		MarkerEnd:   start + len(declarationText) + len(marker),
 	})
 }
 
@@ -100,30 +100,30 @@ func unionDeclarations(name string, variants []string) []string {
 // unionExtent finds the end of the type expression that starts at token
 // tokenIndex. It also reports whether the expression has a top-level |.
 func (processor *processor) unionExtent(tokenIndex int) (int, bool) {
-	depth, union := 0, false
+	depth, isUnion := 0, false
 	for ; tokenIndex < len(processor.tokens); tokenIndex++ {
 		switch processor.tokens[tokenIndex].kind {
 		case token.LPAREN, token.LBRACK, token.LBRACE:
 			depth++
 		case token.RPAREN, token.RBRACK, token.RBRACE:
 			if depth == 0 {
-				return tokenIndex, union
+				return tokenIndex, isUnion
 			}
 			depth--
 		case token.SEMICOLON:
 			if depth == 0 {
-				return tokenIndex, union
+				return tokenIndex, isUnion
 			}
 		case token.OR:
-			union = union || depth == 0
+			isUnion = isUnion || depth == 0
 		}
 	}
-	return tokenIndex, union
+	return tokenIndex, isUnion
 }
 
 // variants parses `A | *B | pkg.C` in tokens [from, to).
 func (processor *processor) variants(from, to int) ([]string, error) {
-	var out []string
+	var variants []string
 	for tokenIndex := from; tokenIndex < to; {
 		start := processor.tokenAt(tokenIndex)
 		if processor.tokenAt(tokenIndex).is(token.MUL) {
@@ -136,7 +136,7 @@ func (processor *processor) variants(from, to int) ([]string, error) {
 		if processor.tokenAt(tokenIndex).is(token.PERIOD) && processor.tokenAt(tokenIndex+1).is(token.IDENT) {
 			tokenIndex += 2
 		}
-		out = append(out, string(processor.src[start.offset:processor.tokenAt(tokenIndex-1).end()]))
+		variants = append(variants, string(processor.src[start.offset:processor.tokenAt(tokenIndex-1).end()]))
 		if tokenIndex < to {
 			if !processor.tokenAt(tokenIndex).is(token.OR) {
 				return nil, &Error{processor.tokenAt(tokenIndex).offset, "union variants must be type names"}
@@ -144,7 +144,7 @@ func (processor *processor) variants(from, to int) ([]string, error) {
 			tokenIndex++
 		}
 	}
-	return out, nil
+	return variants, nil
 }
 
 func (processor *processor) matchBracket(openIndex int) (int, bool) {

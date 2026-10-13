@@ -79,6 +79,12 @@ func (lexeme lexeme) end() int {
 
 type frameKind int
 
+const (
+	frameBlock frameKind = iota
+	frameTry
+	frameCatch
+)
+
 type frame struct {
 	kind     frameKind
 	tryIndex int // index into Result.Tries for frameTry and frameCatch
@@ -93,12 +99,6 @@ type nesting struct {
 func (processor *processor) nesting() nesting {
 	return nesting{braces: len(processor.braceStack), parens: processor.parens}
 }
-
-const (
-	frameBlock frameKind = iota
-	frameTry
-	frameCatch
-)
 
 type processor struct {
 	src         []byte
@@ -121,7 +121,14 @@ type processor struct {
 // Process rewrites the gosling syntax in src into Go source with marker
 // identifiers.
 func Process(src []byte) (*Result, error) {
-	processor := &processor{src: src, tokens: tokenize(src), result: &Result{}, identifiers: map[string]bool{}, scheduled: map[int]string{}, inserts: map[int]string{}}
+	processor := &processor{
+		src:         src,
+		tokens:      tokenize(src),
+		result:      &Result{},
+		identifiers: map[string]bool{},
+		scheduled:   map[int]string{},
+		inserts:     map[int]string{},
+	}
 	for _, current := range processor.tokens {
 		if current.kind == token.IDENT {
 			processor.identifiers[current.text] = true
@@ -144,11 +151,11 @@ func tokenize(src []byte) []lexeme {
 	sourceScanner.Init(tokenFile, src, func(token.Position, string) {}, 0)
 	var lexemes []lexeme
 	for {
-		pos, kind, literal := sourceScanner.Scan()
+		position, kind, literal := sourceScanner.Scan()
 		if kind == token.EOF {
 			return lexemes
 		}
-		lexemes = append(lexemes, lexeme{offset: tokenFile.Offset(pos), kind: kind, text: literal})
+		lexemes = append(lexemes, lexeme{offset: tokenFile.Offset(position), kind: kind, text: literal})
 	}
 }
 
@@ -179,23 +186,38 @@ func (processor *processor) run() error {
 // rewriteInterpolation rewrites gosling syntax in src[from:to]. That range
 // is an expression inside a template literal.
 func (processor *processor) rewriteInterpolation(from, to int) error {
-	savedTokens, savedScheduled, savedInserts, savedDestructures, savedArrows := processor.tokens, processor.scheduled, processor.inserts, processor.pendingDestructures, processor.pendingArrows
-	defer func() {
-		processor.tokens, processor.scheduled, processor.inserts, processor.pendingDestructures, processor.pendingArrows = savedTokens, savedScheduled, savedInserts, savedDestructures, savedArrows
-	}()
-	processor.tokens = tokenize(processor.src[from:to])
-	for len(processor.tokens) > 0 && processor.tokens[len(processor.tokens)-1].isAutoSemicolon() {
-		processor.tokens = processor.tokens[:len(processor.tokens)-1]
-	}
-	for tokenIndex := range processor.tokens {
-		processor.tokens[tokenIndex].offset += from
-	}
-	processor.scheduled, processor.inserts, processor.pendingDestructures, processor.pendingArrows = map[int]string{}, map[int]string{}, nil, nil
+	defer processor.startScan(interpolationTokens(processor.src, from, to))()
 	if err := processor.rewriteTokens(); err != nil {
 		return err
 	}
 	processor.finishArrows(len(processor.tokens))
 	return nil
+}
+
+// interpolationTokens returns the tokens of src[from:to] with offsets into
+// src. It drops the automatic semicolons at the end.
+func interpolationTokens(src []byte, from, to int) []lexeme {
+	tokens := tokenize(src[from:to])
+	for len(tokens) > 0 && tokens[len(tokens)-1].isAutoSemicolon() {
+		tokens = tokens[:len(tokens)-1]
+	}
+	for tokenIndex := range tokens {
+		tokens[tokenIndex].offset += from
+	}
+	return tokens
+}
+
+// startScan starts a nested scan of tokens. The returned function restores
+// the outer scan. The output and the bracket depth stay shared.
+func (processor *processor) startScan(tokens []lexeme) (restore func()) {
+	savedTokens, savedScheduled, savedInserts := processor.tokens, processor.scheduled, processor.inserts
+	savedDestructures, savedArrows := processor.pendingDestructures, processor.pendingArrows
+	processor.tokens, processor.scheduled, processor.inserts = tokens, map[int]string{}, map[int]string{}
+	processor.pendingDestructures, processor.pendingArrows = nil, nil
+	return func() {
+		processor.tokens, processor.scheduled, processor.inserts = savedTokens, savedScheduled, savedInserts
+		processor.pendingDestructures, processor.pendingArrows = savedDestructures, savedArrows
+	}
 }
 
 func (processor *processor) rewriteTokens() error {
@@ -237,12 +259,12 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		return processor.union(tokenIndex)
 	case (current.isIdent("let") || current.is(token.CONST)) && (processor.atStmtStart(tokenIndex) || processor.inHeader(tokenIndex)):
 		return processor.declaration(tokenIndex)
-	case current.is(token.PERIOD) && processor.tokenAt(tokenIndex+1).is(token.MAP) && processor.tokenAt(tokenIndex+1).offset == current.end():
+	case current.is(token.PERIOD) && processor.tokenAt(tokenIndex+1).is(token.MAP) && processor.touchesNext(tokenIndex):
 		processor.replace(processor.tokenAt(tokenIndex+1).offset, processor.tokenAt(tokenIndex+1).end(), MapMarker)
 		return tokenIndex + 1, nil
-	case current.is(token.ASSIGN) && processor.tokenAt(tokenIndex+1).is(token.GTR) && processor.tokenAt(tokenIndex+1).offset == current.end():
+	case current.is(token.ASSIGN) && processor.tokenAt(tokenIndex+1).is(token.GTR) && processor.touchesNext(tokenIndex):
 		return processor.arrow(tokenIndex)
-	case current.isIdent("t") && processor.isRawString(tokenIndex+1) && processor.tokenAt(tokenIndex+1).offset == current.end():
+	case current.isIdent("t") && processor.isRawString(tokenIndex+1) && processor.touchesNext(tokenIndex):
 		return tokenIndex + 1, processor.template(current, processor.tokens[tokenIndex+1])
 	case current.is(token.FOR) && processor.tokenAt(tokenIndex+1).is(token.LPAREN):
 		processor.forOf(tokenIndex)
@@ -265,6 +287,12 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		return processor.closeBrace(tokenIndex)
 	}
 	return tokenIndex, nil
+}
+
+// touchesNext reports whether the next token starts where the token at
+// tokenIndex ends, with no space between them.
+func (processor *processor) touchesNext(tokenIndex int) bool {
+	return processor.tokenAt(tokenIndex+1).offset == processor.tokenAt(tokenIndex).end()
 }
 
 func (processor *processor) isRawString(tokenIndex int) bool {

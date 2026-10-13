@@ -23,36 +23,36 @@ type filesByRole struct {
 	base, internal, external []sourceFile
 }
 
-func (roles *filesByRole) add(source sourceFile, pkg string) error {
+func (filesByRole *filesByRole) add(source sourceFile, packageName string) error {
 	switch {
 	case !isTestFile(source):
-		roles.base = append(roles.base, source)
-	case source.packageName == pkg:
-		roles.internal = append(roles.internal, source)
-	case source.packageName == pkg+"_test":
-		roles.external = append(roles.external, source)
+		filesByRole.base = append(filesByRole.base, source)
+	case source.packageName == packageName:
+		filesByRole.internal = append(filesByRole.internal, source)
+	case source.packageName == packageName+"_test":
+		filesByRole.external = append(filesByRole.external, source)
 	default:
-		return fmt.Errorf("%s: unexpected package %s, want %s or %s_test", source.path, source.packageName, pkg, pkg)
+		return fmt.Errorf("%s: unexpected package %s, want %s or %s_test", source.path, source.packageName, packageName, packageName)
 	}
 	return nil
 }
 
 // groups splits a directory into the package, its internal tests, and its
 // external test package. Internal tests share a package scope with the
-// package, so they are type-checked with its .gol files.
+// package, so gosling type-checks them with its .gol files.
 func (packageDir *packageDir) groups() ([]group, error) {
-	pkg, err := packageDir.packageName()
+	packageName, err := packageDir.packageName()
 	if err != nil {
 		return nil, err
 	}
 	var golRoles, goRoles filesByRole
 	for _, source := range packageDir.golFiles {
-		if err := golRoles.add(source, pkg); err != nil {
+		if err := golRoles.add(source, packageName); err != nil {
 			return nil, err
 		}
 	}
 	for _, source := range packageDir.goFiles {
-		if err := goRoles.add(source, pkg); err != nil {
+		if err := goRoles.add(source, packageName); err != nil {
 			return nil, err
 		}
 	}
@@ -76,21 +76,21 @@ func (packageDir *packageDir) groups() ([]group, error) {
 // packageName returns the package the directory's non-test files declare.
 func (packageDir *packageDir) packageName() (string, error) {
 	allFiles := concatFiles(packageDir.golFiles, packageDir.goFiles)
-	pkg := ""
+	name := ""
 	for _, source := range allFiles {
 		if isTestFile(source) {
 			continue
 		}
-		if pkg != "" && source.packageName != pkg {
-			return "", fmt.Errorf("%s: found packages %s and %s", packageDir.dir, pkg, source.packageName)
+		if name != "" && source.packageName != name {
+			return "", fmt.Errorf("%s: found packages %s and %s", packageDir.dir, name, source.packageName)
 		}
-		pkg = source.packageName
+		name = source.packageName
 	}
-	if pkg == "" {
+	if name == "" {
 		// The directory has only test files. Remove _test to get the package name.
-		pkg = strings.TrimSuffix(allFiles[0].packageName, "_test")
+		name = strings.TrimSuffix(allFiles[0].packageName, "_test")
 	}
-	return pkg, nil
+	return name, nil
 }
 
 func concatFiles(first, second []sourceFile) []sourceFile {

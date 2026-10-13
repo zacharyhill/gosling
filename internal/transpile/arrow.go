@@ -14,7 +14,7 @@ import (
 // placeholder types, from the source, the surrounding context, or the type
 // of its body.
 type arrow struct {
-	lit *ast.FuncLit
+	funcLit *ast.FuncLit
 	// untyped holds the placeholder type of each parameter without a written
 	// type. While any are unknown, nilStandIn replaces the literal in the AST.
 	// So the literal does not affect inference of the surrounding call.
@@ -23,19 +23,19 @@ type arrow struct {
 	params            []types.Type
 	resultPlaceholder *ast.Ident
 	bodyReturn        *ast.ReturnStmt // the return of an expression body
-	resolved          bool            // result type is known
+	resolved          bool            // result type is isKnown
 	results           []types.Type    // empty for no result
-	asStmt            bool            // expression body used as a statement
+	usedAsStmt        bool            // expression body used as a statement
 }
 
 func (arrow *arrow) node() ast.Expr {
 	if arrow.nilStandIn != nil {
 		return arrow.nilStandIn
 	}
-	return arrow.lit
+	return arrow.funcLit
 }
 
-func (arrow *arrow) paramCount() int { return arrow.lit.Type.Params.NumFields() }
+func (arrow *arrow) paramCount() int { return arrow.funcLit.Type.Params.NumFields() }
 
 // findArrows records the arrows in file and prepares them for the first pass.
 func (file *file) findArrows() {
@@ -48,7 +48,7 @@ func (file *file) findArrows() {
 		if !ok || resultIdent.Name != preprocess.ResultMarker {
 			return true
 		}
-		arrowFunc := &arrow{lit: funcLit, resultPlaceholder: resultIdent}
+		arrowFunc := &arrow{funcLit: funcLit, resultPlaceholder: resultIdent}
 		for _, field := range funcLit.Type.Params.List {
 			if paramIdent, ok := field.Type.(*ast.Ident); ok && paramIdent.Name == preprocess.UntypedMarker {
 				arrowFunc.untyped = append(arrowFunc.untyped, paramIdent)
@@ -66,8 +66,8 @@ func (file *file) findArrows() {
 	})
 	for _, arrowFunc := range file.arrows {
 		if len(arrowFunc.untyped) > 0 {
-			arrowFunc.nilStandIn = &ast.Ident{Name: "nil", NamePos: arrowFunc.lit.Pos()}
-			replaceNode(file.ast, arrowFunc.lit, arrowFunc.nilStandIn)
+			arrowFunc.nilStandIn = &ast.Ident{Name: "nil", NamePos: arrowFunc.funcLit.Pos()}
+			replaceNode(file.ast, arrowFunc.funcLit, arrowFunc.nilStandIn)
 		}
 	}
 }
@@ -97,14 +97,14 @@ type funcContext struct {
 
 // fixArrows fills in the arrow types that the last pass found. It reports
 // whether anything changed.
-func (transpiler *transpiler) fixArrows(file *file, info *types.Info) bool {
+func (transpiler *transpiler) fixArrows(file *file, typeInfo *types.Info) bool {
 	changed := false
 	parentOf := parents(file.ast)
 	for _, arrowFunc := range file.arrows {
 		if arrowFunc.nilStandIn == nil && arrowFunc.resolved {
 			continue
 		}
-		context, ok := transpiler.arrowContext(file, info, parentOf, arrowFunc)
+		context, ok := transpiler.arrowContext(file, typeInfo, parentOf, arrowFunc)
 		ok = ok && !slices.ContainsFunc(context.params, hasPlaceholder) && !slices.ContainsFunc(context.results, hasPlaceholder)
 		if arrowFunc.nilStandIn != nil {
 			if !ok || len(context.params) != arrowFunc.paramCount() {
@@ -122,7 +122,7 @@ func (transpiler *transpiler) fixArrows(file *file, info *types.Info) bool {
 		case ok && context.resultsKnown:
 			changed = transpiler.setResults(file, arrowFunc, context.results) || changed
 		case arrowFunc.nilStandIn == nil:
-			if results, ok := file.bodyResults(info, arrowFunc); ok {
+			if results, ok := file.bodyResults(typeInfo, arrowFunc); ok {
 				changed = transpiler.setResults(file, arrowFunc, results) || changed
 			}
 		}
@@ -139,11 +139,11 @@ func (transpiler *transpiler) setParams(file *file, arrowFunc *arrow, params []t
 		}
 		typeExprs[paramIndex] = paramExpr
 	}
-	for paramIndex, field := range arrowFunc.lit.Type.Params.List {
+	for paramIndex, field := range arrowFunc.funcLit.Type.Params.List {
 		field.Type = typeExprs[paramIndex]
 	}
 	arrowFunc.params = params
-	replaceNode(file.ast, arrowFunc.nilStandIn, arrowFunc.lit)
+	replaceNode(file.ast, arrowFunc.nilStandIn, arrowFunc.funcLit)
 	arrowFunc.nilStandIn = nil
 	return true
 }
@@ -159,22 +159,22 @@ func (transpiler *transpiler) setResults(file *file, arrowFunc *arrow, results [
 	}
 	arrowFunc.results, arrowFunc.resolved = results, true
 	if len(results) > 0 {
-		arrowFunc.lit.Type.Results = &ast.FieldList{List: fields}
+		arrowFunc.funcLit.Type.Results = &ast.FieldList{List: fields}
 		return true
 	}
-	arrowFunc.lit.Type.Results = nil
+	arrowFunc.funcLit.Type.Results = nil
 	if arrowFunc.bodyReturn != nil && len(arrowFunc.bodyReturn.Results) == 1 {
-		arrowFunc.asStmt = true
-		arrowFunc.lit.Body.List[0] = &ast.ExprStmt{X: arrowFunc.bodyReturn.Results[0]}
+		arrowFunc.usedAsStmt = true
+		arrowFunc.funcLit.Body.List[0] = &ast.ExprStmt{X: arrowFunc.bodyReturn.Results[0]}
 	}
 	return true
 }
 
 // bodyResults infers the results of an arrow from its return statements.
 // Each result takes the first type that is not untyped nil.
-func (file *file) bodyResults(info *types.Info, arrowFunc *arrow) ([]types.Type, bool) {
+func (file *file) bodyResults(typeInfo *types.Info, arrowFunc *arrow) ([]types.Type, bool) {
 	var returns []*ast.ReturnStmt
-	ast.Inspect(arrowFunc.lit.Body, func(node ast.Node) bool {
+	ast.Inspect(arrowFunc.funcLit.Body, func(node ast.Node) bool {
 		switch node := node.(type) {
 		case *ast.FuncLit:
 			return false
@@ -190,7 +190,7 @@ func (file *file) bodyResults(info *types.Info, arrowFunc *arrow) ([]types.Type,
 	}
 	var resultTypes []types.Type
 	for _, returnStmt := range returns {
-		got, ok := returnTypes(info, returnStmt)
+		got, ok := returnTypes(typeInfo, returnStmt)
 		if !ok {
 			return nil, false
 		}
@@ -209,10 +209,10 @@ func (file *file) bodyResults(info *types.Info, arrowFunc *arrow) ([]types.Type,
 	return resultTypes, true
 }
 
-func returnTypes(info *types.Info, returnStmt *ast.ReturnStmt) ([]types.Type, bool) {
+func returnTypes(typeInfo *types.Info, returnStmt *ast.ReturnStmt) ([]types.Type, bool) {
 	var resultTypes []types.Type
 	for _, resultExpr := range returnStmt.Results {
-		resultType := info.Types[resultExpr].Type
+		resultType := typeInfo.Types[resultExpr].Type
 		if resultType == nil || resultType == types.Typ[types.Invalid] || hasPlaceholder(resultType) {
 			return nil, false
 		}
@@ -235,14 +235,14 @@ func hasPlaceholder(goType types.Type) bool {
 }
 
 // arrowContext finds the function type expected where the arrow appears.
-func (transpiler *transpiler) arrowContext(file *file, info *types.Info, parentOf map[ast.Node]ast.Node, arrowFunc *arrow) (funcContext, bool) {
+func (transpiler *transpiler) arrowContext(file *file, typeInfo *types.Info, parentOf map[ast.Node]ast.Node, arrowFunc *arrow) (funcContext, bool) {
 	arrowExpr, parent := outermostParen(parentOf, arrowFunc.node())
 	switch parentNode := parent.(type) {
 	case *ast.CallExpr:
 		if arrayCall, ok := file.arrayCalls[parentNode]; ok {
-			return transpiler.callbackContext(info, parentNode, arrayCall, arrowFunc)
+			return transpiler.callbackContext(typeInfo, parentNode, arrayCall, arrowFunc)
 		}
-		signature, ok := info.Types[parentNode.Fun].Type.(*types.Signature)
+		signature, ok := typeInfo.Types[parentNode.Fun].Type.(*types.Signature)
 		if !ok || signature.TypeParams().Len() > 0 {
 			return funcContext{}, false
 		}
@@ -254,17 +254,17 @@ func (transpiler *transpiler) arrowContext(file *file, info *types.Info, parentO
 	case *ast.ValueSpec:
 		for valueIndex, value := range parentNode.Values {
 			if value == arrowExpr && parentNode.Type != nil && valueIndex < len(parentNode.Names) {
-				return expectFunc(info.TypeOf(parentNode.Type))
+				return expectFunc(typeInfo.TypeOf(parentNode.Type))
 			}
 		}
 	case *ast.AssignStmt:
 		for rhsIndex, rightSide := range parentNode.Rhs {
 			if rightSide == arrowExpr && parentNode.Tok == token.ASSIGN && len(parentNode.Lhs) == len(parentNode.Rhs) {
-				return expectFunc(info.TypeOf(parentNode.Lhs[rhsIndex]))
+				return expectFunc(typeInfo.TypeOf(parentNode.Lhs[rhsIndex]))
 			}
 		}
 	case *ast.ReturnStmt:
-		signature := enclosingSig(info, parentOf, parentNode)
+		signature := enclosingSignature(typeInfo, parentOf, parentNode)
 		for resultIndex, result := range parentNode.Results {
 			if result == arrowExpr && signature != nil && signature.Results().Len() == len(parentNode.Results) {
 				return expectFunc(signature.Results().At(resultIndex).Type())
@@ -296,7 +296,7 @@ func expectFunc(goType types.Type) (funcContext, bool) {
 func (lowerer *lowerer) lowerArrows() {
 	for _, arrowFunc := range lowerer.file.arrows {
 		if arrowFunc.nilStandIn != nil {
-			lowerer.errorf(lowerer.file, arrowFunc.lit.Pos(), "cannot infer the parameter types of this arrow function; add types, as in (x int) => ...")
+			lowerer.errorf(lowerer.file, arrowFunc.funcLit.Pos(), "cannot infer the parameter types of this arrow function; add types, as in (x int) => ...")
 			continue
 		}
 		for paramIndex, placeholder := range arrowFunc.untyped {
@@ -315,7 +315,7 @@ func (lowerer *lowerer) lowerArrows() {
 			result = "(" + result + ")"
 		}
 		lowerer.replace(arrowFunc.resultPlaceholder.Pos(), arrowFunc.resultPlaceholder.End(), result, 0)
-		if arrowFunc.asStmt {
+		if arrowFunc.usedAsStmt {
 			lowerer.replace(arrowFunc.bodyReturn.Return, arrowFunc.bodyReturn.Results[0].Pos(), "", 0)
 		}
 	}

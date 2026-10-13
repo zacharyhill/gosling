@@ -9,8 +9,8 @@ import (
 
 // importName returns the name that file uses for the package at path. It
 // adds an import if the file has none. name is the own name of the package.
-// If inAST is true, it also adds the import to the AST, for types that the
-// type checker must resolve on its next pass. Then Config.Importer must load
+// If inAST is true, it also adds the import to the AST. The next type-check
+// pass needs this to resolve the types. Then Config.Importer must load
 // each package that the imports of the file depend on. It reports false if
 // the name is already used for something else in the file.
 func (transpiler *transpiler) importName(file *file, path, name string, inAST bool) (string, bool) {

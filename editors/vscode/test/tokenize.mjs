@@ -30,8 +30,8 @@ const grammarPaths = {
   "gosling.injection": join(extensionDir, "syntaxes", "gol.injection.tmLanguage.json"),
 };
 
-const onigWasm = readFileSync(require.resolve("vscode-oniguruma/release/onig.wasm"));
-await oniguruma.loadWASM(onigWasm.buffer);
+const onigurumaWasm = readFileSync(require.resolve("vscode-oniguruma/release/onig.wasm"));
+await oniguruma.loadWASM(onigurumaWasm.buffer);
 
 const registry = new vsctm.Registry({
   onigLib: Promise.resolve({
