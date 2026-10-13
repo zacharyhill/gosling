@@ -446,3 +446,26 @@ func TestOrigOffset(test *testing.T) {
 		test.Errorf("inside replacement: got %d, want 0", got)
 	}
 }
+
+func TestOrigRange(test *testing.T) {
+	src := "func f() {\n\tlet n = g()\n\treturn n\n}"
+	result, err := Process([]byte(src))
+	if err != nil {
+		test.Fatal(err)
+	}
+	processed := string(result.Src)
+	for _, name := range []string{"g", "return"} {
+		start := strings.Index(processed, name)
+		origStart, ok := result.OrigRange(start, start+len(name))
+		if !ok {
+			test.Fatalf("OrigRange(%q) is not exact", name)
+		}
+		if got := src[origStart : origStart+len(name)]; got != name {
+			test.Errorf("OrigRange(%q) maps to %q", name, got)
+		}
+	}
+	defineStart := strings.Index(processed, ":=")
+	if _, ok := result.OrigRange(defineStart, defineStart+len(":=")); ok {
+		test.Errorf("OrigRange of generated := is exact, want not exact")
+	}
+}

@@ -4,9 +4,11 @@
 // Usage:
 //
 //	gosling [-check] [-lines=false] [-v] [dir | dir/...]...
+//	gosling lsp [-gopls path]
 //
 // With no arguments, gosling converts the current directory. To use go
-// generate, add "//go:generate gosling" to a .go file.
+// generate, add "//go:generate gosling" to a .go file. gosling lsp runs a
+// language server for editors.
 package main
 
 import (
@@ -27,6 +29,9 @@ func main() {
 }
 
 func run(args []string, stderr io.Writer) int {
+	if len(args) > 0 && args[0] == "lsp" {
+		return runLSP(args[1:], stderr)
+	}
 	flags := flag.NewFlagSet("gosling", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	check := flags.Bool("check", false, "report out-of-date outputs and exit 1 instead of writing")
@@ -83,7 +88,7 @@ func loadDirs(patterns []string) ([]*packageDir, error) {
 	}
 	dirs := make([]*packageDir, 0, len(dirPaths))
 	for _, dirPath := range dirPaths {
-		dirInfo, err := loadDir(dirPath)
+		dirInfo, err := loadDir(dirPath, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -122,7 +127,7 @@ func transpileDir(dirInfo *packageDir, overlay map[string][]byte, lineDirectives
 	}
 	var outputs []transpile.Output
 	for _, fileGroup := range groups {
-		groupOutputs, err := transpileGroup(dirInfo.dir, fileGroup, overlay, lineDirectives)
+		groupOutputs, err := transpileGroup(dirInfo, fileGroup, overlay, transpileOptions{lineDirectives: lineDirectives})
 		if err != nil {
 			return nil, err
 		}

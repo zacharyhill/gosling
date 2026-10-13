@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/zacharyhill/gosling/internal/transpile"
@@ -98,14 +97,22 @@ func concatFiles(first, second []sourceFile) []sourceFile {
 	return append(append([]sourceFile{}, first...), second...)
 }
 
-func transpileGroup(dir string, fileGroup group, overlay map[string][]byte, lines bool) ([]transpile.Output, error) {
-	importer, err := newImporter(dir, concatFiles(fileGroup.inputs, fileGroup.goFiles), overlay)
+// transpileOptions holds the transpile.Config settings that callers choose.
+type transpileOptions struct {
+	lineDirectives bool
+	keepGoing      bool
+}
+
+// transpileGroup converts the files of one group. With keepGoing, it can
+// return outputs together with an error.
+func transpileGroup(dirInfo *packageDir, fileGroup group, overlay map[string][]byte, options transpileOptions) ([]transpile.Output, error) {
+	importer, err := newImporter(dirInfo.dir, concatFiles(fileGroup.inputs, fileGroup.goFiles), overlay)
 	if err != nil {
 		return nil, err
 	}
 	inputs := make([]transpile.Input, 0, len(fileGroup.inputs))
 	for _, source := range fileGroup.inputs {
-		src, err := os.ReadFile(source.path)
+		src, err := dirInfo.readSource(source.path)
 		if err != nil {
 			return nil, err
 		}
@@ -115,10 +122,14 @@ func transpileGroup(dir string, fileGroup group, overlay map[string][]byte, line
 	for _, source := range fileGroup.goFiles {
 		goFilePaths = append(goFilePaths, source.path)
 	}
-	outputs, err := transpile.Transpile(transpile.Config{Importer: importer, GoFiles: goFilePaths, LineDirectives: lines}, inputs)
-	if err != nil {
-		return nil, err
-	}
+	config := transpile.Config{Importer: importer, GoFiles: goFilePaths, LineDirectives: options.lineDirectives, KeepGoing: options.keepGoing}
+	outputs, err := transpile.Transpile(config, inputs)
+	return keepEmitted(outputs, fileGroup), err
+}
+
+// keepEmitted returns the outputs that the group produces. A group can
+// type-check more files than it emits.
+func keepEmitted(outputs []transpile.Output, fileGroup group) []transpile.Output {
 	wantedPaths := map[string]bool{}
 	for _, source := range fileGroup.emit {
 		wantedPaths[transpile.OutputPath(source.path)] = true
@@ -129,5 +140,5 @@ func transpileGroup(dir string, fileGroup group, overlay map[string][]byte, line
 			kept = append(kept, output)
 		}
 	}
-	return kept, nil
+	return kept
 }

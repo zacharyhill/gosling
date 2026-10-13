@@ -321,3 +321,19 @@ func (result *Result) OrigOffset(offset int) int {
 	}
 	return offset + delta
 }
+
+// OrigRange maps Src[start:end] to the start of the same text in the
+// original source. It reports false if generated text overlaps the range.
+func (result *Result) OrigRange(start, end int) (int, bool) {
+	delta := 0
+	for _, change := range result.edits {
+		if change.newStart >= end {
+			break
+		}
+		if change.newEnd > start {
+			return 0, false
+		}
+		delta = change.origEnd - change.newEnd
+	}
+	return start + delta, true
+}

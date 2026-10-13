@@ -35,8 +35,9 @@ type Input struct {
 
 // Output is the generated Go file for one Input.
 type Output struct {
-	Path string
-	Src  []byte
+	Path      string
+	Src       []byte
+	SourceMap SourceMap
 }
 
 type Config struct {
@@ -45,6 +46,10 @@ type Config struct {
 	GoFiles []string
 	// LineDirectives emits /*line*/ comments so compiler errors point at the .gol file.
 	LineDirectives bool
+	// KeepGoing emits the files that lower without errors, even when type
+	// checking fails. Transpile then returns the outputs and the error.
+	// Editors use this, because code being edited often has type errors.
+	KeepGoing bool
 }
 
 // OutputPath returns the .go path generated for a .gol path.
@@ -130,27 +135,54 @@ func Transpile(config Config, inputs []Input) ([]Output, error) {
 		return nil, err
 	}
 	info := session.check()
-	if err := session.diagnostics.Err(); err != nil {
+	if err := session.diagnostics.Err(); err != nil && !config.KeepGoing {
 		return nil, err
 	}
 	outputs := make([]Output, 0, len(session.files))
 	for _, file := range session.files {
-		lowerer := newLowerer(session, file, info)
-		lowerer.lowerFile()
-		if len(session.diagnostics) > 0 {
-			continue
-		}
-		src, err := lowerer.emit()
+		output, ok, err := session.lowerAndEmit(file, info)
 		if err != nil {
 			return nil, err
 		}
-		outputs = append(outputs, Output{Path: OutputPath(file.path), Src: src})
+		if ok {
+			outputs = append(outputs, output)
+		}
 	}
 	session.diagnostics.Sort()
 	if err := session.diagnostics.Err(); err != nil {
+		if config.KeepGoing {
+			return outputs, err
+		}
 		return nil, err
 	}
 	return outputs, nil
+}
+
+// lowerAndEmit converts one file. It reports false if lowering found errors
+// in the file. With KeepGoing, an emit failure or a panic also skips the
+// file, because type errors can leave nodes that lowering does not expect.
+func (transpiler *transpiler) lowerAndEmit(file *file, info *types.Info) (output Output, ok bool, err error) {
+	if transpiler.config.KeepGoing {
+		defer func() {
+			if recover() != nil {
+				output, ok, err = Output{}, false, nil
+			}
+		}()
+	}
+	diagnosticsBefore := len(transpiler.diagnostics)
+	lowerer := newLowerer(transpiler, file, info)
+	lowerer.lowerFile()
+	if len(transpiler.diagnostics) > diagnosticsBefore {
+		return Output{}, false, nil
+	}
+	src, sourceMap, err := lowerer.emit()
+	if err != nil {
+		if transpiler.config.KeepGoing {
+			return Output{}, false, nil
+		}
+		return Output{}, false, err
+	}
+	return Output{Path: OutputPath(file.path), Src: src, SourceMap: sourceMap}, true, nil
 }
 
 func (transpiler *transpiler) parse(inputs []Input) error {

@@ -27,12 +27,19 @@ type edit struct {
 	before, after string
 }
 
+// resolvedEdit is an edit with its final text. copies records the parts of
+// the text that come from the preprocessed source, with offsets into text.
+type resolvedEdit struct {
+	edit
+	copies []copiedRange
+}
+
 // emit applies the edits to the preprocessed source and formats the result.
-func (lowerer *lowerer) emit() ([]byte, error) {
+func (lowerer *lowerer) emit() ([]byte, SourceMap, error) {
 	src := lowerer.file.preprocessed.Src
 	edits, err := lowerer.resolve(0, len(src))
 	if err != nil {
-		return nil, err
+		return nil, SourceMap{}, err
 	}
 	writer := &outputWriter{
 		src:            src,
@@ -42,19 +49,23 @@ func (lowerer *lowerer) emit() ([]byte, error) {
 	writer.writeHeader(lowerer.offset(lowerer.file.ast.Package))
 	for _, currentEdit := range edits {
 		if currentEdit.start < writer.copiedUpTo {
-			return nil, fmt.Errorf("%s: internal error: overlapping edits at offset %d", lowerer.file.path, currentEdit.start)
+			return nil, SourceMap{}, fmt.Errorf("%s: internal error: overlapping edits at offset %d", lowerer.file.path, currentEdit.start)
 		}
 		writer.writeEdit(currentEdit)
 	}
 	writer.copyOriginal(len(src))
-	if bytes.Contains(writer.buffer.Bytes(), []byte("__gosling")) {
-		return nil, fmt.Errorf("%s: internal error: marker left in output", lowerer.file.path)
+	unformatted := writer.buffer.Bytes()
+	if bytes.Contains(unformatted, []byte("__gosling")) {
+		return nil, SourceMap{}, fmt.Errorf("%s: internal error: marker left in output", lowerer.file.path)
 	}
-	formatted, err := formatUntilStable(lowerer.file.path, writer.buffer.Bytes())
-	if err != nil || !lowerer.config.LineDirectives {
-		return formatted, err
+	formatted, err := formatUntilStable(lowerer.file.path, unformatted)
+	if err != nil {
+		return nil, SourceMap{}, err
 	}
-	return restoreDirectiveLines(writer.buffer.Bytes(), formatted), nil
+	if lowerer.config.LineDirectives {
+		formatted = restoreDirectiveLines(unformatted, formatted)
+	}
+	return formatted, buildSourceMap(lowerer.file, unformatted, writer.copies, formatted), nil
 }
 
 // outputWriter builds a generated file from the preprocessed source and the
@@ -65,6 +76,7 @@ type outputWriter struct {
 	baseName       string
 	lineDirectives bool
 	copiedUpTo     int
+	copies         []copiedRange
 	// needsDirective is true after generated text adds lines. The next
 	// original token then needs a directive to restore the line mapping.
 	needsDirective bool
@@ -86,7 +98,7 @@ func (writer *outputWriter) directive(line int) {
 // shifts every line.
 func (writer *outputWriter) writeHeader(packageOffset int) {
 	fmt.Fprintf(&writer.buffer, "%s from %s. DO NOT EDIT.\n\n", GeneratedPrefix, writer.baseName)
-	writer.buffer.Write(writer.src[:packageOffset])
+	writer.writeSource(0, writer.src[:packageOffset])
 	if writer.lineDirectives {
 		fmt.Fprintf(&writer.buffer, "//line %s:%d\n", writer.baseName, writer.lineAt(packageOffset))
 	}
@@ -101,32 +113,59 @@ func (writer *outputWriter) copyOriginal(offset int) {
 	writer.copiedUpTo = offset
 	firstNonSpace := bytes.IndexFunc(segment, func(char rune) bool { return !unicode.IsSpace(char) })
 	if !writer.needsDirective || firstNonSpace < 0 {
-		writer.buffer.Write(segment)
+		writer.writeSource(from, segment)
 		return
 	}
-	writer.buffer.Write(segment[:firstNonSpace])
+	writer.writeSource(from, segment[:firstNonSpace])
 	writer.directive(writer.lineAt(from + firstNonSpace))
-	writer.buffer.Write(segment[firstNonSpace:])
+	writer.writeSource(from+firstNonSpace, segment[firstNonSpace:])
 	writer.needsDirective = false
 }
 
-func (writer *outputWriter) writeEdit(currentEdit edit) {
+// writeSource writes text that starts at srcOffset in the preprocessed source.
+func (writer *outputWriter) writeSource(srcOffset int, text []byte) {
+	writer.copies = append(writer.copies, copiedRange{srcOffset: srcOffset, outOffset: writer.buffer.Len(), length: len(text)})
+	writer.buffer.Write(text)
+}
+
+func (writer *outputWriter) writeEdit(currentEdit resolvedEdit) {
 	writer.copyOriginal(currentEdit.start)
 	if writer.needsDirective && currentEdit.text != "" {
 		writer.directive(writer.lineAt(nextNonSpace(writer.src, currentEdit.start)))
 		writer.needsDirective = false
 	}
+	textStart := writer.buffer.Len()
 	firstLine, restLines, multiline := strings.Cut(currentEdit.text, "\n")
 	writer.buffer.WriteString(firstLine)
+	directiveLength := 0
 	if multiline {
 		writer.buffer.WriteString("\n")
+		directiveStart := writer.buffer.Len()
 		writer.directive(currentEdit.line)
+		directiveLength = writer.buffer.Len() - directiveStart
 		writer.buffer.WriteString(restLines)
 	}
+	writer.addEditCopies(currentEdit.copies, textStart, len(firstLine), directiveLength)
 	if multiline || bytes.IndexByte(writer.src[currentEdit.start:currentEdit.end], '\n') >= 0 {
 		writer.needsDirective = true
 	}
 	writer.copiedUpTo = currentEdit.end
+}
+
+// addEditCopies records the copied ranges of an edit's text. The text starts
+// at textStart. A directive after the first line shifts the later ranges.
+func (writer *outputWriter) addEditCopies(copies []copiedRange, textStart, firstLineLength, directiveLength int) {
+	for _, copied := range copies {
+		switch {
+		case copied.outOffset+copied.length <= firstLineLength:
+			copied.outOffset += textStart
+		case copied.outOffset > firstLineLength:
+			copied.outOffset += textStart + directiveLength
+		default:
+			continue // the range contains the newline before the directive
+		}
+		writer.copies = append(writer.copies, copied)
+	}
 }
 
 const maxFormatPasses = 3
@@ -160,25 +199,39 @@ func (candidate edit) isInsertion() bool { return candidate.start == candidate.e
 // resolve returns the sorted edits for src[from:to]. A drop replaces a whole
 // region and swallows the edits in it. A move gets its text from its source
 // range, with the edits of that range applied.
-func (lowerer *lowerer) resolve(from, to int) ([]edit, error) {
+func (lowerer *lowerer) resolve(from, to int) ([]resolvedEdit, error) {
 	drops := lowerer.dropsWithin(from, to)
-	var resolved []edit
+	var kept []edit
 	for _, currentEdit := range append(append([]edit{}, lowerer.edits...), drops...) {
-		if !currentEdit.within(from, to) || swallowedByDrop(currentEdit, drops) {
-			continue
+		if currentEdit.within(from, to) && !swallowedByDrop(currentEdit, drops) {
+			kept = append(kept, currentEdit)
 		}
+	}
+	sortEdits(kept)
+	resolved := make([]resolvedEdit, 0, len(kept))
+	for _, currentEdit := range kept {
+		finished := resolvedEdit{edit: currentEdit}
 		if currentEdit.move != nil {
-			moved, err := lowerer.render(currentEdit.move[0], currentEdit.move[1])
+			moved, movedCopies, err := lowerer.render(currentEdit.move[0], currentEdit.move[1])
 			if err != nil {
 				return nil, err
 			}
-			currentEdit.text = currentEdit.before + moved + currentEdit.after
-			currentEdit.move = nil
+			finished.text = currentEdit.before + moved + currentEdit.after
+			finished.move = nil
+			finished.copies = shiftCopies(movedCopies, len(currentEdit.before))
 		}
-		resolved = append(resolved, currentEdit)
+		resolved = append(resolved, finished)
 	}
-	sortEdits(resolved)
 	return resolved, nil
+}
+
+func shiftCopies(copies []copiedRange, shift int) []copiedRange {
+	shifted := make([]copiedRange, len(copies))
+	for copyIndex, copied := range copies {
+		copied.outOffset += shift
+		shifted[copyIndex] = copied
+	}
+	return shifted
 }
 
 // dropsWithin returns the drops inside [from, to), except one covering
@@ -220,25 +273,32 @@ func sortEdits(edits []edit) {
 	})
 }
 
-// render returns src[from:to] with its edits applied.
-func (lowerer *lowerer) render(from, to int) (string, error) {
+// render returns src[from:to] with its edits applied, and the ranges of the
+// result that come from src.
+func (lowerer *lowerer) render(from, to int) (string, []copiedRange, error) {
 	edits, err := lowerer.resolve(from, to)
 	if err != nil {
-		return "", err
+		return "", nil, err
 	}
 	src := lowerer.file.preprocessed.Src
 	var rendered strings.Builder
+	var copies []copiedRange
+	writeSource := func(start, end int) {
+		copies = append(copies, copiedRange{srcOffset: start, outOffset: rendered.Len(), length: end - start})
+		rendered.Write(src[start:end])
+	}
 	lastOffset := from
 	for _, currentEdit := range edits {
 		if currentEdit.start < lastOffset {
-			return "", fmt.Errorf("%s: internal error: overlapping edits at offset %d", lowerer.file.path, currentEdit.start)
+			return "", nil, fmt.Errorf("%s: internal error: overlapping edits at offset %d", lowerer.file.path, currentEdit.start)
 		}
-		rendered.Write(src[lastOffset:currentEdit.start])
+		writeSource(lastOffset, currentEdit.start)
+		copies = append(copies, shiftCopies(currentEdit.copies, rendered.Len())...)
 		rendered.WriteString(currentEdit.text)
 		lastOffset = currentEdit.end
 	}
-	rendered.Write(src[lastOffset:to])
-	return rendered.String(), nil
+	writeSource(lastOffset, to)
+	return rendered.String(), copies, nil
 }
 
 func nextNonSpace(src []byte, offset int) int {
