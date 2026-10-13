@@ -87,6 +87,7 @@ func (server *server) handleClientNotification(message *rpcMessage) error {
 		return server.closeDocument(golPath)
 	case "textDocument/didSave":
 		clear(server.external)
+		return server.writeOnSave(golPath)
 	}
 	return nil
 }

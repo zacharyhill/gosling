@@ -112,7 +112,7 @@ The language server is `gosling lsp`. It runs gopls on the generated code and ma
 - The outline of a file
 - Diagnostics: gosling errors, and gopls warnings for the generated code
 
-The server uses the text in the editor. It does not write `.go` files. Run `gosling ./...` to update them.
+The server uses the text in the editor. When you save a `.gol` file, the extension writes the generated `.go` files of its package, as `gosling` does. To stop this, set `gosling.generateOnSave` to `false`. A package with gosling errors keeps its old `.go` files.
 
 ### Install the extension
 
@@ -140,7 +140,7 @@ code --install-extension gosling.vsix
 
 The extension runs on the machine that has your code. With Remote-SSH, open the remote folder first. Then run **Extensions: Install from VSIX...** and select `gosling.vsix`. VS Code then installs it on the remote machine.
 
-If VS Code cannot find `gosling` or `gopls`, set `gosling.path` and `gosling.goplsPath` to the full paths. After you change these settings, run **gosling: Restart Language Server**.
+If VS Code cannot find `gosling` or `gopls`, set `gosling.path` and `gosling.goplsPath` to the full paths. The server restarts when you change a gosling setting.
 
 The first requests can be slow. gopls loads and type-checks the workspace when it starts. After that, requests are fast.
 

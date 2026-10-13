@@ -6,7 +6,9 @@ The extension uses the Go grammar that ships with VS Code, then adds the gosling
 
 The extension gives a separate `gol` language ID to `.gol` files. Thus the Go extension does not open them.
 
-The extension also starts the gosling language server, `gosling lsp`. The server gives Go to Definition (Ctrl+click), references, hover, completion, signature help, rename, the outline, and diagnostics. It needs `gosling` and `gopls` on the PATH. To use other paths, set `gosling.path` and `gosling.goplsPath`. Then run **gosling: Restart Language Server**.
+The extension also starts the gosling language server, `gosling lsp`. The server gives Go to Definition (Ctrl+click), references, hover, completion, signature help, rename, the outline, and diagnostics. It needs `gosling` and `gopls` on the PATH. To use other paths, set `gosling.path` and `gosling.goplsPath`.
+
+When you save a `.gol` file, the extension writes the generated `.go` files of its package. To stop this, set `gosling.generateOnSave` to `false`. The server restarts when you change a gosling setting.
 
 ## Install
 

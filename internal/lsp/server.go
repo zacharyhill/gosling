@@ -23,7 +23,10 @@ type Options struct {
 	Generator Generator
 	// GoplsPath is the gopls command to run.
 	GoplsPath string
-	Logger    *log.Logger
+	// GenerateOnSave writes the generated .go files of a package when the
+	// editor saves one of its .gol files.
+	GenerateOnSave bool
+	Logger         *log.Logger
 }
 
 // Serve runs the language server on the client streams until the client
@@ -68,13 +71,14 @@ type pendingRequest struct {
 }
 
 type server struct {
-	generator Generator
-	logger    *log.Logger
-	client    io.Writer
-	gopls     io.Writer
-	done      chan struct{}
-	documents map[string]*editorDocument
-	packages  map[string]*packageState
+	generator      Generator
+	generateOnSave bool
+	logger         *log.Logger
+	client         io.Writer
+	gopls          io.Writer
+	done           chan struct{}
+	documents      map[string]*editorDocument
+	packages       map[string]*packageState
 	// external caches the generated files of packages without open
 	// documents. A nil entry is a file that gosling did not generate.
 	external map[string]*generatedFile
@@ -89,6 +93,7 @@ type server struct {
 func newServer(options Options, client, gopls io.Writer) *server {
 	return &server{
 		generator:        options.Generator,
+		generateOnSave:   options.GenerateOnSave,
 		logger:           options.Logger,
 		client:           client,
 		gopls:            gopls,

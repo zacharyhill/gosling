@@ -4,7 +4,7 @@
 // Usage:
 //
 //	gosling [-check] [-lines=false] [-v] [dir | dir/...]...
-//	gosling lsp [-gopls path]
+//	gosling lsp [-gopls path] [-generate-on-save]
 //
 // With no arguments, gosling converts the current directory. To use go
 // generate, add "//go:generate gosling" to a .go file. gosling lsp runs a
