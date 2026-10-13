@@ -74,7 +74,7 @@
   },
   "scripts": {
     "test": "node --test \"test/*.test.mjs\"",
-    "package": "vsce package"
+    "package": "vsce package -o gosling.vsix"
   },
   "devDependencies": {
     "@vscode/vsce": "^4.0.0",

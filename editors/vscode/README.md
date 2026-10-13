@@ -10,11 +10,26 @@ The extension also starts the gosling language server, `gosling lsp`. The server
 
 ## Install
 
+Install `gosling` and `gopls` first. Run these commands from the root of the repository:
+
+```sh
+go install ./cmd/gosling
+go install golang.org/x/tools/gopls@latest
+```
+
+Then build and install the extension from this directory:
+
 ```sh
 npm install
 npm run package
-code --install-extension gosling-0.1.0.vsix
+code --install-extension gosling.vsix
 ```
+
+Then run **Developer: Reload Window** in VS Code.
+
+The first requests can be slow. gopls loads and type-checks the workspace when it starts. After that, requests are fast.
+
+If the server does not start, open the Output panel (Ctrl+Shift+U) and select **gosling**. The panel shows the server errors.
 
 ## Test
 

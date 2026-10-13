@@ -115,22 +115,35 @@ The server uses the text in the editor. It does not write `.go` files. Run `gosl
 
 ### Install the extension
 
-The extension is not on the Marketplace. You need Go, Node.js, gosling, and gopls. Run these commands in a clone of this repository:
+The extension is not on the Marketplace. You need Go and VS Code. Run these commands:
 
 ```sh
 go install github.com/zacharyhill/gosling/cmd/gosling@latest
 go install golang.org/x/tools/gopls@latest
+curl -fLO https://github.com/zacharyhill/gosling/releases/latest/download/gosling.vsix
+code --install-extension gosling.vsix
+```
+
+Then run **Developer: Reload Window** in VS Code. In Windows PowerShell, type `curl.exe`, not `curl`.
+
+To build the extension from a clone of this repository, you also need Node.js:
+
+```sh
+go install ./cmd/gosling
+go install golang.org/x/tools/gopls@latest
 cd editors/vscode
 npm install
 npm run package
-code --install-extension gosling-0.1.0.vsix
+code --install-extension gosling.vsix
 ```
 
-Then run **Developer: Reload Window** in VS Code.
-
-The extension runs on the machine that has the repository. With Remote-SSH, right-click `gosling-0.1.0.vsix` in the Explorer and select **Install Extension VSIX**. VS Code then installs it on the remote machine.
+The extension runs on the machine that has your code. With Remote-SSH, open the remote folder first. Then run **Extensions: Install from VSIX...** and select `gosling.vsix`. VS Code then installs it on the remote machine.
 
 If VS Code cannot find `gosling` or `gopls`, set `gosling.path` and `gosling.goplsPath` to the full paths. After you change these settings, run **gosling: Restart Language Server**.
+
+The first requests can be slow. gopls loads and type-checks the workspace when it starts. After that, requests are fast.
+
+If the server does not start, open the Output panel (Ctrl+Shift+U) and select **gosling**. The panel shows the server errors.
 
 ### Language server limitations
 
@@ -428,6 +441,15 @@ go test -short ./...                                  # skip tests that run the 
 The language server tests run gopls. They are skipped if gopls is not installed, and with `-short`.
 
 To test the VS Code extension, run `npm test` in `editors/vscode`.
+
+To make a release, set `version` in `editors/vscode/package.json`. Then push a tag with the same version:
+
+```sh
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+The release workflow in `.github/workflows/release.yml` builds `gosling.vsix` and attaches it to a GitHub release for the tag. The workflow fails if the tag does not match the version in `package.json`.
 
 `internal/transpile/testdata/golden` has the expected outputs. Tests run `go vet` on each one. Tests build and run the programs in `internal/transpile/testdata/run`, and compare their output with the `.out` files.
 
