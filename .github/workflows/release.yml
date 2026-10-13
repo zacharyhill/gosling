@@ -22,15 +22,12 @@ jobs:
           cache: npm
           cache-dependency-path: editors/vscode/package-lock.json
 
-      - name: Check that the tag matches the extension version
-        run: |
-          version="v$(node -p "require('./package.json').version")"
-          if [ "$version" != "$GITHUB_REF_NAME" ]; then
-            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
-            exit 1
-          fi
-
       - run: npm ci
+
+      # The tag is the only source of the release version. package.json keeps
+      # the placeholder version 0.0.0.
+      - name: Set the extension version from the tag
+        run: npm version "${GITHUB_REF_NAME#v}" --no-git-tag-version --allow-same-version
 
       - run: npm run package
 

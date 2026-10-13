@@ -1,33 +1,27 @@
 version: "3"
 
-vars:
-  EXTENSION_DIR: editors/vscode
-
 tasks:
-  release:bump:
-    desc: "Set the extension version for the next release. Usage: task release:bump VERSION=0.3.0"
-    dir: "{{.EXTENSION_DIR}}"
+  release:
+    desc: "Tag main and push the tag. The release workflow then publishes the release. Usage: task release VERSION=0.3.0"
     requires:
       vars: [VERSION]
-    cmds:
-      - npm version "{{.VERSION}}" --no-git-tag-version
-
-  release:tag:
-    desc: Tag main with the extension version and push the tag. The release workflow then publishes the release.
     vars:
-      VERSION:
-        sh: node -p "require('./{{.EXTENSION_DIR}}/package.json').version"
+      TAG: v{{.VERSION}}
+      # Task evaluates vars before preconditions, so this fetch also updates
+      # origin/main for the check below.
+      LATEST_TAG:
+        sh: git fetch --quiet --tags origin main && git tag --list 'v*' --sort=-v:refname | head -n 1
     preconditions:
+      - sh: echo "{{.VERSION}}" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'
+        msg: VERSION must look like 0.3.0, with no "v" prefix.
       - sh: '[ "$(git branch --show-current)" = main ]'
-        msg: Check out main before you tag a release.
+        msg: Check out main before you make a release.
       - sh: git diff --quiet HEAD
-        msg: Commit or stash your changes before you tag a release.
-      - sh: git fetch --quiet origin main && [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]
+        msg: Commit or stash your changes before you make a release.
+      - sh: '[ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]'
         msg: Your main does not match origin/main. Pull or push first.
-      - sh: '! git rev-parse --quiet --verify "refs/tags/v{{.VERSION}}" > /dev/null'
-        msg: Tag v{{.VERSION}} exists locally. Run task release:bump with a higher version first.
-      - sh: '! git ls-remote --exit-code --tags origin "v{{.VERSION}}" > /dev/null'
-        msg: Tag v{{.VERSION}} exists on origin. Run task release:bump with a higher version first.
+      - sh: '[ "{{.LATEST_TAG}}" != "{{.TAG}}" ] && [ "$(printf "%s\n%s\n" "{{.LATEST_TAG}}" "{{.TAG}}" | sort -V | tail -n 1)" = "{{.TAG}}" ]'
+        msg: VERSION must be higher than the latest tag {{.LATEST_TAG}}.
     cmds:
-      - git tag "v{{.VERSION}}"
-      - git push origin "v{{.VERSION}}"
+      - git tag "{{.TAG}}"
+      - git push origin "{{.TAG}}"

@@ -49,36 +49,12 @@ jobs:
       VSCODE_VERSION: 1.141.0
     steps:
       - uses: actions/checkout@v5
-        with:
-          # The version check compares package.json with the release tags.
-          fetch-depth: 0
 
       - uses: actions/setup-node@v5
         with:
           node-version: lts/*
           cache: npm
           cache-dependency-path: editors/vscode/package-lock.json
-
-      # The release workflow stops when the tag and package.json differ.
-      # This check finds a package.json version that is behind the latest tag.
-      - name: Check that the extension version matches the lockfile and is not behind the latest tag
-        run: |
-          package_version="$(node -p "require('./package.json').version")"
-          lock_version="$(node -p "require('./package-lock.json').version")"
-          if [ "$package_version" != "$lock_version" ]; then
-            echo "::error::package.json version $package_version does not match package-lock.json version $lock_version"
-            exit 1
-          fi
-          latest_tag="$(git tag --list 'v*' --sort=-v:refname | head -n 1)"
-          if [ -z "$latest_tag" ]; then
-            exit 0
-          fi
-          latest_version="${latest_tag#v}"
-          lower_version="$(printf '%s\n%s\n' "$latest_version" "$package_version" | sort -V | head -n 1)"
-          if [ "$package_version" != "$latest_version" ] && [ "$lower_version" = "$package_version" ]; then
-            echo "::error::package.json version $package_version is behind the latest tag $latest_tag. Set the version to $latest_version or higher."
-            exit 1
-          fi
 
       - run: npm ci
 

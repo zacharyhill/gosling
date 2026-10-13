@@ -447,32 +447,25 @@ The language server tests run gopls. They skip if gopls is not installed or if y
 
 To test the VS Code extension, run `npm test` in `editors/vscode`.
 
-The CI workflow in `.github/workflows/ci.yml` runs on each push to `main` and on each pull request. It checks formatting, runs `go vet`, the Go tests, `gosling -check`, and the extension tests. It also fails if the extension version in `package.json` is lower than the latest release tag.
+The CI workflow in `.github/workflows/ci.yml` runs on each push to `main` and on each pull request. It checks formatting, runs `go vet`, the Go tests, `gosling -check`, and the extension tests.
 
 `internal/transpile/testdata/golden` has the expected outputs. Tests run `go vet` on each one. Tests build and run the programs in `internal/transpile/testdata/run`, and compare their output with the `.out` files.
 
 ### Releases
 
-The release tasks need [Task](https://taskfile.dev/). To make a release:
+The release task needs [Task](https://taskfile.dev/). To make a release, run this command on an up-to-date `main`:
 
-1. On a branch, set the new extension version. This command updates `package.json` and `package-lock.json`:
+```sh
+task release VERSION=0.3.0
+```
 
-   ```sh
-   task release:bump VERSION=0.3.0
-   ```
+The task tags the current commit as `v0.3.0` and pushes the tag. The version must be higher than the latest tag. The tag sets the version of the Go module and of the extension. Make a release for each change that you want users to get, also when only the Go code changes.
 
-2. Merge the change into `main`.
-3. On an up-to-date `main`, tag the release and push the tag:
-
-   ```sh
-   task release:tag
-   ```
-
-The release workflow in `.github/workflows/release.yml` builds `gosling.vsix`, creates the GitHub release, and attaches the file. The release becomes the latest release only after the workflow attaches the file. The install command in [Install the extension](#install-the-extension) always downloads from the latest release.
+The release workflow in `.github/workflows/release.yml` sets the extension version from the tag. `package.json` keeps the placeholder version `0.0.0`, so a local build of the extension has version `0.0.0`. The workflow then builds `gosling.vsix`, creates the GitHub release, and attaches the file. The release becomes the latest release only after the workflow attaches the file. The install command in [Install the extension](#install-the-extension) always downloads from the latest release.
 
 Do not create releases on the GitHub Releases page. A release that you publish there becomes the latest release before the workflow attaches `gosling.vsix`. During that time, the install command fails with a 404 error.
 
-The workflow fails if the tag does not match the version in `package.json`. If the workflow fails, it changes the release for the tag to a draft. A draft is never the latest release, so the install command keeps the last good build.
+If the workflow fails, it changes the release for the tag to a draft. A draft is never the latest release, so the install command keeps the last good build.
 
 ## License
 
