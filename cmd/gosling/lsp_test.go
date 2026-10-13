@@ -76,6 +76,9 @@ type testClient struct {
 	messages      chan lspMessage
 	nextID        int
 	notifications []lspMessage
+	// initializeResult is the response to initialize. It lists the server
+	// capabilities.
+	initializeResult json.RawMessage
 }
 
 func startLSP(test *testing.T, dir string) (*testClient, <-chan error) {
@@ -101,7 +104,7 @@ func startLSP(test *testing.T, dir string) (*testClient, <-chan error) {
 	})
 	client := &testClient{test: test, writer: clientWriter, messages: make(chan lspMessage, 100)}
 	go client.readLoop(bufio.NewReader(clientReader))
-	client.request("initialize", map[string]any{
+	client.initializeResult = client.request("initialize", map[string]any{
 		"processId":        nil,
 		"rootUri":          fileURI(dir),
 		"capabilities":     map[string]any{},
@@ -311,12 +314,17 @@ func (session *lspSession) changeMain(text string) {
 	})
 }
 
-// save sends didSave for main.gol, then a hover. The server handles messages
-// in order, so the hover returns after the server handles didSave.
+// waitUntilHandled sends a hover and waits for the response. The server
+// handles messages in order, so the earlier notifications are then done.
+func (session *lspSession) waitUntilHandled(test *testing.T) {
+	test.Helper()
+	session.client.request("textDocument/hover", textDocumentPosition(session.mainURI, positionOf(test, lspMain, "ReadFile")))
+}
+
 func (session *lspSession) save(test *testing.T) {
 	test.Helper()
 	session.client.notify("textDocument/didSave", map[string]any{"textDocument": map[string]any{"uri": session.mainURI}})
-	session.client.request("textDocument/hover", textDocumentPosition(session.mainURI, positionOf(test, lspMain, "ReadFile")))
+	session.waitUntilHandled(test)
 }
 
 func (session *lspSession) rename(test *testing.T, needle, newName string) lspMessage {
@@ -355,6 +363,9 @@ func TestLSP(test *testing.T) {
 	test.Run("rename that changes generated code fails", session.checkRenameInGeneratedCode)
 	test.Run("save writes generated files", session.checkGenerateOnSave)
 	test.Run("save with errors writes nothing", session.checkSaveWithErrors)
+	test.Run("server asks for gol file renames and deletes", session.checkFileOperationCapability)
+	test.Run("renamed gol file loses its old output", session.checkFileRename)
+	test.Run("deleted gol file loses its output", session.checkFileDelete)
 	test.Run("syntax error becomes a diagnostic", session.checkSyntaxError)
 	test.Run("edit after the last good version still maps", session.checkStaleMapping)
 	test.Run("completion in code with a type error", session.checkCompletion)
@@ -516,4 +527,70 @@ func (session *lspSession) checkSaveWithErrors(test *testing.T) {
 		test.Errorf("save with a syntax error wrote main.go: %v", err)
 	}
 	session.changeMain(lspMain)
+}
+
+func (session *lspSession) checkFileOperationCapability(test *testing.T) {
+	var initialize struct {
+		Capabilities struct {
+			Workspace struct {
+				FileOperations map[string]struct {
+					Filters []struct {
+						Pattern struct {
+							Glob string `json:"glob"`
+						} `json:"pattern"`
+					} `json:"filters"`
+				} `json:"fileOperations"`
+			} `json:"workspace"`
+		} `json:"capabilities"`
+	}
+	if err := json.Unmarshal(session.client.initializeResult, &initialize); err != nil {
+		test.Fatal(err)
+	}
+	for _, operation := range []string{"didRename", "didDelete"} {
+		registration := initialize.Capabilities.Workspace.FileOperations[operation]
+		if len(registration.Filters) != 1 || registration.Filters[0].Pattern.Glob != "**/*.gol" {
+			test.Errorf("%s registration = %+v, want one **/*.gol filter", operation, registration)
+		}
+	}
+}
+
+func (session *lspSession) notifyFileOperation(test *testing.T, method string, files []map[string]string) {
+	test.Helper()
+	session.client.notify(method, map[string]any{"files": files})
+	session.waitUntilHandled(test)
+}
+
+func (session *lspSession) checkFileRename(test *testing.T) {
+	writeTree(test, session.dir, map[string]string{"old.gol": "package main\n\nfunc oldName() int { return 1 }\n"})
+	session.save(test)
+	oldGoPath := filepath.Join(session.dir, "old.go")
+	if _, err := os.Stat(oldGoPath); err != nil {
+		test.Fatalf("save did not write old.go: %v", err)
+	}
+	oldGolPath, newGolPath := filepath.Join(session.dir, "old.gol"), filepath.Join(session.dir, "new.gol")
+	newGoPath := filepath.Join(session.dir, "new.go")
+	if err := os.Rename(oldGolPath, newGolPath); err != nil {
+		test.Fatal(err)
+	}
+	session.notifyFileOperation(test, "workspace/didRenameFiles", []map[string]string{{"oldUri": fileURI(oldGolPath), "newUri": fileURI(newGolPath)}})
+	if _, err := os.Stat(oldGoPath); !errors.Is(err, fs.ErrNotExist) {
+		test.Errorf("old.go still exists after the rename: %v", err)
+	}
+	if _, err := os.Stat(newGoPath); err != nil {
+		test.Errorf("rename did not write new.go: %v", err)
+	}
+}
+
+func (session *lspSession) checkFileDelete(test *testing.T) {
+	newGolPath, newGoPath := filepath.Join(session.dir, "new.gol"), filepath.Join(session.dir, "new.go")
+	if _, err := os.Stat(newGoPath); err != nil {
+		test.Fatalf("new.go must exist before the delete: %v", err)
+	}
+	if err := os.Remove(newGolPath); err != nil {
+		test.Fatal(err)
+	}
+	session.notifyFileOperation(test, "workspace/didDeleteFiles", []map[string]string{{"uri": fileURI(newGolPath)}})
+	if _, err := os.Stat(newGoPath); !errors.Is(err, fs.ErrNotExist) {
+		test.Errorf("new.go still exists after the delete: %v", err)
+	}
 }

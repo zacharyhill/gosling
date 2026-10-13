@@ -10,6 +10,8 @@ import (
 	"go/scanner"
 	"go/token"
 	"go/types"
+	"io"
+	"os"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -55,6 +57,29 @@ type Config struct {
 // OutputPath returns the .go path generated for a .gol path.
 func OutputPath(path string) string {
 	return strings.TrimSuffix(path, filepath.Ext(path)) + ".go"
+}
+
+// IsGenerated reports whether src starts with the header that gosling writes.
+func IsGenerated(src []byte) bool {
+	return bytes.HasPrefix(src, []byte(GeneratedPrefix))
+}
+
+// IsGeneratedFile reports whether the file at path is generated. It reads
+// only the header.
+func IsGeneratedFile(path string) (bool, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return false, err
+	}
+	defer file.Close()
+	header := make([]byte, len(GeneratedPrefix))
+	if _, err := io.ReadFull(file, header); err != nil {
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return false, nil
+		}
+		return false, err
+	}
+	return IsGenerated(header), nil
 }
 
 type file struct {

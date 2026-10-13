@@ -55,7 +55,8 @@ func (generator) Write(dir string) error {
 // errors, so it can return outputs together with the joined errors.
 func (generator) Generate(dir string, sources map[string][]byte, lineDirectives bool) ([]transpile.Output, error) {
 	dirInfo, err := loadDir(dir, sources)
-	if err != nil {
+	// A directory with only orphans has nothing to generate.
+	if err != nil || len(dirInfo.golFiles) == 0 {
 		return nil, err
 	}
 	groups, err := dirInfo.groups()

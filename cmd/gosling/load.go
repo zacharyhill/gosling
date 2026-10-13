@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/zacharyhill/gosling/internal/transpile"
 	"golang.org/x/mod/modfile"
 )
 
@@ -31,13 +32,18 @@ type packageDir struct {
 	importPath string
 	golFiles   []sourceFile
 	goFiles    []sourceFile // hand-written .go files that match the build context
+	// orphans holds generated .go files whose .gol file no longer exists,
+	// for example after a rename of the .gol file.
+	orphans []string
 	// sources holds file contents that replace the files on disk, such as
 	// unsaved editor text.
 	sources map[string][]byte
 }
 
 // expandDirs changes command-line patterns into directories. A pattern that
-// ends in /... adds each directory below it that contains .gol files.
+// ends in /... adds each directory below it that contains .gol files or
+// generated .go files. A generated file without its .gol file is an orphan
+// that gosling removes.
 func expandDirs(patterns []string) ([]string, error) {
 	var dirs []string
 	seen := map[string]bool{}
@@ -55,27 +61,48 @@ func expandDirs(patterns []string) ([]string, error) {
 			continue
 		}
 		root = filepath.Clean(strings.TrimSuffix(root, "/"))
-		err := filepath.WalkDir(root, func(entryPath string, entry fs.DirEntry, err error) error {
-			if err != nil {
-				return err
-			}
-			if !entry.IsDir() {
-				if strings.HasSuffix(entryPath, sourceExt) {
-					add(filepath.Dir(entryPath))
-				}
-				return nil
-			}
-			name := entry.Name()
-			if entryPath != root && (name == "testdata" || name == "vendor" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")) {
-				return filepath.SkipDir
-			}
-			return nil
-		})
-		if err != nil {
+		if err := walkGoslingDirs(root, seen, add); err != nil {
 			return nil, err
 		}
 	}
 	return dirs, nil
+}
+
+// walkGoslingDirs calls add for each directory below root that has gosling
+// files. It skips testdata, vendor, and directories that start with . or _.
+func walkGoslingDirs(root string, seen map[string]bool, add func(string)) error {
+	return filepath.WalkDir(root, func(entryPath string, entry fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !entry.IsDir() {
+			if seen[filepath.Dir(entryPath)] {
+				return nil
+			}
+			isGosling, err := isGoslingFile(entryPath)
+			if isGosling {
+				add(filepath.Dir(entryPath))
+			}
+			return err
+		}
+		name := entry.Name()
+		if entryPath != root && (name == "testdata" || name == "vendor" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")) {
+			return filepath.SkipDir
+		}
+		return nil
+	})
+}
+
+// isGoslingFile reports whether a file makes its directory a gosling
+// directory.
+func isGoslingFile(filePath string) (bool, error) {
+	if strings.HasSuffix(filePath, sourceExt) {
+		return true, nil
+	}
+	if !strings.HasSuffix(filePath, ".go") {
+		return false, nil
+	}
+	return transpile.IsGeneratedFile(filePath)
 }
 
 func loadDir(dir string, sources map[string][]byte) (*packageDir, error) {
@@ -93,7 +120,7 @@ func loadDir(dir string, sources map[string][]byte) (*packageDir, error) {
 			return nil, err
 		}
 	}
-	if len(dirInfo.golFiles) == 0 {
+	if len(dirInfo.golFiles) == 0 && len(dirInfo.orphans) == 0 {
 		return nil, fmt.Errorf("%s: %w", dir, errNoSource)
 	}
 	dirInfo.importPath, err = importPath(dir)
@@ -116,7 +143,7 @@ func generatedNames(entries []fs.DirEntry) map[string]bool {
 }
 
 // addFile records a .gol file, or a hand-written .go file that matches the
-// build context. It skips generated .go files.
+// build context. It skips generated .go files, and records the orphans.
 func (packageDir *packageDir) addFile(name string, generated map[string]bool) error {
 	filePath := filepath.Join(packageDir.dir, name)
 	isGol := strings.HasSuffix(name, sourceExt)
@@ -132,6 +159,10 @@ func (packageDir *packageDir) addFile(name string, generated map[string]bool) er
 	src, err := packageDir.readSource(filePath)
 	if err != nil {
 		return err
+	}
+	if !isGol && transpile.IsGenerated(src) {
+		packageDir.orphans = append(packageDir.orphans, filePath)
+		return nil
 	}
 	source, err := readHeader(filePath, src)
 	if err != nil {
