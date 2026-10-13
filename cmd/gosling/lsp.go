@@ -19,8 +19,9 @@ func runLSP(args []string, stderr io.Writer) int {
 	flags := flag.NewFlagSet("gosling lsp", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	goplsPath := flags.String("gopls", "gopls", "gopls command to run")
+	generateOnSave := flags.Bool("generate-on-save", false, "write the generated .go files when the editor saves a .gol file")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: gosling lsp [-gopls path]")
+		fmt.Fprintln(stderr, "usage: gosling lsp [-gopls path] [-generate-on-save]")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
@@ -29,9 +30,10 @@ func runLSP(args []string, stderr io.Writer) int {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 	options := lsp.Options{
-		Generator: generator{},
-		GoplsPath: *goplsPath,
-		Logger:    log.New(stderr, "gosling lsp: ", log.LstdFlags),
+		Generator:      generator{},
+		GoplsPath:      *goplsPath,
+		GenerateOnSave: *generateOnSave,
+		Logger:         log.New(stderr, "gosling lsp: ", log.LstdFlags),
 	}
 	if err := lsp.Serve(ctx, os.Stdin, os.Stdout, options); err != nil {
 		fmt.Fprintln(stderr, "gosling lsp:", err)
@@ -42,6 +44,12 @@ func runLSP(args []string, stderr io.Writer) int {
 
 // generator transpiles one directory for the language server.
 type generator struct{}
+
+// Write generates dir from the files on disk with line directives, as the
+// gosling command does by default.
+func (generator) Write(dir string) error {
+	return generate([]string{dir}, generateOptions{lineDirectives: true, stderr: io.Discard})
+}
 
 // Generate converts each group of the directory. It keeps going after
 // errors, so it can return outputs together with the joined errors.

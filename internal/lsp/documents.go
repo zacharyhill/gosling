@@ -13,10 +13,14 @@ import (
 	"github.com/zacharyhill/gosling/internal/transpile"
 )
 
-// Generator transpiles the .gol files of one directory. sources holds editor
-// text that replaces files on disk.
+// Generator transpiles the .gol files of one directory.
 type Generator interface {
+	// Generate returns the outputs in memory. sources holds editor text that
+	// replaces files on disk.
 	Generate(dir string, sources map[string][]byte, lineDirectives bool) ([]transpile.Output, error)
+	// Write writes the generated .go files from the files on disk, as the
+	// gosling command does.
+	Write(dir string) error
 }
 
 // generatedFile is one generated .go file and the .gol text it came from.

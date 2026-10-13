@@ -7,8 +7,10 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"log"
 	"net/url"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"slices"
@@ -17,6 +19,7 @@ import (
 	"time"
 
 	"github.com/zacharyhill/gosling/internal/lsp"
+	"github.com/zacharyhill/gosling/internal/transpile"
 )
 
 // lspTimeout is long because gopls loads the module and the standard
@@ -87,7 +90,7 @@ func startLSP(test *testing.T, dir string) (*testClient, <-chan error) {
 	test.Cleanup(cancel)
 	served := make(chan error, 1)
 	go func() {
-		options := lsp.Options{Generator: generator{}, GoplsPath: goplsPath, Logger: log.New(io.Discard, "", 0)}
+		options := lsp.Options{Generator: generator{}, GoplsPath: goplsPath, GenerateOnSave: true, Logger: log.New(io.Discard, "", 0)}
 		serveErr := lsp.Serve(ctx, serverReader, serverWriter, options)
 		served <- errors.Join(serveErr, serverWriter.Close())
 	}()
@@ -308,6 +311,14 @@ func (session *lspSession) changeMain(text string) {
 	})
 }
 
+// save sends didSave for main.gol, then a hover. The server handles messages
+// in order, so the hover returns after the server handles didSave.
+func (session *lspSession) save(test *testing.T) {
+	test.Helper()
+	session.client.notify("textDocument/didSave", map[string]any{"textDocument": map[string]any{"uri": session.mainURI}})
+	session.client.request("textDocument/hover", textDocumentPosition(session.mainURI, positionOf(test, lspMain, "ReadFile")))
+}
+
 func (session *lspSession) rename(test *testing.T, needle, newName string) lspMessage {
 	test.Helper()
 	params := textDocumentPosition(session.mainURI, positionOf(test, lspMain, needle))
@@ -342,6 +353,8 @@ func TestLSP(test *testing.T) {
 	test.Run("position in generated code has no result", session.checkGeneratedPosition)
 	test.Run("rename across gol files", session.checkRename)
 	test.Run("rename that changes generated code fails", session.checkRenameInGeneratedCode)
+	test.Run("save writes generated files", session.checkGenerateOnSave)
+	test.Run("save with errors writes nothing", session.checkSaveWithErrors)
 	test.Run("syntax error becomes a diagnostic", session.checkSyntaxError)
 	test.Run("edit after the last good version still maps", session.checkStaleMapping)
 	test.Run("completion in code with a type error", session.checkCompletion)
@@ -477,4 +490,30 @@ func (session *lspSession) checkRenameInGeneratedCode(test *testing.T) {
 	if !strings.Contains(string(response.Error), "code that gosling generates") {
 		test.Errorf("rename = %s, error %s, want the generated code error", response.Result, response.Error)
 	}
+}
+
+func (session *lspSession) checkGenerateOnSave(test *testing.T) {
+	session.save(test)
+	for _, name := range []string{"main.go", "helper.go"} {
+		generated, err := os.ReadFile(filepath.Join(session.dir, name))
+		if err != nil {
+			test.Fatalf("save did not write %s: %v", name, err)
+		}
+		if !strings.HasPrefix(string(generated), transpile.GeneratedPrefix) {
+			test.Errorf("%s does not start with the generated header", name)
+		}
+	}
+}
+
+func (session *lspSession) checkSaveWithErrors(test *testing.T) {
+	mainGoPath := filepath.Join(session.dir, "main.go")
+	if err := os.Remove(mainGoPath); err != nil && !errors.Is(err, fs.ErrNotExist) {
+		test.Fatal(err)
+	}
+	session.changeMain(strings.Replace(lspMain, "return string(data), nil", "return string(data), nil +", 1))
+	session.save(test)
+	if _, err := os.Stat(mainGoPath); !errors.Is(err, fs.ErrNotExist) {
+		test.Errorf("save with a syntax error wrote main.go: %v", err)
+	}
+	session.changeMain(lspMain)
 }

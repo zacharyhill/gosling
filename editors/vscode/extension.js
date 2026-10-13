@@ -5,10 +5,11 @@ let client;
 
 async function startClient() {
   const config = vscode.workspace.getConfiguration("gosling");
-  const serverOptions = {
-    command: config.get("path", "gosling"),
-    args: ["lsp", "-gopls", config.get("goplsPath", "gopls")],
-  };
+  const args = ["lsp", "-gopls", config.get("goplsPath", "gopls")];
+  if (config.get("generateOnSave", true)) {
+    args.push("-generate-on-save");
+  }
+  const serverOptions = { command: config.get("path", "gosling"), args };
   const clientOptions = { documentSelector: [{ scheme: "file", language: "gol" }] };
   client = new LanguageClient("gosling", "gosling", serverOptions, clientOptions);
   try {
@@ -30,11 +31,19 @@ async function stopClient() {
   client = undefined;
 }
 
+async function restartClient() {
+  await stopClient();
+  await startClient();
+}
+
 async function activate(context) {
   context.subscriptions.push(
-    vscode.commands.registerCommand("gosling.restartServer", async () => {
-      await stopClient();
-      await startClient();
+    vscode.commands.registerCommand("gosling.restartServer", restartClient),
+    // The settings become server flags, so a change needs a new server.
+    vscode.workspace.onDidChangeConfiguration(async (event) => {
+      if (event.affectsConfiguration("gosling")) {
+        await restartClient();
+      }
     }),
   );
   await startClient();
