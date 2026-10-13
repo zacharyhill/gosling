@@ -31,6 +31,9 @@ type packageDir struct {
 	importPath string
 	golFiles   []sourceFile
 	goFiles    []sourceFile // hand-written .go files that match the build context
+	// sources holds file contents that replace the files on disk, such as
+	// unsaved editor text.
+	sources map[string][]byte
 }
 
 // expandDirs changes command-line patterns into directories. A pattern that
@@ -75,12 +78,12 @@ func expandDirs(patterns []string) ([]string, error) {
 	return dirs, nil
 }
 
-func loadDir(dir string) (*packageDir, error) {
+func loadDir(dir string, sources map[string][]byte) (*packageDir, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return nil, err
 	}
-	dirInfo := &packageDir{dir: dir}
+	dirInfo := &packageDir{dir: dir, sources: sources}
 	generated := generatedNames(entries)
 	for _, entry := range entries {
 		if entry.IsDir() {
@@ -126,7 +129,11 @@ func (packageDir *packageDir) addFile(name string, generated map[string]bool) er
 			return err
 		}
 	}
-	source, err := readHeader(filePath)
+	src, err := packageDir.readSource(filePath)
+	if err != nil {
+		return err
+	}
+	source, err := readHeader(filePath, src)
 	if err != nil {
 		return err
 	}
@@ -138,10 +145,17 @@ func (packageDir *packageDir) addFile(name string, generated map[string]bool) er
 	return nil
 }
 
+func (packageDir *packageDir) readSource(filePath string) ([]byte, error) {
+	if src, ok := packageDir.sources[filePath]; ok {
+		return src, nil
+	}
+	return os.ReadFile(filePath)
+}
+
 // readHeader parses the package clause and imports. Gosling syntax occurs only
 // after the imports, so the Go parser can read this part of a .gol file.
-func readHeader(filePath string) (sourceFile, error) {
-	astFile, err := parser.ParseFile(token.NewFileSet(), filePath, nil, parser.ImportsOnly)
+func readHeader(filePath string, src []byte) (sourceFile, error) {
+	astFile, err := parser.ParseFile(token.NewFileSet(), filePath, src, parser.ImportsOnly)
 	if err != nil {
 		return sourceFile{}, err
 	}

@@ -1,10 +1,12 @@
 # gosling for VS Code
 
-Syntax highlighting for gosling `.gol` files.
+Syntax highlighting and a language server for gosling `.gol` files.
 
 The extension uses the Go grammar that ships with VS Code, then adds the gosling syntax: `try` / `catch` / `finally`, `let`, `for...of`, template literals, arrow functions, `?.`, `??`, and union types.
 
-The extension gives a separate `gol` language ID to `.gol` files. Thus the Go extension and gopls do not open them. The extension does syntax highlighting only. Go to Definition (Ctrl+click), hover, and completion need a language server. A gosling language server is in progress.
+The extension gives a separate `gol` language ID to `.gol` files. Thus the Go extension does not open them.
+
+The extension also starts the gosling language server, `gosling lsp`. The server gives Go to Definition (Ctrl+click), references, hover, completion, signature help, the outline, and diagnostics. It needs `gosling` and `gopls` on the PATH. To use other paths, set `gosling.path` and `gosling.goplsPath`. Then run **gosling: Restart Language Server**.
 
 ## Install
 

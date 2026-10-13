@@ -459,3 +459,24 @@ func mustRead(test *testing.T, path string) string {
 	}
 	return string(contents)
 }
+
+func TestKeepGoingEmitsDespiteTypeErrors(test *testing.T) {
+	src := "package p\n\nimport \"fmt\"\n\nfunc f() {\n\tfmt.Pr\n}\n\nfunc g() {\n\tconst n = 1\n\tfmt.Println(t`${n}`)\n}\n"
+	inputs := []Input{{Path: "x.gol", Src: []byte(src)}}
+	outputs, err := Transpile(Config{Importer: importer.Default(), KeepGoing: true}, inputs)
+	if err == nil {
+		test.Fatal("want the type error")
+	}
+	if !strings.Contains(err.Error(), "Pr") {
+		test.Errorf("error = %v, want the error for fmt.Pr", err)
+	}
+	if len(outputs) != 1 {
+		test.Fatalf("got %d outputs, want 1", len(outputs))
+	}
+	if generated := string(outputs[0].Src); !strings.Contains(generated, "fmt.Pr\n") || !strings.Contains(generated, "fmt.Sprint") {
+		test.Errorf("want the lowered file with fmt.Pr kept, got:\n%s", generated)
+	}
+	if outputs, err := Transpile(Config{Importer: importer.Default()}, inputs); err == nil || outputs != nil {
+		test.Errorf("without KeepGoing got %d outputs, %v, want no outputs and an error", len(outputs), err)
+	}
+}

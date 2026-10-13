@@ -100,11 +100,26 @@ To use `go generate`, add `//go:generate gosling` to a `.go` file in the package
 
 ## Editor support
 
-`editors/vscode` has a VS Code extension. It highlights `.gol` files as Go plus the gosling syntax. It also gives `.gol` files their own language ID, so gopls does not report errors in them.
+`editors/vscode` has a VS Code extension. It highlights `.gol` files and starts the gosling language server. It also gives `.gol` files their own language ID, so the Go extension does not report errors in them.
 
-The extension is not on the Marketplace. To build it, you need Node.js. Run these commands in a clone of this repository:
+The language server is `gosling lsp`. It runs gopls on the generated code and maps each position back to the `.gol` file. It supports:
+
+- Go to Definition (Ctrl+click), Go to Type Definition, and Go to Implementations
+- Find All References and highlights
+- Hover
+- Completion and signature help
+- The outline of a file
+- Diagnostics: gosling errors, and gopls warnings for the generated code
+
+The server uses the text in the editor. It does not write `.go` files. Run `gosling ./...` to update them.
+
+### Install the extension
+
+The extension is not on the Marketplace. You need Go, Node.js, gosling, and gopls. Run these commands in a clone of this repository:
 
 ```sh
+go install github.com/zacharyhill/gosling/cmd/gosling@latest
+go install golang.org/x/tools/gopls@latest
 cd editors/vscode
 npm install
 npm run package
@@ -113,12 +128,16 @@ code --install-extension gosling-0.1.0.vsix
 
 Then run **Developer: Reload Window** in VS Code.
 
-If VS Code runs on a different machine than the repository, install the extension on the machine that runs VS Code:
+The extension runs on the machine that has the repository. With Remote-SSH, right-click `gosling-0.1.0.vsix` in the Explorer and select **Install Extension VSIX**. VS Code then installs it on the remote machine.
 
-- With Remote-SSH, right-click `gosling-0.1.0.vsix` in the Explorer and select **Install Extension VSIX**.
-- Without Remote-SSH, copy `gosling-0.1.0.vsix` to that machine and run `code --install-extension` there.
+If VS Code cannot find `gosling` or `gopls`, set `gosling.path` and `gosling.goplsPath` to the full paths. After you change these settings, run **gosling: Restart Language Server**.
 
-The extension does syntax highlighting only. Go to Definition (Ctrl+click), hover, and completion need a language server. I am working on a gosling language server.
+### Language server limitations
+
+- Code that gosling generates, such as `try` and `catch`, has no hover or definition.
+- A definition in generated code, such as a catch variable, goes to the nearest token before it.
+- Rename and formatting are not supported. They would change generated code.
+- After a syntax error, the server keeps the last version that parsed. Lines that changed since that version get no results until the file parses again. Type errors do not have this problem.
 
 ## Language
 
@@ -126,11 +145,11 @@ The extension does syntax highlighting only. Go to Definition (Ctrl+click), hove
 
 In a try block, gosling checks each call whose last result is `error`. A failure jumps to the catch block.
 
-| You write | Output |
-| --- | --- |
-| `f()` | `if err := f(); err != nil { e = err; goto catch_N }` |
-| `const x = f()` | `x, err := f()`, then `if err != nil { ... }` |
-| `x = f()` | `x, e = f()`, then `if e != nil { goto catch_N }` |
+| You write       | Output                                                |
+| --------------- | ----------------------------------------------------- |
+| `f()`           | `if err := f(); err != nil { e = err; goto catch_N }` |
+| `const x = f()` | `x, err := f()`, then `if err != nil { ... }`         |
+| `x = f()`       | `x, e = f()`, then `if e != nil { goto catch_N }`     |
 
 gosling moves a call used as a value, such as `g(f())`, into its own checked statement before its statement:
 
@@ -389,7 +408,6 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - Arrow functions cannot declare a return type. Arrays do not have array methods, only slices.
 - In a slice spread, untyped constants get their default type. Write `int64(1)`, not `1`, in `[...int64s, 1]`.
 - gosling ignores build constraints in `.gol` files.
-- There is no language server yet. Go to Definition, hover, and completion do not work in `.gol` files.
 
 ## How it works
 
@@ -397,6 +415,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 2. `internal/transpile` parses and type-checks the result. It then uses the types to fill in arrow types, find calls to check, and replace array methods. It repeats until nothing changes.
 3. Lowering records text edits on the source. It does not print the AST again, so comments and layout stay. gosling applies the edits, adds line directives, and runs gofmt.
 4. `cmd/gosling` loads dependency types with `golang.org/x/tools/go/packages`. It processes directories in import order. Packages that import generated code type-check against the new output.
+5. Emit also records a source map. The map pairs each token that the output copies from the `.gol` file with its new position. `internal/lsp` uses the map to send positions to gopls and to map the results back.
 
 ## Development
 
@@ -405,6 +424,8 @@ go test ./...                                         # all tests
 go test ./internal/transpile -run TestGolden -update  # rewrite golden files
 go test -short ./...                                  # skip tests that run the go tool
 ```
+
+The language server tests run gopls. They are skipped if gopls is not installed, and with `-short`.
 
 To test the VS Code extension, run `npm test` in `editors/vscode`.
 

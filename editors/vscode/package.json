@@ -1,7 +1,7 @@
 {
   "name": "gosling",
   "displayName": "gosling",
-  "description": "Syntax highlighting for gosling (.gol) files",
+  "description": "Syntax highlighting and a language server for gosling (.gol) files",
   "version": "0.1.0",
   "publisher": "zacharyhill",
   "license": "MPL-2.0",
@@ -10,10 +10,17 @@
     "url": "https://github.com/zacharyhill/gosling"
   },
   "engines": {
-    "vscode": "^1.75.0"
+    "vscode": "^1.91.0"
   },
   "categories": [
     "Programming Languages"
+  ],
+  "extensionKind": [
+    "workspace"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:gol"
   ],
   "contributes": {
     "languages": [
@@ -42,6 +49,27 @@
           "source.gol"
         ]
       }
+    ],
+    "configuration": {
+      "title": "gosling",
+      "properties": {
+        "gosling.path": {
+          "type": "string",
+          "default": "gosling",
+          "description": "The gosling command. The language server runs `gosling lsp`."
+        },
+        "gosling.goplsPath": {
+          "type": "string",
+          "default": "gopls",
+          "description": "The gopls command that the gosling language server runs."
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "gosling.restartServer",
+        "title": "gosling: Restart Language Server"
+      }
     ]
   },
   "scripts": {
@@ -52,5 +80,8 @@
     "@vscode/vsce": "^4.0.0",
     "vscode-oniguruma": "^2.0.1",
     "vscode-textmate": "^9.3.2"
+  },
+  "dependencies": {
+    "vscode-languageclient": "^10.1.2"
   }
 }
