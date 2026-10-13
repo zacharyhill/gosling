@@ -449,16 +449,23 @@ To test the VS Code extension, run `npm test` in `editors/vscode`.
 
 The CI workflow in `.github/workflows/ci.yml` runs on each push to `main` and on each pull request. It checks formatting, runs `go vet`, the Go tests, `gosling -check`, and the extension tests.
 
-To make a release, set `version` in `editors/vscode/package.json`. Then push a tag with the same version:
+`internal/transpile/testdata/golden` has the expected outputs. Tests run `go vet` on each one. Tests build and run the programs in `internal/transpile/testdata/run`, and compare their output with the `.out` files.
+
+### Releases
+
+The release task needs [Task](https://taskfile.dev/). To make a release, run this command on an up-to-date `main`:
 
 ```sh
-git tag v0.1.0
-git push origin v0.1.0
+task release VERSION=0.3.0
 ```
 
-The release workflow in `.github/workflows/release.yml` builds `gosling.vsix` and attaches it to a GitHub release for the tag. The workflow fails if the tag does not match the version in `package.json`.
+The task tags the current commit as `v0.3.0` and pushes the tag. The version must be higher than the latest tag. The tag sets the version of the Go module and of the extension. Make a release for each change that you want users to get, also when only the Go code changes.
 
-`internal/transpile/testdata/golden` has the expected outputs. Tests run `go vet` on each one. Tests build and run the programs in `internal/transpile/testdata/run`, and compare their output with the `.out` files.
+The release workflow in `.github/workflows/release.yml` sets the extension version from the tag. `package.json` keeps the placeholder version `0.0.0`, so a local build of the extension has version `0.0.0`. The workflow then builds `gosling.vsix`, creates the GitHub release, and attaches the file. The release becomes the latest release only after the workflow attaches the file. The install command in [Install the extension](#install-the-extension) always downloads from the latest release.
+
+Do not create releases on the GitHub Releases page. A release that you publish there becomes the latest release before the workflow attaches `gosling.vsix`. During that time, the install command fails with a 404 error.
+
+If the workflow fails, it changes the release for the tag to a draft. A draft is never the latest release, so the install command keeps the last good build.
 
 ## License
 
