@@ -90,6 +90,7 @@ gosling ./...        # include subdirectories (skips testdata, vendor, and . and
 gosling -check ./... # exit 1 if a generated file is out of date
 gosling -lines=false # do not add line directives
 gosling -v ./...     # show progress for each directory
+gosling -version     # print the gosling version
 ```
 
 To use `go generate`, add `//go:generate gosling` to a `.go` file in the package.
