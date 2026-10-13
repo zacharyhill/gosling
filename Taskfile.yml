@@ -1,0 +1,33 @@
+version: "3"
+
+vars:
+  EXTENSION_DIR: editors/vscode
+
+tasks:
+  release:bump:
+    desc: "Set the extension version for the next release. Usage: task release:bump VERSION=0.3.0"
+    dir: "{{.EXTENSION_DIR}}"
+    requires:
+      vars: [VERSION]
+    cmds:
+      - npm version "{{.VERSION}}" --no-git-tag-version
+
+  release:tag:
+    desc: Tag main with the extension version and push the tag. The release workflow then publishes the release.
+    vars:
+      VERSION:
+        sh: node -p "require('./{{.EXTENSION_DIR}}/package.json').version"
+    preconditions:
+      - sh: '[ "$(git branch --show-current)" = main ]'
+        msg: Check out main before you tag a release.
+      - sh: git diff --quiet HEAD
+        msg: Commit or stash your changes before you tag a release.
+      - sh: git fetch --quiet origin main && [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main)" ]
+        msg: Your main does not match origin/main. Pull or push first.
+      - sh: '! git rev-parse --quiet --verify "refs/tags/v{{.VERSION}}" > /dev/null'
+        msg: Tag v{{.VERSION}} exists locally. Run task release:bump with a higher version first.
+      - sh: '! git ls-remote --exit-code --tags origin "v{{.VERSION}}" > /dev/null'
+        msg: Tag v{{.VERSION}} exists on origin. Run task release:bump with a higher version first.
+    cmds:
+      - git tag "v{{.VERSION}}"
+      - git push origin "v{{.VERSION}}"
