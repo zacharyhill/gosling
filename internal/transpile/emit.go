@@ -22,7 +22,7 @@ type edit struct {
 	// depth, so outer openings come first. Closing text uses its negative
 	// depth, so inner closings come first.
 	order int
-	// move, if set, makes the text before + the rendered source range + after.
+	// If move is set, the text is before, then the rendered source range, then after.
 	move          *[2]int
 	before, after string
 }
@@ -69,7 +69,7 @@ func (lowerer *lowerer) emit() ([]byte, SourceMap, error) {
 }
 
 // outputWriter builds a generated file from the preprocessed source and the
-// edits, adding line directives so positions map back to the .gol file.
+// edits. It adds line directives so positions map back to the .gol file.
 type outputWriter struct {
 	buffer         bytes.Buffer
 	src            []byte
@@ -135,10 +135,10 @@ func (writer *outputWriter) writeEdit(currentEdit resolvedEdit) {
 		writer.needsDirective = false
 	}
 	textStart := writer.buffer.Len()
-	firstLine, restLines, multiline := strings.Cut(currentEdit.text, "\n")
+	firstLine, restLines, isMultiline := strings.Cut(currentEdit.text, "\n")
 	writer.buffer.WriteString(firstLine)
 	directiveLength := 0
-	if multiline {
+	if isMultiline {
 		writer.buffer.WriteString("\n")
 		directiveStart := writer.buffer.Len()
 		writer.directive(currentEdit.line)
@@ -146,7 +146,7 @@ func (writer *outputWriter) writeEdit(currentEdit resolvedEdit) {
 		writer.buffer.WriteString(restLines)
 	}
 	writer.addEditCopies(currentEdit.copies, textStart, len(firstLine), directiveLength)
-	if multiline || bytes.IndexByte(writer.src[currentEdit.start:currentEdit.end], '\n') >= 0 {
+	if isMultiline || bytes.IndexByte(writer.src[currentEdit.start:currentEdit.end], '\n') >= 0 {
 		writer.needsDirective = true
 	}
 	writer.copiedUpTo = currentEdit.end
@@ -250,8 +250,8 @@ func (lowerer *lowerer) dropsWithin(from, to int) []edit {
 // at the edge of a drop belongs to the code around it.
 func swallowedByDrop(candidate edit, drops []edit) bool {
 	for _, drop := range drops {
-		atEdge := candidate.isInsertion() && (candidate.start == drop.start || candidate.start == drop.end)
-		if candidate.within(drop.start, drop.end) && candidate != drop && !atEdge {
+		isAtEdge := candidate.isInsertion() && (candidate.start == drop.start || candidate.start == drop.end)
+		if candidate.within(drop.start, drop.end) && candidate != drop && !isAtEdge {
 			return true
 		}
 	}

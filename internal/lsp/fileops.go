@@ -54,8 +54,8 @@ func changedDirs(params fileOperationParams) []string {
 }
 
 // refreshDir writes the generated files of dir and transpiles its open
-// package again. The write comes first, because it deletes the output of an
-// old name, and the new package must not include that output.
+// package again. The write comes first. It deletes the output of an old
+// name, and the new package must not include that output.
 func (server *server) refreshDir(dir string) error {
 	if server.generateOnSave {
 		// gosling deletes orphans before it transpiles. So a source error

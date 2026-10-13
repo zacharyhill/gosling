@@ -8,7 +8,7 @@ import "strings"
 // so its offsets map back to the source.
 func (processor *processor) template(tag, literal lexeme) error {
 	content := literal.text[1 : len(literal.text)-1]
-	base := literal.offset + 1
+	contentStart := literal.offset + 1
 	var text strings.Builder
 	prefix := TMarker + "("
 	replaceFrom := tag.offset
@@ -21,18 +21,18 @@ func (processor *processor) template(tag, literal lexeme) error {
 			exprStart := charIndex + len("${")
 			exprEnd, ok := exprExtent(content, exprStart)
 			if !ok {
-				return &Error{base + charIndex, "unterminated ${ in template literal"}
+				return &Error{contentStart + charIndex, "unterminated ${ in template literal"}
 			}
 			if strings.TrimSpace(content[exprStart:exprEnd]) == "" {
-				return &Error{base + charIndex, "empty ${} in template literal"}
+				return &Error{contentStart + charIndex, "empty ${} in template literal"}
 			}
-			processor.replace(replaceFrom, base+exprStart, prefix+"`"+text.String()+"`, ")
-			if err := processor.rewriteInterpolation(base+exprStart, base+exprEnd); err != nil {
+			processor.replace(replaceFrom, contentStart+exprStart, prefix+"`"+text.String()+"`, ")
+			if err := processor.rewriteInterpolation(contentStart+exprStart, contentStart+exprEnd); err != nil {
 				return err
 			}
 			text.Reset()
 			prefix = ", "
-			replaceFrom = base + exprEnd
+			replaceFrom = contentStart + exprEnd
 			charIndex = exprEnd + len("}")
 		default:
 			text.WriteByte(content[charIndex])

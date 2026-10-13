@@ -22,7 +22,7 @@ type element struct {
 // elements splits the bracketed list that opens at token openIndex into
 // elements. It also returns the index of the closing token.
 func (processor *processor) elements(openIndex int, closing token.Token) ([]element, int, error) {
-	var out []element
+	var elements []element
 	depth, start := 0, openIndex+1
 	for tokenIndex := openIndex + 1; tokenIndex < len(processor.tokens); tokenIndex++ {
 		switch current := processor.tokens[tokenIndex]; current.kind {
@@ -37,12 +37,12 @@ func (processor *processor) elements(openIndex int, closing token.Token) ([]elem
 				return nil, 0, &Error{current.offset, "unbalanced brackets"}
 			}
 			if start < tokenIndex {
-				out = append(out, element{start, tokenIndex, processor.tokens[start].is(token.ELLIPSIS)})
+				elements = append(elements, element{start, tokenIndex, processor.tokens[start].is(token.ELLIPSIS)})
 			}
-			return out, tokenIndex, nil
+			return elements, tokenIndex, nil
 		case token.COMMA:
 			if depth == 0 {
-				out = append(out, element{start, tokenIndex, processor.tokens[start].is(token.ELLIPSIS)})
+				elements = append(elements, element{start, tokenIndex, processor.tokens[start].is(token.ELLIPSIS)})
 				start = tokenIndex + 1
 			}
 		case token.SEMICOLON:
@@ -69,17 +69,17 @@ func (processor *processor) sliceSpread(tokenIndex int) (int, error) {
 	processor.replace(lbrack.offset, lbrack.end(), CatMarker+"(")
 	processor.parens++ // openBracket skips this [, but rewrite still counts its ]
 	inRun := false
-	for elementIndex, item := range elements {
-		if item.spread {
-			processor.scheduled[item.start] = ""
+	for elementIndex, current := range elements {
+		if current.spread {
+			processor.scheduled[current.start] = ""
 			continue
 		}
 		if !inRun {
-			processor.insertBefore(item.start, OneMarker+"(")
+			processor.insertBefore(current.start, OneMarker+"(")
 			inRun = true
 		}
 		if elementIndex == len(elements)-1 || elements[elementIndex+1].spread {
-			processor.insertBefore(item.end, ")")
+			processor.insertBefore(current.end, ")")
 			inRun = false
 		}
 	}

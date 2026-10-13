@@ -38,40 +38,48 @@ func (lowerer *lowerer) lowerTemplates() {
 // lowerTemplate rewrites only the text between interpolated expressions,
 // so edits inside the expressions stay.
 func (lowerer *lowerer) lowerTemplate(call *ast.CallExpr, fmtPrefix string) {
-	args := call.Args
+	pieces := call.Args
 	line := lowerer.line(call.Pos())
-	if len(args) == 1 {
-		lowerer.replace(call.Pos(), call.End(), strconv.Quote(rawText(args[0])), line)
+	if len(pieces) == 1 {
+		lowerer.replace(call.Pos(), call.End(), strconv.Quote(rawText(pieces[0])), line)
 		return
 	}
 	var format strings.Builder
 	depth := lowerer.depth(call)
-	for argIndex, arg := range args {
-		if argIndex%2 == 0 {
-			format.WriteString(strings.ReplaceAll(rawText(arg), "%", "%%"))
+	for pieceIndex, piece := range pieces {
+		if pieceIndex%2 == 0 {
+			format.WriteString(strings.ReplaceAll(rawText(piece), "%", "%%"))
 			continue
 		}
-		argType := lowerer.info.Types[arg].Type
-		if bits := floatBits(argType); bits > 0 {
-			// %v prints 1e+06, but JavaScript prints 1000000.
-			if strconvName, ok := lowerer.importName(lowerer.file, "strconv", "strconv", false); ok {
-				openText, closeText := "FormatFloat(", ", 'f', -1, 64)"
-				if bits == 32 {
-					openText, closeText = "FormatFloat(float64(", "), 'f', -1, 32)"
-				}
-				lowerer.insertOrdered(arg.Pos(), qualify(strconvName)+openText, line, depth)
-				lowerer.insertOrdered(arg.End(), closeText, line, -depth)
-				format.WriteString("%s")
-				continue
-			}
+		pieceType := lowerer.typeInfo.Types[piece].Type
+		if bits := floatBits(pieceType); bits > 0 && lowerer.formatFloat(piece, bits, line, depth) {
+			format.WriteString("%s")
+			continue
 		}
-		format.WriteString(verb(argType))
+		format.WriteString(verb(pieceType))
 	}
-	lowerer.replace(call.Pos(), args[1].Pos(), fmtPrefix+"Sprintf("+strconv.Quote(format.String())+", ", line)
-	for argIndex := 1; argIndex+2 < len(args); argIndex += 2 {
-		lowerer.replace(args[argIndex].End(), args[argIndex+2].Pos(), ", ", line)
+	lowerer.replace(call.Pos(), pieces[1].Pos(), fmtPrefix+"Sprintf("+strconv.Quote(format.String())+", ", line)
+	for pieceIndex := 1; pieceIndex+2 < len(pieces); pieceIndex += 2 {
+		lowerer.replace(pieces[pieceIndex].End(), pieces[pieceIndex+2].Pos(), ", ", line)
 	}
-	lowerer.replace(args[len(args)-2].End(), call.Rparen+1, ")", line)
+	lowerer.replace(pieces[len(pieces)-2].End(), call.Rparen+1, ")", line)
+}
+
+// formatFloat wraps a float argument in strconv.FormatFloat, because %v
+// prints 1e+06 and JavaScript prints 1000000. It reports false if the file
+// cannot use strconv.
+func (lowerer *lowerer) formatFloat(arg ast.Expr, bits, line, depth int) bool {
+	strconvName, ok := lowerer.importName(lowerer.file, "strconv", "strconv", false)
+	if !ok {
+		return false
+	}
+	openText, closeText := "FormatFloat(", ", 'f', -1, 64)"
+	if bits == 32 {
+		openText, closeText = "FormatFloat(float64(", "), 'f', -1, 32)"
+	}
+	lowerer.insertOrdered(arg.Pos(), qualify(strconvName)+openText, line, depth)
+	lowerer.insertOrdered(arg.End(), closeText, line, -depth)
+	return true
 }
 
 // rawText returns a text piece of a template literal, with escapes decoded
@@ -172,10 +180,10 @@ func verb(goType types.Type) string {
 
 // fmtName returns the qualifier for fmt calls ("fmt." or an alias). It adds
 // the import if the file does not have one.
-func (lowerer *lowerer) fmtName(pos token.Pos) (string, bool) {
+func (lowerer *lowerer) fmtName(position token.Pos) (string, bool) {
 	name, ok := lowerer.importName(lowerer.file, "fmt", "fmt", false)
 	if !ok {
-		lowerer.errorf(lowerer.file, pos, "template literal needs package fmt, but the name fmt is already used in this file")
+		lowerer.errorf(lowerer.file, position, "template literal needs package fmt, but the name fmt is already used in this file")
 		return "", false
 	}
 	return qualify(name), true

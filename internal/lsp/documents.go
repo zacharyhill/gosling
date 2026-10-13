@@ -65,7 +65,8 @@ type packageState struct {
 	// goplsVersions holds the version of each file that gopls has open.
 	goplsVersions map[string]int
 	// problems holds gosling errors by .gol path. While a package has
-	// problems, gopls diagnostics describe old code and are not shown.
+	// problems, gopls diagnostics describe old code, so the server does not
+	// show them.
 	problems map[string][]diagnostic
 	// goplsDiagnostics holds the raw gopls diagnostics by .go path.
 	goplsDiagnostics map[string][]json.RawMessage
@@ -123,17 +124,22 @@ func (server *server) regenerate(packageState *packageState) error {
 	if err == nil || len(outputs) > 0 {
 		newFiles := server.newGeneratedFiles(outputs, sources)
 		if err != nil {
-			for goPath, previous := range packageState.files {
-				if _, ok := newFiles[goPath]; !ok {
-					newFiles[goPath] = previous
-				}
-			}
+			keepPreviousFiles(newFiles, packageState.files)
 		}
 		if err := server.syncGopls(packageState, newFiles); err != nil {
 			return err
 		}
 	}
 	return server.publishPackageDiagnostics(packageState)
+}
+
+// keepPreviousFiles adds each previous file that newFiles does not replace.
+func keepPreviousFiles(newFiles, previousFiles map[string]*generatedFile) {
+	for goPath, previous := range previousFiles {
+		if _, ok := newFiles[goPath]; !ok {
+			newFiles[goPath] = previous
+		}
+	}
 }
 
 func (server *server) newGeneratedFiles(outputs []transpile.Output, sources map[string][]byte) map[string]*generatedFile {
@@ -191,13 +197,13 @@ func splitErrors(err error) []error {
 // problemDiagnostic returns the .gol path and diagnostic for one error. An
 // error without a position goes on the first open document of the package.
 func (server *server) problemDiagnostic(packageState *packageState, problem error) (string, diagnostic) {
-	result := diagnostic{Severity: severityError, Source: "gosling", Message: problem.Error()}
+	golDiagnostic := diagnostic{Severity: severityError, Source: "gosling", Message: problem.Error()}
 	var positioned *scanner.Error
 	if !errors.As(problem, &positioned) || positioned.Pos.Filename == "" {
 		if documents := server.documentsIn(packageState.dir); len(documents) > 0 {
-			return documents[0].path, result
+			return documents[0].path, golDiagnostic
 		}
-		return "", result
+		return "", golDiagnostic
 	}
 	text := server.golText(positioned.Pos.Filename)
 	lineStart, ok := offsetAt(text, position{Line: positioned.Pos.Line - 1})
@@ -205,9 +211,9 @@ func (server *server) problemDiagnostic(packageState *packageState, problem erro
 		lineStart = 0
 	}
 	start := positionAt(text, lineStart+max(positioned.Pos.Column-1, 0))
-	result.Range = lspRange{Start: start, End: start}
-	result.Message = positioned.Msg
-	return positioned.Pos.Filename, result
+	golDiagnostic.Range = lspRange{Start: start, End: start}
+	golDiagnostic.Message = positioned.Msg
+	return positioned.Pos.Filename, golDiagnostic
 }
 
 // golText returns the editor text of a .gol file, or the text on disk.

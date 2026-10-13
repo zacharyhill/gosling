@@ -382,10 +382,10 @@ func TestProcess(test *testing.T) {
 
 func TestProcessErrors(test *testing.T) {
 	testCases := []struct {
-		name    string
-		src     string
-		wantMsg string
-		wantOff int
+		name        string
+		src         string
+		wantMessage string
+		wantOffset  int
 	}{
 		{"missing catch", "try { g() }\nx()", "try block must be followed by catch or finally", len("try { g() ")},
 		{"finally on next line", "try { g() } catch {\n}\nfinally { }", "finally must be on the same line", len("try { g() } catch {\n}\n")},
@@ -418,11 +418,11 @@ func TestProcessErrors(test *testing.T) {
 			if !ok {
 				test.Fatalf("got %T, want *Error", err)
 			}
-			if !strings.Contains(syntaxError.Msg, testCase.wantMsg) {
-				test.Errorf("msg %q does not contain %q", syntaxError.Msg, testCase.wantMsg)
+			if !strings.Contains(syntaxError.Msg, testCase.wantMessage) {
+				test.Errorf("msg %q does not contain %q", syntaxError.Msg, testCase.wantMessage)
 			}
-			if syntaxError.Offset != testCase.wantOff {
-				test.Errorf("offset %d, want %d", syntaxError.Offset, testCase.wantOff)
+			if syntaxError.Offset != testCase.wantOffset {
+				test.Errorf("offset %d, want %d", syntaxError.Offset, testCase.wantOffset)
 			}
 		})
 	}
@@ -434,15 +434,15 @@ func TestOrigOffset(test *testing.T) {
 	if err != nil {
 		test.Fatal(err)
 	}
-	out := string(result.Src)
+	processed := string(result.Src)
 	for _, tokenText := range []string{"g()", "h(e)", "}"} {
-		gotOffset := result.OrigOffset(strings.LastIndex(out, tokenText))
+		gotOffset := result.OrigOffset(strings.LastIndex(processed, tokenText))
 		if want := strings.LastIndex(src, tokenText); gotOffset != want {
 			test.Errorf("%s: orig offset %d, want %d", tokenText, gotOffset, want)
 		}
 	}
 	// Offsets inside replaced text map to the start of the original token.
-	if got := result.OrigOffset(strings.Index(out, "true")); got != 0 {
+	if got := result.OrigOffset(strings.Index(processed, "true")); got != 0 {
 		test.Errorf("inside replacement: got %d, want 0", got)
 	}
 }

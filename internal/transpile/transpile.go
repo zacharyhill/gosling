@@ -42,6 +42,7 @@ type Output struct {
 	SourceMap SourceMap
 }
 
+// Config holds the options for Transpile.
 type Config struct {
 	Importer types.Importer
 	// GoFiles are the plain .go files of the package. Type checking needs them.
@@ -123,13 +124,13 @@ type file struct {
 	// assign to them.
 	constVars map[*ast.Ident]bool
 	// constDecls maps each const that became a variable to the := statement
-	// that replaced it, or to nil if it became a var declaration.
+	// that replaced it. A const that became a var declaration maps to nil.
 	constDecls map[*ast.GenDecl]*ast.AssignStmt
 }
 
 // position maps a position in the preprocessed file to the original source.
-func (file *file) position(pos token.Pos) token.Position {
-	return file.positionAt(file.preprocessed.OrigOffset(file.tokenFile.Offset(pos)))
+func (file *file) position(position token.Pos) token.Position {
+	return file.positionAt(file.preprocessed.OrigOffset(file.tokenFile.Offset(position)))
 }
 
 func (file *file) positionAt(offset int) token.Position {
@@ -159,13 +160,13 @@ func Transpile(config Config, inputs []Input) ([]Output, error) {
 	if err := session.parse(inputs); err != nil {
 		return nil, err
 	}
-	info := session.check()
+	typeInfo := session.check()
 	if err := session.diagnostics.Err(); err != nil && !config.KeepGoing {
 		return nil, err
 	}
 	outputs := make([]Output, 0, len(session.files))
 	for _, file := range session.files {
-		output, ok, err := session.lowerAndEmit(file, info)
+		output, ok, err := session.lowerAndEmit(file, typeInfo)
 		if err != nil {
 			return nil, err
 		}
@@ -185,8 +186,8 @@ func Transpile(config Config, inputs []Input) ([]Output, error) {
 
 // lowerAndEmit converts one file. It reports false if lowering found errors
 // in the file. With KeepGoing, an emit failure or a panic also skips the
-// file, because type errors can leave nodes that lowering does not expect.
-func (transpiler *transpiler) lowerAndEmit(file *file, info *types.Info) (output Output, ok bool, err error) {
+// file. Type errors can leave nodes that lowering does not expect.
+func (transpiler *transpiler) lowerAndEmit(file *file, typeInfo *types.Info) (output Output, ok bool, err error) {
 	if transpiler.config.KeepGoing {
 		defer func() {
 			if recover() != nil {
@@ -195,7 +196,7 @@ func (transpiler *transpiler) lowerAndEmit(file *file, info *types.Info) (output
 		}()
 	}
 	diagnosticsBefore := len(transpiler.diagnostics)
-	lowerer := newLowerer(transpiler, file, info)
+	lowerer := newLowerer(transpiler, file, typeInfo)
 	lowerer.lowerFile()
 	if len(transpiler.diagnostics) > diagnosticsBefore {
 		return Output{}, false, nil
@@ -217,11 +218,11 @@ func (transpiler *transpiler) parse(inputs []Input) error {
 		}
 	}
 	for _, path := range transpiler.config.GoFiles {
-		parsedFile, err := parser.ParseFile(transpiler.fileSet, path, nil, parser.SkipObjectResolution)
+		plainFile, err := parser.ParseFile(transpiler.fileSet, path, nil, parser.SkipObjectResolution)
 		if err != nil {
 			return err
 		}
-		transpiler.plainGoFiles = append(transpiler.plainGoFiles, parsedFile)
+		transpiler.plainGoFiles = append(transpiler.plainGoFiles, plainFile)
 	}
 	transpiler.diagnostics.Sort()
 	return transpiler.diagnostics.Err()
@@ -237,42 +238,39 @@ func (transpiler *transpiler) parseInput(input Input) error {
 		if !errors.As(err, &preprocessError) {
 			return err
 		}
-		failed := &file{path: input.Path, original: input.Src}
-		transpiler.diagnostics.Add(failed.positionAt(preprocessError.Offset), preprocessError.Msg)
+		failedFile := &file{path: input.Path, original: input.Src}
+		transpiler.diagnostics.Add(failedFile.positionAt(preprocessError.Offset), preprocessError.Msg)
 		return nil
 	}
-	parsed := newFile(input, preprocessed)
-	parsedFile, err := parser.ParseFile(transpiler.fileSet, input.Path, preprocessed.Src, parser.ParseComments|parser.SkipObjectResolution)
+	golFile := newFile(input, preprocessed)
+	astFile, err := parser.ParseFile(transpiler.fileSet, input.Path, preprocessed.Src, parser.ParseComments|parser.SkipObjectResolution)
 	if err != nil {
-		transpiler.addParseErrors(parsed, err)
+		transpiler.addParseErrors(golFile, err)
 		return nil
 	}
-	parsed.ast = parsedFile
-	parsed.tokenFile = transpiler.fileSet.File(parsedFile.Pos())
-	parsed.recordIdentNames()
-	parsed.recordConstNames()
-	for _, tryInfo := range preprocessed.Tries {
-		parsed.tries[tryInfo.If] = tryInfo
+	golFile.ast = astFile
+	golFile.tokenFile = transpiler.fileSet.File(astFile.Pos())
+	golFile.recordIdentNames()
+	golFile.recordConstNames()
+	for _, preprocessedTry := range preprocessed.Tries {
+		golFile.tries[preprocessedTry.If] = preprocessedTry
 	}
-	parsed.prepareFinally()
-	parsed.stripMarkers()
-	parsed.findArrows()
-	transpiler.files = append(transpiler.files, parsed)
+	golFile.prepareFinally()
+	golFile.stripMarkers()
+	golFile.findArrows()
+	transpiler.files = append(transpiler.files, golFile)
 	return nil
 }
 
 // reportGoDeclarations reports each := and each var in a function in a .gol
 // file. let and const replace them.
 func (transpiler *transpiler) reportGoDeclarations(input Input) {
-	source := &file{path: input.Path, original: input.Src}
-	fileSet := token.NewFileSet()
-	tokenFile := fileSet.AddFile("", -1, len(input.Src))
-	var sourceScanner scanner.Scanner
+	golFile := &file{path: input.Path, original: input.Src}
 	// The Go parser reports scanner errors later.
-	sourceScanner.Init(tokenFile, input.Src, nil, 0)
+	sourceScanner, tokenFile := newScanner(input.Src, 0)
 	braceDepth := 0
 	for {
-		pos, kind, _ := sourceScanner.Scan()
+		position, kind, _ := sourceScanner.Scan()
 		switch kind {
 		case token.EOF:
 			return
@@ -281,12 +279,12 @@ func (transpiler *transpiler) reportGoDeclarations(input Input) {
 		case token.RBRACE:
 			braceDepth--
 		case token.DEFINE:
-			transpiler.diagnostics.Add(source.positionAt(tokenFile.Offset(pos)), "use let or const instead of :=")
+			transpiler.diagnostics.Add(golFile.positionAt(tokenFile.Offset(position)), "use let or const instead of :=")
 		case token.VAR:
 			// Package-level var stays allowed, because let has no grouped
 			// form.
 			if braceDepth > 0 {
-				transpiler.diagnostics.Add(source.positionAt(tokenFile.Offset(pos)), "use let instead of var in a function")
+				transpiler.diagnostics.Add(golFile.positionAt(tokenFile.Offset(position)), "use let instead of var in a function")
 			}
 		}
 	}
@@ -346,25 +344,33 @@ func (file *file) stripMarkers() {
 		switch node := cursor.Node().(type) {
 		case *ast.SelectorExpr:
 			if node.Sel.Name == preprocess.OMarker {
-				// The marker is always between X and the real selector.
-				if parent, ok := cursor.Parent().(*ast.SelectorExpr); ok {
-					file.optional[parent] = true
-				}
-				cursor.Replace(node.X)
+				file.stripOptionalMarker(cursor, node)
 			}
 		case *ast.BinaryExpr:
 			if node.Op == token.LOR && coalesceAt[file.tokenFile.Offset(node.OpPos)] {
-				call := &ast.CallExpr{
-					Fun:    &ast.Ident{Name: coalesceMarker, NamePos: node.X.Pos()},
-					Args:   []ast.Expr{node.X, node.Y},
-					Rparen: node.Y.End() - 1,
-				}
-				file.coalesce[call] = node
-				cursor.Replace(call)
+				file.stripCoalesceMarker(cursor, node)
 			}
 		}
 		return true
 	})
+}
+
+func (file *file) stripOptionalMarker(cursor *astutil.Cursor, marker *ast.SelectorExpr) {
+	// The marker is always between X and the real selector.
+	if parent, ok := cursor.Parent().(*ast.SelectorExpr); ok {
+		file.optional[parent] = true
+	}
+	cursor.Replace(marker.X)
+}
+
+func (file *file) stripCoalesceMarker(cursor *astutil.Cursor, operation *ast.BinaryExpr) {
+	call := &ast.CallExpr{
+		Fun:    &ast.Ident{Name: coalesceMarker, NamePos: operation.X.Pos()},
+		Args:   []ast.Expr{operation.X, operation.Y},
+		Rparen: operation.Y.End() - 1,
+	}
+	file.coalesce[call] = operation
+	cursor.Replace(call)
 }
 
 func (transpiler *transpiler) check() *types.Info {
@@ -373,25 +379,25 @@ func (transpiler *transpiler) check() *types.Info {
 		transpiler.diagnostics.Add(token.Position{}, "internal error: "+err.Error())
 		return nil
 	}
-	var info *types.Info
+	var typeInfo *types.Info
 	var typeErrors []types.Error
 	for range maxCheckPasses {
-		info, typeErrors = transpiler.typeCheck(astFiles)
-		if !transpiler.augment(info) {
+		typeInfo, typeErrors = transpiler.typeCheck(astFiles)
+		if !transpiler.augment(typeInfo) {
 			break
 		}
 	}
-	transpiler.checkConstAssignments(astFiles, info)
+	transpiler.checkConstAssignments(astFiles, typeInfo)
 	if transpiler.unresolvedArrows() {
-		return info // lowering reports the arrows, other errors are noise
+		return typeInfo // lowering reports the arrows, other errors are noise
 	}
 	badUnions := transpiler.collectUnions()
 	for _, typeError := range typeErrors {
-		if !transpiler.isSpurious(typeError, info, badUnions) {
+		if !transpiler.isSpurious(typeError, typeInfo, badUnions) {
 			transpiler.diagnostics.Add(transpiler.position(typeError.Pos), cleanMessage(typeError.Msg))
 		}
 	}
-	return info
+	return typeInfo
 }
 
 // filesToCheck returns the .gol files, the plain .go files of the package,
@@ -411,7 +417,7 @@ func (transpiler *transpiler) filesToCheck() ([]*ast.File, error) {
 
 // typeCheck runs one type-check pass and collects all its errors.
 func (transpiler *transpiler) typeCheck(astFiles []*ast.File) (*types.Info, []types.Error) {
-	info := &types.Info{
+	typeInfo := &types.Info{
 		Types:     map[ast.Expr]types.TypeAndValue{},
 		Defs:      map[*ast.Ident]types.Object{},
 		Uses:      map[*ast.Ident]types.Object{},
@@ -428,14 +434,14 @@ func (transpiler *transpiler) typeCheck(astFiles []*ast.File) (*types.Info, []ty
 			}
 		},
 	}
-	// The Error handler above collects the errors.
-	transpiler.checkedPackage, _ = config.Check(checkPath, transpiler.fileSet, astFiles, info)
-	return info, typeErrors
+	// Check also returns the first error. The Error handler already collects it.
+	transpiler.checkedPackage, _ = config.Check(checkPath, transpiler.fileSet, astFiles, typeInfo)
+	return typeInfo, typeErrors
 }
 
 // isSpurious reports whether gosling's rewriting caused typeError, or
 // another diagnostic already covers it.
-func (transpiler *transpiler) isSpurious(typeError types.Error, info *types.Info, badUnions map[*file]map[int]bool) bool {
+func (transpiler *transpiler) isSpurious(typeError types.Error, typeInfo *types.Info, badUnions map[*file]map[int]bool) bool {
 	if transpiler.fmtUsedByTemplates(typeError) {
 		return true
 	}
@@ -446,13 +452,13 @@ func (transpiler *transpiler) isSpurious(typeError types.Error, info *types.Info
 			return true
 		}
 	}
-	return typeError.Msg == "missing return" && transpiler.endsInNoReturnTry(typeError.Pos, info)
+	return typeError.Msg == "missing return" && transpiler.endsInNoReturnTry(typeError.Pos, typeInfo)
 }
 
 // endsInNoReturnTry reports whether the function body that closes at rbrace
 // ends in a try that cannot complete. Calls such as t.Fatal and os.Exit
 // count as never returning. It also marks the body in panicAtEnd.
-func (transpiler *transpiler) endsInNoReturnTry(rbrace token.Pos, info *types.Info) bool {
+func (transpiler *transpiler) endsInNoReturnTry(rbrace token.Pos, typeInfo *types.Info) bool {
 	file := transpiler.fileAt(rbrace)
 	if file == nil {
 		return false
@@ -478,7 +484,7 @@ func (transpiler *transpiler) endsInNoReturnTry(rbrace token.Pos, info *types.In
 	if !ok || file.finallyOf[tryStmt] != nil {
 		return false
 	}
-	if _, isTry := file.tries[file.tokenFile.Offset(tryStmt.Pos())]; !isTry || !terminates(tryStmt, neverReturns(info)) {
+	if _, isTry := file.tries[file.tokenFile.Offset(tryStmt.Pos())]; !isTry || !terminates(tryStmt, neverReturns(typeInfo)) {
 		return false
 	}
 	file.panicAtEnd[body] = true
@@ -538,28 +544,28 @@ func (transpiler *transpiler) fmtUsedByTemplates(typeError types.Error) bool {
 
 // augment rewrites the AST with type information from the last pass. It
 // reports whether the AST changed. A change needs another pass.
-func (transpiler *transpiler) augment(info *types.Info) bool {
+func (transpiler *transpiler) augment(typeInfo *types.Info) bool {
 	changed := false
 	for _, file := range transpiler.files {
-		changed = convertConsts(file, info) || changed
-		changed = transpiler.rewriteArrayCalls(file, info) || changed
-		changed = transpiler.wrapNested(file, info) || changed
-		changed = transpiler.expandShorthand(file, info) || changed
-		changed = transpiler.fixArrows(file, info) || changed
-		changed = usePtrCoalesce(file, info) || changed
-		changed = addBlankForErrors(file, info) || changed
+		changed = convertConsts(file, typeInfo) || changed
+		changed = transpiler.rewriteArrayCalls(file, typeInfo) || changed
+		changed = transpiler.wrapNested(file, typeInfo) || changed
+		changed = transpiler.expandShorthand(file, typeInfo) || changed
+		changed = transpiler.fixArrows(file, typeInfo) || changed
+		changed = usePtrCoalesce(file, typeInfo) || changed
+		changed = addBlankForErrors(file, typeInfo) || changed
 	}
 	return changed
 }
 
-func usePtrCoalesce(file *file, info *types.Info) bool {
+func usePtrCoalesce(file *file, typeInfo *types.Info) bool {
 	changed := false
 	for call := range file.coalesce {
 		callee := call.Fun.(*ast.Ident)
-		_, isPointer := info.Types[call.Args[0]].Type.(*types.Pointer)
+		_, isPointer := typeInfo.Types[call.Args[0]].Type.(*types.Pointer)
 		// The checker records a constant with its converted type, so check
 		// for any constant, not only an untyped one.
-		if callee.Name == coalesceMarker && isPointer && info.Types[call.Args[1]].Value != nil {
+		if callee.Name == coalesceMarker && isPointer && typeInfo.Types[call.Args[1]].Value != nil {
 			callee.Name = coalescePtrMarker
 			changed = true
 		}
@@ -567,22 +573,22 @@ func usePtrCoalesce(file *file, info *types.Info) bool {
 	return changed
 }
 
-func (transpiler *transpiler) position(pos token.Pos) token.Position {
-	if file := transpiler.fileAt(pos); file != nil {
-		return file.position(pos)
+func (transpiler *transpiler) position(position token.Pos) token.Position {
+	if file := transpiler.fileAt(position); file != nil {
+		return file.position(position)
 	}
-	return transpiler.fileSet.Position(pos)
+	return transpiler.fileSet.Position(position)
 }
 
-func (transpiler *transpiler) fileAt(pos token.Pos) *file {
+func (transpiler *transpiler) fileAt(position token.Pos) *file {
 	for _, file := range transpiler.files {
-		if file.tokenFile.Base() <= int(pos) && int(pos) <= file.tokenFile.Base()+file.tokenFile.Size() {
+		if file.tokenFile.Base() <= int(position) && int(position) <= file.tokenFile.Base()+file.tokenFile.Size() {
 			return file
 		}
 	}
 	return nil
 }
 
-func (transpiler *transpiler) errorf(file *file, pos token.Pos, format string, args ...any) {
-	transpiler.diagnostics.Add(file.position(pos), fmt.Sprintf(format, args...))
+func (transpiler *transpiler) errorf(file *file, position token.Pos, format string, arguments ...any) {
+	transpiler.diagnostics.Add(file.position(position), fmt.Sprintf(format, arguments...))
 }

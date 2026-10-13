@@ -197,6 +197,7 @@ func (server *server) regenerateDirty() error {
 func (server *server) writeClient(message *rpcMessage) error {
 	return writeMessage(server.client, message)
 }
+
 func (server *server) writeGopls(message *rpcMessage) error {
 	return writeMessage(server.gopls, message)
 }

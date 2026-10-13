@@ -7,19 +7,19 @@ import (
 	"slices"
 )
 
-// A call that returns (T, error) and is used as a value in a try block, as
-// in g(f()), moves into its own checked statement:
+// A try block can use a call that returns (T, error) as a value, as in
+// g(f()). The call then moves into its own checked statement:
 //
 //	val, err := f()
 //	if err != nil { ...jump to catch... }
 //	g(val)
 //
-// For type checking, it is wrapped as __goslingV(f()), which gives the T.
+// For type checking, gosling wraps the call as __goslingV(f()), which gives the T.
 const hoistMarker = "__goslingV"
 
 // wrapNested wraps each call in a try block that returns (T, error) and is
 // used as a value. It reports whether anything changed.
-func (transpiler *transpiler) wrapNested(file *file, info *types.Info) bool {
+func (transpiler *transpiler) wrapNested(file *file, typeInfo *types.Info) bool {
 	parentOf := parents(file.ast)
 	regions := tryRegions(file, parentOf)
 	if len(regions) == 0 {
@@ -28,7 +28,7 @@ func (transpiler *transpiler) wrapNested(file *file, info *types.Info) bool {
 	var calls []*ast.CallExpr
 	ast.Inspect(file.ast, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
-		if !ok || !isValueTuple(info, call) || !regions.contain(parentOf, call) || !transpiler.singleValueUse(info, parentOf, call) {
+		if !ok || !isValueTuple(typeInfo, call) || !regions.contain(parentOf, call) || !transpiler.singleValueUse(typeInfo, parentOf, call) {
 			return true
 		}
 		if parentCall, ok := parentOf[call].(*ast.CallExpr); ok && file.hoisted[parentCall] != nil {
@@ -79,15 +79,15 @@ func (regions tryRegionList) contain(parentOf map[ast.Node]ast.Node, call *ast.C
 }
 
 // isValueTuple reports whether the results of call are exactly (T, error).
-func isValueTuple(info *types.Info, call *ast.CallExpr) bool {
-	tuple, ok := info.Types[call].Type.(*types.Tuple)
+func isValueTuple(typeInfo *types.Info, call *ast.CallExpr) bool {
+	tuple, ok := typeInfo.Types[call].Type.(*types.Tuple)
 	return ok && tuple.Len() == 2 && types.Identical(tuple.At(1).Type(), errorType)
 }
 
 // singleValueUse reports whether call is where Go needs a single value.
 // Positions that accept both results do not count. The statement-level
 // checks handle them, or they forward both results.
-func (transpiler *transpiler) singleValueUse(info *types.Info, parentOf map[ast.Node]ast.Node, call *ast.CallExpr) bool {
+func (transpiler *transpiler) singleValueUse(typeInfo *types.Info, parentOf map[ast.Node]ast.Node, call *ast.CallExpr) bool {
 	child, parent := outermostParen(parentOf, call)
 	switch parentNode := parent.(type) {
 	case *ast.ExprStmt:
@@ -102,13 +102,13 @@ func (transpiler *transpiler) singleValueUse(info *types.Info, parentOf map[ast.
 		if len(parentNode.Results) != 1 {
 			return true
 		}
-		signature := enclosingSig(info, parentOf, parentNode)
+		signature := enclosingSignature(typeInfo, parentOf, parentNode)
 		return signature == nil || signature.Results().Len() != 2
 	case *ast.CallExpr:
 		if len(parentNode.Args) != 1 || parentNode.Args[0] != child {
 			return true
 		}
-		signature, ok := info.Types[parentNode.Fun].Type.(*types.Signature)
+		signature, ok := typeInfo.Types[parentNode.Fun].Type.(*types.Signature)
 		return !ok || signature.Params().Len() != 2
 	}
 	return true

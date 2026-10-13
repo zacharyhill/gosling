@@ -40,9 +40,7 @@ func TestGolden(test *testing.T) {
 			got := transpileFile(test, path, strings.HasPrefix(filepath.Base(path), "lines"))
 			goldenPath := strings.TrimSuffix(path, ".gol") + ".go.golden"
 			if *updateGolden {
-				if err := os.WriteFile(goldenPath, got, 0o644); err != nil {
-					test.Fatal(err)
-				}
+				writeFile(test, goldenPath, string(got))
 				return
 			}
 			want, err := os.ReadFile(goldenPath)
@@ -73,17 +71,17 @@ func TestGoldenCompiles(test *testing.T) {
 	if err != nil {
 		test.Fatal(err)
 	}
-	dir := test.TempDir()
-	writeFile(test, filepath.Join(dir, "go.mod"), "module golden\n\ngo 1.26\n")
+	directory := test.TempDir()
+	writeFile(test, filepath.Join(directory, "go.mod"), "module golden\n\ngo 1.26\n")
 	for _, path := range paths {
 		packageName := strings.TrimSuffix(filepath.Base(path), ".go.golden")
-		if err := os.Mkdir(filepath.Join(dir, packageName), 0o755); err != nil {
+		if err := os.Mkdir(filepath.Join(directory, packageName), 0o755); err != nil {
 			test.Fatal(err)
 		}
-		writeFile(test, filepath.Join(dir, packageName, packageName+".go"), mustRead(test, path))
+		writeFile(test, filepath.Join(directory, packageName, packageName+".go"), mustRead(test, path))
 	}
 	vetCommand := exec.Command("go", "vet", "./...")
-	vetCommand.Dir = dir
+	vetCommand.Dir = directory
 	if output, err := vetCommand.CombinedOutput(); err != nil {
 		test.Fatalf("go vet: %v\n%s", err, output)
 	}
@@ -296,13 +294,13 @@ func TestRun(test *testing.T) {
 	}
 	for _, path := range paths {
 		test.Run(filepath.Base(path), func(test *testing.T) {
-			dir := test.TempDir()
+			directory := test.TempDir()
 			generated := transpileFile(test, path, true)
-			writeFile(test, filepath.Join(dir, "go.mod"), "module run\n\ngo 1.26\n")
-			writeFile(test, filepath.Join(dir, filepath.Base(path)), mustRead(test, path))
-			writeFile(test, filepath.Join(dir, "main.go"), string(generated))
+			writeFile(test, filepath.Join(directory, "go.mod"), "module run\n\ngo 1.26\n")
+			writeFile(test, filepath.Join(directory, filepath.Base(path)), mustRead(test, path))
+			writeFile(test, filepath.Join(directory, "main.go"), string(generated))
 			runCommand := exec.Command("go", "run", ".")
-			runCommand.Dir = dir
+			runCommand.Dir = directory
 			got, err := runCommand.CombinedOutput()
 			if err != nil {
 				test.Fatalf("go run: %v\n%s\ngenerated:\n%s", err, got, generated)
@@ -343,11 +341,11 @@ func main() {
 	if err != nil {
 		test.Fatal(err)
 	}
-	dir := test.TempDir()
-	writeFile(test, filepath.Join(dir, "go.mod"), "module run\n\ngo 1.26\n")
-	writeFile(test, filepath.Join(dir, "prog.go"), string(outputs[0].Src))
+	directory := test.TempDir()
+	writeFile(test, filepath.Join(directory, "go.mod"), "module run\n\ngo 1.26\n")
+	writeFile(test, filepath.Join(directory, "prog.go"), string(outputs[0].Src))
 	runCommand := exec.Command("go", "run", ".")
-	runCommand.Dir = dir
+	runCommand.Dir = directory
 	got, err := runCommand.CombinedOutput()
 	if err == nil {
 		test.Fatalf("expected panic, got none:\n%s", outputs[0].Src)
@@ -482,7 +480,7 @@ func TestKeepGoingEmitsDespiteTypeErrors(test *testing.T) {
 }
 
 func TestIsGeneratedFile(test *testing.T) {
-	dir := test.TempDir()
+	directory := test.TempDir()
 	files := map[string]string{
 		"generated.go": GeneratedPrefix + " from x.gol. DO NOT EDIT.\n\npackage x\n",
 		"written.go":   "package x\n",
@@ -490,7 +488,7 @@ func TestIsGeneratedFile(test *testing.T) {
 	}
 	want := map[string]bool{"generated.go": true, "written.go": false, "short.go": false}
 	for name, content := range files {
-		path := filepath.Join(dir, name)
+		path := filepath.Join(directory, name)
 		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 			test.Fatal(err)
 		}
@@ -499,7 +497,7 @@ func TestIsGeneratedFile(test *testing.T) {
 			test.Errorf("IsGeneratedFile(%s) = %v, %v, want %v", name, isGenerated, err, want[name])
 		}
 	}
-	if _, err := IsGeneratedFile(filepath.Join(dir, "missing.go")); err == nil {
+	if _, err := IsGeneratedFile(filepath.Join(directory, "missing.go")); err == nil {
 		test.Error("want an error for a missing file")
 	}
 }

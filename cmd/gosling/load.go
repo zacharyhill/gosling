@@ -85,12 +85,15 @@ func walkGoslingDirs(root string, seen map[string]bool, add func(string)) error 
 			}
 			return err
 		}
-		name := entry.Name()
-		if entryPath != root && (name == "testdata" || name == "vendor" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")) {
+		if entryPath != root && isSkippedDir(entry.Name()) {
 			return filepath.SkipDir
 		}
 		return nil
 	})
+}
+
+func isSkippedDir(name string) bool {
+	return name == "testdata" || name == "vendor" || strings.HasPrefix(name, ".") || strings.HasPrefix(name, "_")
 }
 
 // isGoslingFile reports whether a file makes its directory a gosling
@@ -202,22 +205,23 @@ func readHeader(filePath string, src []byte) (sourceFile, error) {
 }
 
 func importPath(dir string) (string, error) {
-	absDir, err := filepath.Abs(dir)
+	absoluteDir, err := filepath.Abs(dir)
 	if err != nil {
 		return "", err
 	}
-	for searchDir := absDir; ; searchDir = filepath.Dir(searchDir) {
-		goModBytes, err := os.ReadFile(filepath.Join(searchDir, "go.mod"))
+	for searchDir := absoluteDir; ; searchDir = filepath.Dir(searchDir) {
+		goModPath := filepath.Join(searchDir, "go.mod")
+		goModContent, err := os.ReadFile(goModPath)
 		if err == nil {
-			modulePath := modfile.ModulePath(goModBytes)
+			modulePath := modfile.ModulePath(goModContent)
 			if modulePath == "" {
-				return "", fmt.Errorf("%s: no module path", filepath.Join(searchDir, "go.mod"))
+				return "", fmt.Errorf("%s: no module path", goModPath)
 			}
-			relPath, err := filepath.Rel(searchDir, absDir)
+			relativePath, err := filepath.Rel(searchDir, absoluteDir)
 			if err != nil {
 				return "", err
 			}
-			return path.Join(modulePath, filepath.ToSlash(relPath)), nil
+			return path.Join(modulePath, filepath.ToSlash(relativePath)), nil
 		}
 		if !errors.Is(err, fs.ErrNotExist) {
 			return "", err
@@ -229,11 +233,11 @@ func importPath(dir string) (string, error) {
 }
 
 func sortByImports(dirs []*packageDir) []*packageDir {
-	byPath := map[string]*packageDir{}
+	dirsByImportPath := map[string]*packageDir{}
 	for _, dirInfo := range dirs {
-		byPath[dirInfo.importPath] = dirInfo
+		dirsByImportPath[dirInfo.importPath] = dirInfo
 	}
-	var out []*packageDir
+	var sorted []*packageDir
 	visited := map[*packageDir]bool{}
 	var visit func(dirInfo *packageDir)
 	visit = func(dirInfo *packageDir) {
@@ -241,17 +245,17 @@ func sortByImports(dirs []*packageDir) []*packageDir {
 			return
 		}
 		visited[dirInfo] = true
-		for _, source := range append(dirInfo.golFiles, dirInfo.goFiles...) {
+		for _, source := range concatFiles(dirInfo.golFiles, dirInfo.goFiles) {
 			for _, importedPath := range source.imports {
-				if dependency, ok := byPath[importedPath]; ok {
+				if dependency, ok := dirsByImportPath[importedPath]; ok {
 					visit(dependency)
 				}
 			}
 		}
-		out = append(out, dirInfo)
+		sorted = append(sorted, dirInfo)
 	}
 	for _, dirInfo := range dirs {
 		visit(dirInfo)
 	}
-	return out
+	return sorted
 }

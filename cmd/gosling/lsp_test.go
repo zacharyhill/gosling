@@ -121,21 +121,9 @@ func fileURI(path string) string {
 func (client *testClient) readLoop(reader *bufio.Reader) {
 	defer close(client.messages)
 	for {
-		var length int
-		for {
-			line, err := reader.ReadString('\n')
-			if err != nil {
-				return
-			}
-			line = strings.TrimSpace(line)
-			if line == "" {
-				break
-			}
-			if value, ok := strings.CutPrefix(line, "Content-Length: "); ok {
-				if _, err := fmt.Sscan(value, &length); err != nil {
-					return
-				}
-			}
+		length, err := readContentLength(reader)
+		if err != nil {
+			return
 		}
 		body := make([]byte, length)
 		if _, err := io.ReadFull(reader, body); err != nil {
@@ -144,6 +132,26 @@ func (client *testClient) readLoop(reader *bufio.Reader) {
 		var message lspMessage
 		if json.Unmarshal(body, &message) == nil {
 			client.messages <- message
+		}
+	}
+}
+
+// readContentLength reads the header lines of one message.
+func readContentLength(reader *bufio.Reader) (int, error) {
+	var length int
+	for {
+		line, err := reader.ReadString('\n')
+		if err != nil {
+			return 0, err
+		}
+		line = strings.TrimSpace(line)
+		if line == "" {
+			return length, nil
+		}
+		if value, ok := strings.CutPrefix(line, "Content-Length: "); ok {
+			if _, err := fmt.Sscan(value, &length); err != nil {
+				return 0, err
+			}
 		}
 	}
 }
@@ -233,7 +241,7 @@ func (client *testClient) answer(message lspMessage) {
 // waitForDiagnostics returns the next diagnostics for uri that satisfy want.
 func (client *testClient) waitForDiagnostics(uri string, want func([]lspDiagnostic) bool) []lspDiagnostic {
 	client.test.Helper()
-	check := func(message lspMessage) ([]lspDiagnostic, bool) {
+	matchDiagnostics := func(message lspMessage) ([]lspDiagnostic, bool) {
 		var params struct {
 			URI         string          `json:"uri"`
 			Diagnostics []lspDiagnostic `json:"diagnostics"`
@@ -244,12 +252,12 @@ func (client *testClient) waitForDiagnostics(uri string, want func([]lspDiagnost
 		return params.Diagnostics, want(params.Diagnostics)
 	}
 	for _, message := range client.notifications {
-		if diagnostics, ok := check(message); ok {
+		if diagnostics, ok := matchDiagnostics(message); ok {
 			return diagnostics
 		}
 	}
 	for {
-		if diagnostics, ok := check(client.next()); ok {
+		if diagnostics, ok := matchDiagnostics(client.next()); ok {
 			return diagnostics
 		}
 	}
@@ -346,7 +354,7 @@ func TestLSP(test *testing.T) {
 	}
 	dir := test.TempDir()
 	writeTree(test, dir, map[string]string{
-		"go.mod":     "module example.com/app\n\ngo 1.26\n",
+		"go.mod":     goModFile,
 		"main.gol":   lspMain,
 		"helper.gol": lspHelper,
 	})
@@ -406,9 +414,9 @@ func (session *lspSession) checkHover(test *testing.T) {
 }
 
 func (session *lspSession) checkGeneratedPosition(test *testing.T) {
-	result := session.client.request("textDocument/hover", textDocumentPosition(session.mainURI, positionOf(test, lspMain, "try")))
-	if string(result) != "null" {
-		test.Errorf("hover on try = %s, want null", result)
+	hover := session.client.request("textDocument/hover", textDocumentPosition(session.mainURI, positionOf(test, lspMain, "try")))
+	if string(hover) != "null" {
+		test.Errorf("hover on try = %s, want null", hover)
 	}
 }
 
@@ -449,8 +457,8 @@ func (session *lspSession) checkCompletion(test *testing.T) {
 		test.Fatalf("decode %s: %v", raw, err)
 	}
 	labels := make([]string, 0, len(completion.Items))
-	for _, item := range completion.Items {
-		labels = append(labels, item.Label)
+	for _, completionItem := range completion.Items {
+		labels = append(labels, completionItem.Label)
 	}
 	if !slices.Contains(labels, "Println") {
 		test.Errorf("completion labels = %v, want Println", labels)
@@ -460,7 +468,7 @@ func (session *lspSession) checkCompletion(test *testing.T) {
 // editCountsByURI returns the number of edits for each URI in a rename result.
 func editCountsByURI(test *testing.T, raw json.RawMessage) map[string]int {
 	test.Helper()
-	var edit struct {
+	var workspaceEdit struct {
 		Changes         map[string][]json.RawMessage `json:"changes"`
 		DocumentChanges []struct {
 			TextDocument struct {
@@ -469,14 +477,14 @@ func editCountsByURI(test *testing.T, raw json.RawMessage) map[string]int {
 			Edits []json.RawMessage `json:"edits"`
 		} `json:"documentChanges"`
 	}
-	if err := json.Unmarshal(raw, &edit); err != nil {
+	if err := json.Unmarshal(raw, &workspaceEdit); err != nil {
 		test.Fatalf("decode %s: %v", raw, err)
 	}
 	counts := map[string]int{}
-	for uri, edits := range edit.Changes {
+	for uri, edits := range workspaceEdit.Changes {
 		counts[uri] += len(edits)
 	}
-	for _, change := range edit.DocumentChanges {
+	for _, change := range workspaceEdit.DocumentChanges {
 		counts[change.TextDocument.URI] += len(change.Edits)
 	}
 	return counts

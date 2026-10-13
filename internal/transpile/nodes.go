@@ -47,14 +47,14 @@ func outermostParen(parentOf map[ast.Node]ast.Node, node ast.Node) (ast.Node, as
 	}
 }
 
-func enclosingSig(info *types.Info, parentOf map[ast.Node]ast.Node, node ast.Node) *types.Signature {
+func enclosingSignature(typeInfo *types.Info, parentOf map[ast.Node]ast.Node, node ast.Node) *types.Signature {
 	for ancestor := parentOf[node]; ancestor != nil; ancestor = parentOf[ancestor] {
 		switch funcNode := ancestor.(type) {
 		case *ast.FuncLit:
-			signature, _ := info.Types[funcNode].Type.(*types.Signature)
+			signature, _ := typeInfo.Types[funcNode].Type.(*types.Signature)
 			return signature
 		case *ast.FuncDecl:
-			if object := info.Defs[funcNode.Name]; object != nil {
+			if object := typeInfo.Defs[funcNode.Name]; object != nil {
 				signature, _ := object.Type().(*types.Signature)
 				return signature
 			}

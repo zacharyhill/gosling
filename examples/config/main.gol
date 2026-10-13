@@ -16,39 +16,39 @@ type Config struct {
 
 // load uses one catch block to wrap each failure in its try block.
 func load(path string) (Config, error) {
-	let cfg: Config
+	let config: Config
 	try {
-		const data = os.ReadFile(path)
-		json.Unmarshal(data, &cfg)
+		const contents = os.ReadFile(path)
+		json.Unmarshal(contents, &config)
 	} catch (e) {
 		return Config{}, fmt.Errorf("load config: %w", e)
 	}
-	return cfg, nil
+	return config, nil
 }
 
 // loadAll uses try/catch to send each failed call in the block to one handler.
 func loadAll(paths []string) ([]Config, error) {
-	let out: []Config
+	let configs: []Config
 	try {
-		for (const p of paths) {
-			const cfg = load(p)
-			out = append(out, cfg)
+		for (const path of paths) {
+			const config = load(path)
+			configs = append(configs, config)
 		}
 	} catch (e) {
 		return nil, fmt.Errorf("loading configs: %w", e)
 	}
-	return out, nil
+	return configs, nil
 }
 
 // describe uses destructuring, for...of, template literals, ??, and array methods.
 // Code cannot assign to the names that const declares.
-func describe(cfgs []Config) {
-	for (const cfg of cfgs) {
-		const {Name: name, Port: port} = cfg
-		fmt.Println(t`${name} listens on ${cfg.Host ?? "localhost"}:${port}`)
+func describe(configs []Config) {
+	for (const config of configs) {
+		const {Name: name, Port: port} = config
+		fmt.Println(t`${name} listens on ${config.Host ?? "localhost"}:${port}`)
 	}
-	const public = cfgs.filter(c => c.Port < 10000).map(c => c.Name)
-	fmt.Println(t`public services: ${public}`)
+	const publicNames = configs.filter(config => config.Port < 10000).map(config => config.Name)
+	fmt.Println(t`public services: ${publicNames}`)
 }
 
 func main() {
@@ -56,8 +56,8 @@ func main() {
 	const good = filepath.Join(dir, "gosling-good.json")
 	try {
 		os.WriteFile(good, []byte(`{"name":"api","port":8080}`), 0o600)
-		const cfgs = loadAll([]string{good})
-		describe(cfgs)
+		const configs = loadAll([]string{good})
+		describe(configs)
 		loadAll([]string{good, filepath.Join(dir, "gosling-missing.json")})
 	} catch (e) {
 		fmt.Println("error:", e)
