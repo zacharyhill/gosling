@@ -108,6 +108,7 @@ The language server is `gosling lsp`. It runs gopls on the generated code and ma
 - Find All References and highlights
 - Hover
 - Completion and signature help
+- Rename
 - The outline of a file
 - Diagnostics: gosling errors, and gopls warnings for the generated code
 
@@ -149,7 +150,8 @@ If the server does not start, open the Output panel (Ctrl+Shift+U) and select **
 
 - Code that gosling generates, such as `try` and `catch`, has no hover or definition.
 - A definition in generated code, such as a catch variable, goes to the nearest token before it.
-- Rename and formatting are not supported. They would change generated code.
+- A rename fails if the name also occurs in code that gosling generates, such as a catch variable. A partial rename would break the code.
+- Formatting is not supported. It would change generated code.
 - After a syntax error, the server keeps the last version that parsed. Lines that changed since that version get no results until the file parses again. Type errors do not have this problem.
 
 ## Language

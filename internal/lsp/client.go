@@ -17,10 +17,12 @@ var positionMethods = map[string]bool{
 	"textDocument/completion":        true,
 	"textDocument/signatureHelp":     true,
 	"textDocument/documentSymbol":    true,
+	"textDocument/rename":            true,
+	"textDocument/prepareRename":     true,
 }
 
 // serverCapabilities lists only the features that work on .gol files.
-// Formatting and rename would change generated code, so they are left out.
+// Formatting would change generated code, so it is left out.
 var serverCapabilities = map[string]any{
 	"textDocumentSync": map[string]any{
 		"openClose": true,
@@ -36,6 +38,7 @@ var serverCapabilities = map[string]any{
 	"documentSymbolProvider":    true,
 	"completionProvider":        map[string]any{"triggerCharacters": []string{"."}},
 	"signatureHelpProvider":     map[string]any{"triggerCharacters": []string{"(", ","}},
+	"renameProvider":            map[string]any{"prepareProvider": true},
 }
 
 func (server *server) handleClientMessage(message *rpcMessage) error {
@@ -166,7 +169,7 @@ func (server *server) handleClientRequest(message *rpcMessage) error {
 func (server *server) forwardInitialize(message *rpcMessage) error {
 	params, err := decodeJSON(message.Params)
 	if err != nil {
-		return server.respondError(message.ID, err)
+		return server.respondError(message.ID, invalidRequest, err)
 	}
 	if paramsObject, ok := params.(map[string]any); ok {
 		if capabilities, ok := paramsObject["capabilities"].(map[string]any); ok {
@@ -183,12 +186,15 @@ func (server *server) forwardInitialize(message *rpcMessage) error {
 	return server.writeGopls(message)
 }
 
-// invalidRequest is the JSON-RPC error code for a request that the server
-// cannot handle.
-const invalidRequest = -32600
+// JSON-RPC error codes. invalidRequest is for a request that the server
+// cannot read. requestFailed is the LSP code for a valid request that fails.
+const (
+	invalidRequest = -32600
+	requestFailed  = -32803
+)
 
-func (server *server) respondError(id json.RawMessage, cause error) error {
-	raw, err := json.Marshal(map[string]any{"code": invalidRequest, "message": cause.Error()})
+func (server *server) respondError(id json.RawMessage, code int, cause error) error {
+	raw, err := json.Marshal(map[string]any{"code": code, "message": cause.Error()})
 	if err != nil {
 		return err
 	}
@@ -201,7 +207,7 @@ func (server *server) respondError(id json.RawMessage, cause error) error {
 func (server *server) forwardPositionRequest(message *rpcMessage) error {
 	params, err := decodeJSON(message.Params)
 	if err != nil {
-		return server.respondError(message.ID, err)
+		return server.respondError(message.ID, invalidRequest, err)
 	}
 	paramsObject, ok := params.(map[string]any)
 	if !ok {

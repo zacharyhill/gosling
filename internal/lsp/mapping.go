@@ -224,6 +224,12 @@ func (mapper *mapper) goToGol(file *generatedFile, goPosition position) (positio
 	if !ok {
 		return position{}, false
 	}
+	return mapper.currentPosition(file, golOffset)
+}
+
+// currentPosition maps an offset in the .gol text that file came from to
+// the editor text.
+func (mapper *mapper) currentPosition(file *generatedFile, golOffset int) (position, bool) {
 	current := mapper.server.currentGolText(file)
 	if !bytes.Equal(current, file.golText) {
 		shift, cached := mapper.shifts[file]
@@ -231,6 +237,7 @@ func (mapper *mapper) goToGol(file *generatedFile, goPosition position) (positio
 			shift = diffText(file.golText, current)
 			mapper.shifts[file] = shift
 		}
+		var ok bool
 		if golOffset, ok = shift.toNew(golOffset); !ok {
 			return position{}, false
 		}
@@ -249,14 +256,21 @@ func (server *server) generatedFor(path string) *generatedFile {
 		return file
 	}
 	server.external[path] = nil
-	if !strings.HasSuffix(path, ".go") {
-		return nil
-	}
-	if _, err := os.Stat(golPathFor(path)); err != nil {
+	if !isGeneratedPath(path) {
 		return nil
 	}
 	server.loadExternal(filepath.Dir(path))
 	return server.external[path]
+}
+
+// isGeneratedPath reports whether path is a .go file next to a .gol file of
+// the same name.
+func isGeneratedPath(path string) bool {
+	if !strings.HasSuffix(path, ".go") {
+		return false
+	}
+	_, err := os.Stat(golPathFor(path))
+	return err == nil
 }
 
 // loadExternal generates a package from disk. Files whose output differs

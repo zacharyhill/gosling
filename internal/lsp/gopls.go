@@ -28,15 +28,24 @@ func (server *server) handleGoplsResponse(message *rpcMessage) error {
 	if message.Error != nil || message.Result == nil {
 		return server.writeClient(message)
 	}
-	if request.method == "initialize" {
+	switch request.method {
+	case "initialize":
 		return server.respondClient(message.ID, map[string]any{
 			"capabilities": serverCapabilities,
 			"serverInfo":   map[string]any{"name": "gosling"},
 		})
+	case "textDocument/rename":
+		edit, err := server.mapRename(message.Result)
+		if err != nil {
+			return server.respondError(message.ID, requestFailed, err)
+		}
+		return server.respondClient(message.ID, edit)
+	case "textDocument/prepareRename":
+		return server.respondClient(message.ID, server.mapPrepareRename(message.Result, request.origin))
 	}
 	result, err := decodeJSON(message.Result)
 	if err != nil {
-		return server.respondError(message.ID, err)
+		return server.respondError(message.ID, invalidRequest, err)
 	}
 	if hover, ok := result.(map[string]any); ok && request.method == "textDocument/hover" {
 		// The hover range is optional. Without it, a hover on a name that

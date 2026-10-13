@@ -159,9 +159,20 @@ func (client *testClient) notify(method string, params any) {
 	client.send(map[string]any{"method": method, "params": params})
 }
 
-// request sends a request and returns its result. It answers server
-// requests and keeps notifications while it waits.
+// request sends a request and returns its result. It fails the test if the
+// server returns an error.
 func (client *testClient) request(method string, params any) json.RawMessage {
+	client.test.Helper()
+	response := client.call(method, params)
+	if response.Error != nil {
+		client.test.Fatalf("%s failed: %s", method, response.Error)
+	}
+	return response.Result
+}
+
+// call sends a request and returns the response. It answers server requests
+// and keeps notifications while it waits.
+func (client *testClient) call(method string, params any) lspMessage {
 	client.test.Helper()
 	client.nextID++
 	id := fmt.Sprint(client.nextID)
@@ -169,10 +180,7 @@ func (client *testClient) request(method string, params any) json.RawMessage {
 	for {
 		message := client.next()
 		if message.Method == "" && string(message.ID) == id {
-			if message.Error != nil {
-				client.test.Fatalf("%s failed: %s", method, message.Error)
-			}
-			return message.Result
+			return message
 		}
 	}
 }
@@ -300,6 +308,13 @@ func (session *lspSession) changeMain(text string) {
 	})
 }
 
+func (session *lspSession) rename(test *testing.T, needle, newName string) lspMessage {
+	test.Helper()
+	params := textDocumentPosition(session.mainURI, positionOf(test, lspMain, needle))
+	params["newName"] = newName
+	return session.client.call("textDocument/rename", params)
+}
+
 func (session *lspSession) definition(test *testing.T, text, needle string) []lspLocation {
 	test.Helper()
 	params := textDocumentPosition(session.mainURI, positionOf(test, text, needle))
@@ -325,6 +340,8 @@ func TestLSP(test *testing.T) {
 	test.Run("definition in another gol file", session.checkOtherFileDefinition)
 	test.Run("hover on a standard library call", session.checkHover)
 	test.Run("position in generated code has no result", session.checkGeneratedPosition)
+	test.Run("rename across gol files", session.checkRename)
+	test.Run("rename that changes generated code fails", session.checkRenameInGeneratedCode)
 	test.Run("syntax error becomes a diagnostic", session.checkSyntaxError)
 	test.Run("edit after the last good version still maps", session.checkStaleMapping)
 	test.Run("completion in code with a type error", session.checkCompletion)
@@ -413,5 +430,51 @@ func (session *lspSession) checkCompletion(test *testing.T) {
 	}
 	if !slices.Contains(labels, "Println") {
 		test.Errorf("completion labels = %v, want Println", labels)
+	}
+}
+
+// editCountsByURI returns the number of edits for each URI in a rename result.
+func editCountsByURI(test *testing.T, raw json.RawMessage) map[string]int {
+	test.Helper()
+	var edit struct {
+		Changes         map[string][]json.RawMessage `json:"changes"`
+		DocumentChanges []struct {
+			TextDocument struct {
+				URI string `json:"uri"`
+			} `json:"textDocument"`
+			Edits []json.RawMessage `json:"edits"`
+		} `json:"documentChanges"`
+	}
+	if err := json.Unmarshal(raw, &edit); err != nil {
+		test.Fatalf("decode %s: %v", raw, err)
+	}
+	counts := map[string]int{}
+	for uri, edits := range edit.Changes {
+		counts[uri] += len(edits)
+	}
+	for _, change := range edit.DocumentChanges {
+		counts[change.TextDocument.URI] += len(change.Edits)
+	}
+	return counts
+}
+
+func (session *lspSession) checkRename(test *testing.T) {
+	response := session.rename(test, "helperName", "helperText")
+	if response.Error != nil {
+		test.Fatalf("rename failed: %s", response.Error)
+	}
+	counts := editCountsByURI(test, response.Result)
+	helperURI := fileURI(filepath.Join(session.dir, "helper.gol"))
+	if len(counts) != 2 || counts[session.mainURI] != 1 || counts[helperURI] != 1 {
+		test.Errorf("edits by file = %v, want one in main.gol and one in helper.gol", counts)
+	}
+}
+
+// checkRenameInGeneratedCode renames a catch variable. gosling writes its
+// declaration, so the rename cannot change only .gol text.
+func (session *lspSession) checkRenameInGeneratedCode(test *testing.T) {
+	response := session.rename(test, "e)\n\t}\n}\n\nfunc main", "failure")
+	if !strings.Contains(string(response.Error), "code that gosling generates") {
+		test.Errorf("rename = %s, error %s, want the generated code error", response.Result, response.Error)
 	}
 }
