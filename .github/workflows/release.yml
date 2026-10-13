@@ -1,0 +1,47 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  vscode-extension:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: editors/vscode
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: lts/*
+          cache: npm
+          cache-dependency-path: editors/vscode/package-lock.json
+
+      - name: Check that the tag matches the extension version
+        run: |
+          version="v$(node -p "require('./package.json').version")"
+          if [ "$version" != "$GITHUB_REF_NAME" ]; then
+            echo "::error::Tag $GITHUB_REF_NAME does not match package.json version $version"
+            exit 1
+          fi
+
+      - run: npm ci
+
+      - run: npm run package
+
+      # The install command in the README downloads gosling.vsix from the
+      # latest release, so the asset name must not change.
+      - name: Attach gosling.vsix to the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" gosling.vsix --clobber
+          else
+            gh release create "$GITHUB_REF_NAME" gosling.vsix --title "$GITHUB_REF_NAME" --generate-notes
+          fi

@@ -442,6 +442,8 @@ The language server tests run gopls. They are skipped if gopls is not installed,
 
 To test the VS Code extension, run `npm test` in `editors/vscode`.
 
+The CI workflow in `.github/workflows/ci.yml` runs on each push to `main` and on each pull request. It checks formatting, runs `go vet`, the Go tests, `gosling -check`, and the extension tests.
+
 To make a release, set `version` in `editors/vscode/package.json`. Then push a tag with the same version:
 
 ```sh
