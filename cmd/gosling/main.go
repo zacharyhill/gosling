@@ -4,6 +4,7 @@
 // Usage:
 //
 //	gosling [-check] [-lines=false] [-v] [dir | dir/...]...
+//	gosling -version
 //	gosling lsp [-gopls path] [-generate-on-save]
 //
 // With no arguments, gosling converts the current directory. To use go
@@ -20,15 +21,16 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 
 	"github.com/zacharyhill/gosling/internal/transpile"
 )
 
 func main() {
-	os.Exit(run(os.Args[1:], os.Stderr))
+	os.Exit(run(os.Args[1:], os.Stdout, os.Stderr))
 }
 
-func run(args []string, stderr io.Writer) int {
+func run(args []string, stdout, stderr io.Writer) int {
 	if len(args) > 0 && args[0] == "lsp" {
 		return runLSP(args[1:], stderr)
 	}
@@ -37,12 +39,17 @@ func run(args []string, stderr io.Writer) int {
 	check := flags.Bool("check", false, "report out-of-date outputs and exit 1 instead of writing")
 	lines := flags.Bool("lines", true, "emit line directives so errors and stack traces point at .gol files")
 	verbose := flags.Bool("v", false, "print progress while generating (-check always does)")
+	showVersion := flags.Bool("version", false, "print the gosling version and exit")
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "usage: gosling [-check] [-lines=false] [-v] [dir | dir/...]...")
+		fmt.Fprintln(stderr, "usage: gosling [-check] [-lines=false] [-v] [-version] [dir | dir/...]...")
 		flags.PrintDefaults()
 	}
 	if err := flags.Parse(args); err != nil {
 		return 2
+	}
+	if *showVersion {
+		fmt.Fprintln(stdout, "gosling", version())
+		return 0
 	}
 	patterns := flags.Args()
 	isDefaultDir := len(patterns) == 0
@@ -58,6 +65,16 @@ func run(args []string, stderr io.Writer) int {
 		return 1
 	}
 	return 0
+}
+
+// version returns the module version that go install or go build stamps
+// into the binary.
+func version() string {
+	buildInfo, ok := debug.ReadBuildInfo()
+	if !ok {
+		return "(unknown)"
+	}
+	return buildInfo.Main.Version
 }
 
 var errStale = errors.New("generated files are out of date; run gosling")
