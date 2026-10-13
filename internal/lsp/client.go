@@ -39,6 +39,14 @@ var serverCapabilities = map[string]any{
 	"completionProvider":        map[string]any{"triggerCharacters": []string{"."}},
 	"signatureHelpProvider":     map[string]any{"triggerCharacters": []string{"(", ","}},
 	"renameProvider":            map[string]any{"prepareProvider": true},
+	"workspace": map[string]any{
+		"fileOperations": map[string]any{"didRename": golFileFilter, "didDelete": golFileFilter},
+	},
+}
+
+// golFileFilter makes the editor report renames and deletes of .gol files.
+var golFileFilter = map[string]any{
+	"filters": []any{map[string]any{"pattern": map[string]any{"glob": "**/*" + sourceExt}}},
 }
 
 func (server *server) handleClientMessage(message *rpcMessage) error {
@@ -63,9 +71,12 @@ type textDocumentParams struct {
 }
 
 func (server *server) handleClientNotification(message *rpcMessage) error {
-	if message.Method == "exit" {
+	switch message.Method {
+	case "exit":
 		server.exiting = true
 		return server.writeGopls(message)
+	case "workspace/didRenameFiles", "workspace/didDeleteFiles":
+		return server.handleFileOperation(message)
 	}
 	var params textDocumentParams
 	golPath, isGol := "", false

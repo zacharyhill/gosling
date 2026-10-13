@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/zacharyhill/gosling/internal/transpile"
 )
 
 func writeTree(test *testing.T, root string, files map[string]string) {
@@ -227,6 +229,110 @@ func TestRefusesHandWrittenFile(test *testing.T) {
 	}
 	if string(got) != "package main\n\nfunc main() {}\n" {
 		test.Error("hand-written main.go was modified")
+	}
+}
+
+// renamedTree is a module after a rename of foo.gol to bar.gol. foo.go is
+// the output of the old name, and it declares the same function as bar.gol.
+var renamedTree = map[string]string{
+	"go.mod":  "module example.com/app\n\ngo 1.26\n",
+	"bar.gol": "package main\n\nfunc helper() int { return 2 }\n\nfunc main() { println(helper(), keep()) }\n",
+	"foo.go":  transpile.GeneratedPrefix + " from foo.gol. DO NOT EDIT.\n\npackage main\n\nfunc helper() int { return 1 }\n",
+	"keep.go": "package main\n\nfunc keep() int { return 3 }\n",
+}
+
+func TestRemovesOrphanedGeneratedFile(test *testing.T) {
+	if testing.Short() {
+		test.Skip("runs the go tool")
+	}
+	dir := test.TempDir()
+	writeTree(test, dir, renamedTree)
+	test.Chdir(dir)
+	var stderr bytes.Buffer
+	if code := run([]string{"."}, &stderr); code != 0 {
+		test.Fatalf("exit %d, want 0: %s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "removed foo.go") {
+		test.Errorf("stderr: %s", stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "foo.go")); !os.IsNotExist(err) {
+		test.Errorf("foo.go still exists: %v", err)
+	}
+	for _, name := range []string{"bar.go", "keep.go"} {
+		if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+			test.Errorf("%s: %v", name, err)
+		}
+	}
+}
+
+func TestCheckReportsOrphanedGeneratedFile(test *testing.T) {
+	if testing.Short() {
+		test.Skip("runs the go tool")
+	}
+	dir := test.TempDir()
+	writeTree(test, dir, renamedTree)
+	test.Chdir(dir)
+	var stderr bytes.Buffer
+	if code := run([]string{"-check", "."}, &stderr); code != 1 {
+		test.Fatalf("exit %d, want 1: %s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "foo.go has no source file") {
+		test.Errorf("stderr: %s", stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "foo.go")); err != nil {
+		test.Errorf("-check removed foo.go: %v", err)
+	}
+}
+
+// orphanOnlyTree has a directory whose last .gol file is gone. Only the
+// output of that file is left.
+var orphanOnlyTree = map[string]string{
+	"go.mod":     "module example.com/app\n\ngo 1.26\n",
+	"main.gol":   "package main\n\nfunc main() {}\n",
+	"lib/old.go": transpile.GeneratedPrefix + " from old.gol. DO NOT EDIT.\n\npackage lib\n",
+}
+
+func TestRemovesOrphansInDirectoryWithoutSources(test *testing.T) {
+	if testing.Short() {
+		test.Skip("runs the go tool")
+	}
+	dir := test.TempDir()
+	writeTree(test, dir, orphanOnlyTree)
+	test.Chdir(dir)
+	var stderr bytes.Buffer
+	if code := run([]string{"."}, &stderr); code != 0 {
+		test.Fatalf("generate main.go: exit %d: %s", code, stderr.String())
+	}
+	stderr.Reset()
+	if code := run([]string{"-check", "./..."}, &stderr); code != 1 {
+		test.Fatalf("-check exit %d, want 1: %s", code, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), filepath.Join("lib", "old.go")+" has no source file") {
+		test.Errorf("-check stderr: %s", stderr.String())
+	}
+	stderr.Reset()
+	if code := run([]string{"./..."}, &stderr); code != 0 {
+		test.Fatalf("exit %d, want 0: %s", code, stderr.String())
+	}
+	if _, err := os.Stat(filepath.Join(dir, "lib", "old.go")); !os.IsNotExist(err) {
+		test.Errorf("lib/old.go still exists: %v", err)
+	}
+}
+
+// TestLanguageServerIgnoresOrphanedGeneratedFile checks the editor path. It
+// must not report the functions of foo.go as declared twice.
+func TestLanguageServerIgnoresOrphanedGeneratedFile(test *testing.T) {
+	if testing.Short() {
+		test.Skip("runs the go tool")
+	}
+	dir := test.TempDir()
+	writeTree(test, dir, renamedTree)
+	outputs, err := generator{}.Generate(dir, nil, false)
+	if err != nil {
+		test.Fatalf("Generate: %v", err)
+	}
+	if len(outputs) != 1 || filepath.Base(outputs[0].Path) != "bar.go" {
+		test.Errorf("outputs = %v, want only bar.go", outputs)
 	}
 }
 

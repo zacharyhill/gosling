@@ -480,3 +480,35 @@ func TestKeepGoingEmitsDespiteTypeErrors(test *testing.T) {
 		test.Errorf("without KeepGoing got %d outputs, %v, want no outputs and an error", len(outputs), err)
 	}
 }
+
+func TestIsGeneratedFile(test *testing.T) {
+	dir := test.TempDir()
+	files := map[string]string{
+		"generated.go": GeneratedPrefix + " from x.gol. DO NOT EDIT.\n\npackage x\n",
+		"written.go":   "package x\n",
+		"short.go":     "//",
+	}
+	want := map[string]bool{"generated.go": true, "written.go": false, "short.go": false}
+	for name, content := range files {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+			test.Fatal(err)
+		}
+		isGenerated, err := IsGeneratedFile(path)
+		if err != nil || isGenerated != want[name] {
+			test.Errorf("IsGeneratedFile(%s) = %v, %v, want %v", name, isGenerated, err, want[name])
+		}
+	}
+	if _, err := IsGeneratedFile(filepath.Join(dir, "missing.go")); err == nil {
+		test.Error("want an error for a missing file")
+	}
+}
+
+func TestIsGenerated(test *testing.T) {
+	if !IsGenerated([]byte(GeneratedPrefix + " from x.gol. DO NOT EDIT.\n")) {
+		test.Error("want true for a file with the gosling header")
+	}
+	if IsGenerated([]byte("package x\n")) || IsGenerated([]byte("//")) {
+		test.Error("want false for a file without the gosling header")
+	}
+}

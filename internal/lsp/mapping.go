@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/zacharyhill/gosling/internal/transpile"
 )
 
 // rangeKeys are the LSP fields that hold a range in the document of the
@@ -256,21 +258,31 @@ func (server *server) generatedFor(path string) *generatedFile {
 		return file
 	}
 	server.external[path] = nil
-	if !isGeneratedPath(path) {
+	if !hasSource(path) {
 		return nil
 	}
 	server.loadExternal(filepath.Dir(path))
 	return server.external[path]
 }
 
-// isGeneratedPath reports whether path is a .go file next to a .gol file of
-// the same name.
-func isGeneratedPath(path string) bool {
+// hasSource reports whether path is a .go file next to a .gol file of the
+// same name.
+func hasSource(path string) bool {
 	if !strings.HasSuffix(path, ".go") {
 		return false
 	}
 	_, err := os.Stat(golPathFor(path))
 	return err == nil
+}
+
+// isGeneratedPath reports whether gosling generates path. An orphan, which is
+// a generated file whose .gol file is gone, counts.
+func isGeneratedPath(path string) bool {
+	if hasSource(path) {
+		return true
+	}
+	isGenerated, err := transpile.IsGeneratedFile(path)
+	return err == nil && isGenerated
 }
 
 // loadExternal generates a package from disk. Files whose output differs

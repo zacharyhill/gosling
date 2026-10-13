@@ -2,7 +2,11 @@ package lsp
 
 import (
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
+
+	"github.com/zacharyhill/gosling/internal/transpile"
 )
 
 func editsJSON(test *testing.T, uri string, ranges ...lspRange) json.RawMessage {
@@ -112,5 +116,20 @@ func TestPrepareRenameMapsRange(test *testing.T) {
 	}
 	if mapped := server.mapPrepareRename(raw, file); mapped != nil {
 		test.Errorf("generated range = %v, want nil", mapped)
+	}
+}
+
+// TestRenameRejectsOrphanedFile renames in a generated file whose .gol file
+// is gone. gosling removes such a file on the next run, so the rename must
+// not edit it.
+func TestRenameRejectsOrphanedFile(test *testing.T) {
+	server, _ := newMappingServer(test)
+	orphanPath := filepath.Join(test.TempDir(), "old.go")
+	if err := os.WriteFile(orphanPath, []byte(transpile.GeneratedPrefix+" from old.gol. DO NOT EDIT.\n\npackage p\n"), 0o644); err != nil {
+		test.Fatal(err)
+	}
+	editRange := lspRange{Start: position{Line: 2, Character: 0}, End: position{Line: 2, Character: 7}}
+	if _, err := server.mapRename(editsJSON(test, pathToURI(orphanPath), editRange)); err == nil {
+		test.Fatal("want an error for an edit in an orphaned generated file")
 	}
 }
