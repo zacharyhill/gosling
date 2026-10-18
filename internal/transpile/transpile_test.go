@@ -448,6 +448,56 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:7:9: spread needs package slices and the element type, but a needed name is already used in this file",
 		},
 		{
+			name: "array method marker in argument message",
+			src:  "package p\nfunc f(xs []int) bool {\n\treturn xs.includes(\"a\")\n}",
+			want: "x.gol:3:21: cannot use \"a\" (untyped string constant) as int value in argument to includes",
+		},
+		{
+			name: "array method marker in expression",
+			src:  "package p\nfunc f(xs []int) int {\n\treturn xs.filter(n => n > 1).indexOf(\"a\")\n}",
+			want: "x.gol:3:39: cannot use \"a\" (untyped string constant) as int value in argument to indexOf",
+		},
+		{
+			name: "map callback without a result",
+			src:  "package p\nfunc f(xs []int) []int {\n\treturn xs.map(x => { println(x) })\n}",
+			want: "x.gol:3:16: map callback must return a value",
+		},
+		{
+			name: "slice spread element of another type",
+			src:  "package p\nfunc f(xs []int64, n int) []int64 {\n\treturn [...xs, n]\n}",
+			want: "x.gol:3:17: slice spread element n has type int, want int64",
+		},
+		{
+			name: "slice spread of another slice type",
+			src:  "package p\nfunc f(xs []int64, ys []int) []int64 {\n\treturn [...xs, ...ys]\n}",
+			want: "x.gol:3:20: slice spread part ...ys has type []int, want []int64",
+		},
+		{
+			name: "slice spread element marker in argument message",
+			src:  "package p\nfunc f(xs []int64) []int64 {\n\treturn [...xs, int64(1), \"a\"]\n}",
+			want: "x.gol:3:27: cannot use \"a\" (untyped string constant) as int64 value in argument to slice spread",
+		},
+		{
+			name: "slice spread in expression",
+			src:  "package p\nfunc f(xs []int64) []string {\n\tlet ys: []string = [...xs, int64(1)]\n\treturn ys\n}",
+			want: "x.gol:3:21: cannot use [...xs, int64(1)] (value of type []int64) as []string value in variable declaration",
+		},
+		{
+			name: "struct spread of another type",
+			src:  "package p\ntype P struct{ X int }\ntype Q struct{ X int }\nfunc f(q Q) P {\n\treturn P{...q, X: 1}\n}",
+			want: "x.gol:5:15: struct spread of type Q into P",
+		},
+		{
+			name: "template literal in expression",
+			src:  "package p\nfunc f(n int) string {\n\tconst y = t`a ${n}` * 2\n\treturn y\n}",
+			want: "x.gol:3:12: invalid operation: t`a ${n}` * 2 (mismatched types string and untyped int)",
+		},
+		{
+			name: "nullish coalescing marker in argument message",
+			src:  "package p\nfunc f(s *int) int {\n\treturn s ?? \"x\"\n}",
+			want: "x.gol:3:14: cannot use \"x\" (untyped string constant) as int value in argument to ??",
+		},
+		{
 			name: "missing catch",
 			src:  "package p\nfunc f() {\n\ttry { }\n}",
 			want: "x.gol:3:8: try block must be followed by catch",
@@ -972,6 +1022,47 @@ func TestArrowParameterNamedLikePackage(test *testing.T) {
 	}
 	if want := "func(os *os.File) *os.File"; !strings.Contains(string(outputs[0].Src), want) {
 		test.Errorf("output does not contain %q:\n%s", want, outputs[0].Src)
+	}
+}
+
+func TestCleanMessage(test *testing.T) {
+	testCases := []struct{ message, want string }{
+		{"in argument to __goslingArr_includes", "in argument to includes"},
+		{"in argument to __goslingArr_findPI", "in argument to find"},
+		{"__goslingArr_findIndexI(xs, f) (value of type int)", "xs.findIndex(f) (value of type int)"},
+		{"__goslingArr_map(__goslingArr_filter(xs, f), g) + 1", "xs.filter(f).map(g) + 1"},
+		{"x.__goslingMap undefined", "x.map undefined"},
+		{"cannot use x as __goslingU value", "cannot use x as any value"},
+		{"in argument to __goslingOne[int64]", "in argument to slice spread"},
+		{"in argument to __goslingOne[map[string]int]", "in argument to slice spread"},
+		{"in call to __goslingCat, S (type int) does not satisfy ~[]E", "in call to slice spread, S (type int) does not satisfy ~[]E"},
+		{"__goslingCat(xs, __goslingOne(1, f(a, b)), ys) + 1", "[...xs, 1, f(a, b), ...ys] + 1"},
+		{"__goslingT(`a (`, n, `) b`) + 1", "t`a (${n}) b` + 1"},
+		{"__goslingT(`x`, …", "t(`x`, …"},
+		{"__goslingV(f()) + 1", "f() + 1"},
+		{"__goslingNP(p, 1) + \"a\"", "(p ?? 1) + \"a\""},
+		{"invalid operation: -__goslingN(p, 1)", "invalid operation: -(p ?? 1)"},
+		{"__goslingN(p, q).X undefined", "(p ?? q).X undefined"},
+		{"cannot use __goslingNP(p, 1) (value of type int)", "cannot use p ?? 1 (value of type int)"},
+		{"f(__goslingN(p, 1), 2)", "f(p ?? 1, 2)"},
+		{"in argument to __goslingN", "in argument to ??"},
+		{"p.__goslingO.X undefined", "p?.X undefined"},
+		{"__goslingVariants_Shape redeclared", "Shape redeclared"},
+		{"in call to __goslingWith, V (type int) does not satisfy", "in call to struct spread, V (type int) does not satisfy"},
+		{"my__goslingT stays", "my__goslingT stays"},
+		{
+			"in call to __goslingArr_mapI, type func(x int, i int) of (func(x int, i int) literal) does not match inferred type func(int, int) R for func(T, int) R",
+			"map callback must return a value",
+		},
+		{
+			"in call to __goslingArr_filter, type func(x int) (int, error) of f does not match inferred type func(int) bool for func(T) bool",
+			"filter callback has type func(x int) (int, error), want func(int) bool",
+		},
+	}
+	for _, testCase := range testCases {
+		if got := cleanMessage(testCase.message); got != testCase.want {
+			test.Errorf("cleanMessage(%q) = %q, want %q", testCase.message, got, testCase.want)
+		}
 	}
 }
 

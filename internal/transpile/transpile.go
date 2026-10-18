@@ -13,7 +13,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 
 	"golang.org/x/tools/go/ast/astutil"
@@ -506,22 +505,6 @@ func markerDecls(packageName string) string {
 		"func " + hoistMarker + "[T any](v T, err error) T { return v }\n" +
 		spreadMarkerDecls +
 		arrayMarkerDecls()
-}
-
-var arrayMarkerRE = regexp.MustCompile(arrayMarkerPrefix + `([a-zA-Z]+?)(PI|P|I)?\(`)
-
-// cleanMessage changes marker names in a type checker message back to the
-// user's syntax.
-func cleanMessage(message string) string {
-	if strings.Contains(message, arrayMarkerPrefix+"forEach") && strings.Contains(message, "used as value") {
-		return "forEach can only be used as a statement"
-	}
-	message = arrayMarkerRE.ReplaceAllString(message, "$1(")
-	return strings.NewReplacer(
-		preprocess.MapMarker, "map",
-		preprocess.UntypedMarker, "any",
-		preprocess.ResultMarker, "any",
-	).Replace(message)
 }
 
 func (transpiler *transpiler) unresolvedArrows() bool {
