@@ -225,6 +225,9 @@ func (transpiler *transpiler) parse(inputs []Input) error {
 		}
 		transpiler.plainGoFiles = append(transpiler.plainGoFiles, plainFile)
 	}
+	if err := transpiler.avoidPackageNamesInTemps(); err != nil {
+		return err
+	}
 	transpiler.diagnostics.Sort()
 	return transpiler.diagnostics.Err()
 }
@@ -233,21 +236,32 @@ func (transpiler *transpiler) parse(inputs []Input) error {
 // errors as diagnostics and returns only unexpected failures.
 func (transpiler *transpiler) parseInput(input Input) error {
 	transpiler.reportGoDeclarations(input)
-	preprocessed, err := preprocess.Process(input.Src)
+	golFile, err := transpiler.buildFile(input, nil)
+	if err != nil || golFile == nil {
+		return err
+	}
+	transpiler.files = append(transpiler.files, golFile)
+	return nil
+}
+
+// buildFile preprocesses and parses one .gol file. New temporary variables
+// do not use reservedNames. It returns nil after a syntax error.
+func (transpiler *transpiler) buildFile(input Input, reservedNames map[string]bool) (*file, error) {
+	preprocessed, err := preprocess.ProcessReserving(input.Src, reservedNames)
 	if err != nil {
 		var preprocessError *preprocess.Error
 		if !errors.As(err, &preprocessError) {
-			return err
+			return nil, err
 		}
 		failedFile := &file{path: input.Path, original: input.Src}
 		transpiler.diagnostics.Add(failedFile.positionAt(preprocessError.Offset), preprocessError.Msg)
-		return nil
+		return nil, nil
 	}
 	golFile := newFile(input, preprocessed)
 	astFile, err := parser.ParseFile(transpiler.fileSet, input.Path, preprocessed.Src, parser.ParseComments|parser.SkipObjectResolution)
 	if err != nil {
 		transpiler.addParseErrors(golFile, err)
-		return nil
+		return nil, nil
 	}
 	golFile.ast = astFile
 	golFile.tokenFile = transpiler.fileSet.File(astFile.Pos())
@@ -259,8 +273,7 @@ func (transpiler *transpiler) parseInput(input Input) error {
 	golFile.prepareFinally()
 	golFile.stripMarkers()
 	golFile.findArrows()
-	transpiler.files = append(transpiler.files, golFile)
-	return nil
+	return golFile, nil
 }
 
 // reportGoDeclarations reports each := and each var in a function in a .gol

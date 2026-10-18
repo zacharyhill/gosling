@@ -541,6 +541,19 @@ func TestProcessErrors(test *testing.T) {
 	}
 }
 
+func TestProcessReserving(test *testing.T) {
+	result, err := ProcessReserving([]byte("func f() { [x] := g() }"), map[string]bool{"tmp": true})
+	if err != nil {
+		test.Fatal(err)
+	}
+	if want := "func f() { tmp2 := g(); x := tmp2[0] }"; string(result.Src) != want {
+		test.Errorf("got %q, want %q", result.Src, want)
+	}
+	if len(result.TempNames) != 1 || result.TempNames[0] != "tmp2" {
+		test.Errorf("TempNames = %v, want [tmp2]", result.TempNames)
+	}
+}
+
 func TestOrigOffset(test *testing.T) {
 	src := "try { g() } catch (e) { h(e) }"
 	result, err := Process([]byte(src))
