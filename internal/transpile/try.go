@@ -196,13 +196,12 @@ func (lowerer *lowerer) emitTry(parts *tryStatement) {
 	}
 	lowerer.replace(stmt.Pos(), stmt.Body.Lbrace+1, head, lowerer.line(stmt.Pos()))
 
-	// A try block that cannot complete normally needs no jump over the
-	// catch block. With a jump, the end label is unused and the function
-	// fails Go's terminating statement check.
-	bodyTerminates := isTerminating(stmt.Body)
+	// Skip the jump over the catch block if the try block cannot complete. The jump
+	// would fail Go's terminating statement check, and go vet reports it as unreachable.
+	canBodyComplete := !neverCompletes(stmt.Body, neverReturns(lowerer.typeInfo))
 	var middle strings.Builder
 	middle.WriteString("}\n")
-	if !bodyTerminates {
+	if canBodyComplete {
 		fmt.Fprintf(&middle, "goto %s\n", try.endLabel())
 	}
 	fmt.Fprintf(&middle, "%s:\n{", try.catchLabel())
@@ -210,7 +209,7 @@ func (lowerer *lowerer) emitTry(parts *tryStatement) {
 	lowerer.replaceOffsets(lowerer.offset(stmt.Body.Rbrace), parts.catchEnd, middle.String(), lowerer.line(stmt.Body.Rbrace))
 
 	tail := "}\n}"
-	if !bodyTerminates {
+	if canBodyComplete {
 		tail = fmt.Sprintf("}\n%s:\n}", try.endLabel())
 	}
 	lowerer.replace(parts.catch.Rbrace, parts.catch.Rbrace+1, tail, lowerer.line(parts.catch.Rbrace))

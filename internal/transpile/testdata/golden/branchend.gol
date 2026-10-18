@@ -1,0 +1,123 @@
+package branchend
+
+import (
+	"os"
+	"testing"
+)
+
+func firstRemoved(paths []string) string {
+	for (const path of paths) {
+		try {
+			os.Remove(path)
+			return path
+		} catch {
+			continue
+		}
+	}
+	return ""
+}
+
+func removeUntilFailure(paths []string) int {
+	let count = 0
+	for (const path of paths) {
+		try {
+			os.Remove(path)
+			count++
+			continue
+		} catch (e) {
+			println(e.Error())
+		}
+		break
+	}
+	return count
+}
+
+func removeOne(paths []string) {
+	for (const path of paths) {
+		try {
+			os.Remove(path)
+			break
+		} catch {
+			println("retry")
+		}
+	}
+}
+
+func removeOrJump(path string) {
+	try {
+		os.Remove(path)
+		goto done
+	} catch {
+		println("failed")
+	}
+done:
+	println("done")
+}
+
+func removeOrPanic(path string) {
+	try {
+		os.Remove(path)
+		panic("removed")
+	} catch {
+		println("failed")
+	}
+}
+
+func branchByResult(paths []string, quiet bool) {
+	for (const path of paths) {
+		try {
+			os.Remove(path)
+			if quiet {
+				continue
+			} else {
+				break
+			}
+		} catch {
+			println("failed")
+		}
+	}
+}
+
+func removeWithFinally(paths []string) {
+	for (const path of paths) {
+		try {
+			os.Remove(path)
+			break
+		} catch {
+			println("failed")
+		} finally {
+			println("next")
+		}
+	}
+}
+
+func removeOrExit(path string) {
+	try {
+		os.Remove(path)
+		os.Exit(0)
+	} catch {
+		println("failed")
+	}
+}
+
+func removeOrFail(t *testing.T, path string) {
+	try {
+		os.Remove(path)
+		t.FailNow()
+	} catch {
+		println("failed")
+	}
+}
+
+func removeInSwitch(path string, mode int) {
+	switch mode {
+	case 1:
+		try {
+			os.Remove(path)
+			break
+		} catch {
+			println("failed")
+		}
+		println("after failure")
+	}
+}
