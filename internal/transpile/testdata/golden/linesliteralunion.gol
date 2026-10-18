@@ -1,0 +1,11 @@
+package linesliteralunion
+
+type M = "a" | "b"
+
+func run() {
+	let m = MA
+	switch m {
+	case MA, MB:
+		panic("x")
+	}
+}

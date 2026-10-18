@@ -83,6 +83,7 @@ func (lowerer *lowerer) lowerFile() {
 		}
 		lowerer.walkBlock(funcDecl.Body.List, nil)
 	}
+	lowerer.checkLiteralConstants()
 	lowerer.lowerConsts()
 	lowerer.lowerTryExpressions()
 	lowerer.lowerTuples()
@@ -163,6 +164,7 @@ func (lowerer *lowerer) walkStmt(stmt ast.Stmt, try *tryContext) {
 		lowerer.walkExprs(stmt.X)
 		lowerer.walkBlock(stmt.Body.List, try)
 	case *ast.SwitchStmt:
+		lowerer.checkLiteralSwitch(stmt)
 		lowerer.hoistSwitch(stmt, try)
 		lowerer.lowerInit(stmt, try)
 		lowerer.walkExprs(stmt.Init, stmt.Tag)

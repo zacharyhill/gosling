@@ -16,16 +16,20 @@ const VariantsPrefix = "__goslingVariants_"
 
 // Union records a union type declaration. Src[Start:] holds its interface
 // declaration. Src[MarkerStart:MarkerEnd] holds the marker function, the
-// separator before it, and the newlines of the original declaration.
+// separator before it, and the newlines of the original declaration. A
+// literal union has no marker function. Constants holds the names of its
+// constants.
 type Union struct {
 	Name                   string
 	Start                  int
 	MarkerStart, MarkerEnd int
+	Constants              []string
 }
 
 // union rewrites `type Shape = Circle | *Square` at token tokenIndex into a
 // sealed interface and a marker method on each variant. A declaration with
-// no top-level | is an ordinary alias, and union does not change it.
+// no top-level | is an ordinary alias, and union does not change it. A
+// union of literals becomes a named type with constants.
 func (processor *processor) union(tokenIndex int) (int, error) {
 	if processor.tokenAt(tokenIndex + 1).is(token.LPAREN) {
 		return processor.rewriteUnionGroup(tokenIndex)
@@ -34,6 +38,9 @@ func (processor *processor) union(tokenIndex int) (int, error) {
 	assignIndex, end, isUnion := processor.unionHeader(tokenIndex + 1)
 	if !isUnion {
 		return tokenIndex, nil
+	}
+	if processor.isLiteralStart(assignIndex + 1) {
+		return end - 1, processor.rewriteLiteralUnion(keyword, tokenIndex+1, assignIndex, end)
 	}
 	signature, variants, err := processor.parseUnion(keyword, tokenIndex+1, assignIndex, end)
 	if err != nil {
@@ -97,6 +104,9 @@ func (processor *processor) rewriteGroupedUnions(from, to int) ([]groupedUnion, 
 			continue
 		}
 		nameToken := processor.tokens[specIndex]
+		if processor.isLiteralStart(assignIndex + 1) {
+			return nil, &Error{nameToken.offset, "a literal union needs its own type keyword, not a type group"}
+		}
 		signature, variants, err := processor.parseUnion(nameToken, specIndex, assignIndex, end)
 		if err != nil {
 			return nil, err

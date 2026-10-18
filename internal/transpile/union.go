@@ -15,12 +15,17 @@ import (
 // union. It returns the source offsets of unions with bad variants, by file.
 func (transpiler *transpiler) collectUnions() map[*file]map[int]bool {
 	transpiler.unions = map[*types.TypeName][]types.Type{}
+	transpiler.literalUnions = map[*types.TypeName][]*types.Const{}
 	badUnions := map[*file]map[int]bool{}
 	if transpiler.checkedPackage == nil {
 		return badUnions
 	}
 	for _, sourceFile := range transpiler.files {
 		for _, union := range sourceFile.preprocessed.Unions {
+			if len(union.Constants) > 0 {
+				transpiler.collectLiteralUnion(union)
+				continue
+			}
 			if transpiler.collectUnion(sourceFile, union) {
 				continue
 			}
@@ -163,6 +168,9 @@ func (lowerer *lowerer) caseTypes(typeSwitch *ast.TypeSwitchStmt) ([]types.Type,
 // lowerUnions removes the marker functions from the output.
 func (lowerer *lowerer) lowerUnions() {
 	for _, union := range lowerer.file.preprocessed.Unions {
+		if len(union.Constants) > 0 {
+			continue
+		}
 		lowerer.replaceOffsets(union.MarkerStart, union.MarkerEnd, "", 0)
 	}
 }

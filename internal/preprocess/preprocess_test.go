@@ -454,6 +454,20 @@ func TestProcess(test *testing.T) {
 			want: "type (\n\tID int\n\tPoint struct{ X, Y int }\n\tFn = func(a | b)\n)\n",
 		},
 		{
+			name:   "string literal union",
+			src:    "type Method = \"GET\" | `not-found`\n",
+			want:   "type Method string; const (MethodGET Method = \"GET\"; MethodNotFound Method = `not-found`); func (m Method) Valid() bool { switch m { case MethodGET, MethodNotFound: return true }; return false }; \n",
+			splits: []int{len("type Method string"), len("type Method string; const (MethodGET Method = \"GET\"; MethodNotFound Method = `not-found`)"), len("type Method string; const (MethodGET Method = \"GET\"; MethodNotFound Method = `not-found`); func (m Method) Valid() bool { switch m { case MethodGET, MethodNotFound: return true }; return false }")},
+			unions: []Union{{Name: "Method", Constants: []string{"MethodGET", "MethodNotFound"}}},
+		},
+		{
+			name:   "integer literal union",
+			src:    "type Code = 200 | -1 | 0x10\n",
+			want:   "type Code int; const (Code200 Code = 200; CodeNeg1 Code = -1; Code16 Code = 0x10); func (c Code) Valid() bool { switch c { case Code200, CodeNeg1, Code16: return true }; return false }; \n",
+			splits: []int{len("type Code int"), len("type Code int; const (Code200 Code = 200; CodeNeg1 Code = -1; Code16 Code = 0x10)"), len("type Code int; const (Code200 Code = 200; CodeNeg1 Code = -1; Code16 Code = 0x10); func (c Code) Valid() bool { switch c { case Code200, CodeNeg1, Code16: return true }; return false }")},
+			unions: []Union{{Name: "Code", Constants: []string{"Code200", "CodeNeg1", "Code16"}}},
+		},
+		{
 			name: "plain alias untouched",
 			src:  "type ID = string\n",
 			want: "type ID = string\n",
@@ -893,7 +907,7 @@ func TestProcess(test *testing.T) {
 			if len(result.Tries) != len(testCase.tries) {
 				test.Fatalf("got %d tries, want %d", len(result.Tries), len(testCase.tries))
 			}
-			if !slices.Equal(result.Unions, testCase.unions) {
+			if !reflect.DeepEqual(result.Unions, testCase.unions) {
 				test.Errorf("unions %+v, want %+v", result.Unions, testCase.unions)
 			}
 			if !slices.Equal(result.Coalesce, testCase.coalesce) {
@@ -956,6 +970,14 @@ func TestProcessErrors(test *testing.T) {
 		{"type arguments in a plain union", "type R = Ok[int] | Err\n", "union variants must be type names", len("type R = Ok")},
 		{"type group with a union inside function", "func f() {\n\ttype (\n\t\tS = A | B\n\t)\n}", "union types must be declared at package level", len("func f() {\n\ttype (\n\t\t")},
 		{"generic union in a type group without type arguments", "type (\n\tR[T any] = Ok[T] | Err\n)\n", "union variant Err must have the type arguments [T]", len("type (\n\tR[T any] = Ok[T] | ")},
+		{"literal union with mixed kinds", "type M = \"a\" | 1\n", "literal union members must all be strings or all be integers", len("type M = \"a\" | ")},
+		{"literal union with a float", "type M = 1.5 | 2\n", "literal union members must all be strings or all be integers", len("type M = ")},
+		{"literal union with a type name", "type M = \"a\" | B\n", "literal union members must all be strings or all be integers", len("type M = \"a\" | ")},
+		{"duplicate literal", "type M = \"a\" | `a`\n", "duplicate literal `a` in union M", len("type M = \"a\" | ")},
+		{"literals with the same constant name", "type M = \"a-b\" | \"a_b\"\n", "literals \"a-b\" and \"a_b\" both give the constant name MAB", len("type M = \"a-b\" | ")},
+		{"literal without a constant name", "type M = \"\" | \"a\"\n", "cannot make a constant name from the literal \"\"", len("type M = ")},
+		{"generic literal union", "type M[T any] = \"a\" | \"b\"\n", "a literal union cannot be generic", 0},
+		{"literal union in a type group", "type (\n\tM = \"a\" | \"b\"\n)\n", "a literal union needs its own type keyword, not a type group", len("type (\n\t")},
 		{"question mark", "x := f()?", "the ? operator is not supported; use try/catch", len("x := f()")},
 		{"question mark before space", "x := f()? .y", "the ? operator is not supported", len("x := f()")},
 		{"spread not first", "p := Point{X: 1, ...p}", "struct spread must be the first element", len("p := Point{X: 1, ")},

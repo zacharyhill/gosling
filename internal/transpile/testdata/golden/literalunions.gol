@@ -1,0 +1,42 @@
+package literalunions
+
+// Method is an HTTP method.
+type Method = "GET" | "POST" | "not-found"
+
+type level = 1 | 2 | 3
+
+func handle(m Method) string {
+	switch m {
+	case MethodGET:
+		return "read"
+	case "POST":
+		return "write"
+	case MethodNotFound:
+		return "missing"
+	}
+	return ""
+}
+
+func isWrite(m Method) bool {
+	switch m {
+	case MethodPOST:
+		return true
+	default:
+		return false
+	}
+}
+
+func parse(s string) (Method, bool) {
+	const m = Method(s)
+	return m, m.Valid()
+}
+
+func next(l level) level {
+	switch l {
+	case level1, level2:
+		return l + 1
+	case 3:
+		return level1
+	}
+	return level1
+}
