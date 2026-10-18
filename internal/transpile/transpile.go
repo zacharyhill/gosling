@@ -392,8 +392,9 @@ func (transpiler *transpiler) check() *types.Info {
 		return typeInfo // lowering reports the arrows, other errors are noise
 	}
 	badUnions := transpiler.collectUnions()
+	badCommaOK := transpiler.checkCommaOK(typeInfo)
 	for _, typeError := range typeErrors {
-		if !transpiler.isSpurious(typeError, typeInfo, badUnions) {
+		if !transpiler.isSpurious(typeError, typeInfo, badUnions) && !isInStatements(badCommaOK, typeError.Pos) {
 			transpiler.diagnostics.Add(transpiler.position(typeError.Pos), cleanMessage(typeError.Msg))
 		}
 	}

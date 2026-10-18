@@ -1,0 +1,32 @@
+package commaok
+
+import "strconv"
+
+func lookup(m map[string]int, key string) (int, bool) {
+	const [v, ok] = m[key]
+	return v, ok
+}
+
+func asInt(x any) int {
+	const [n, ok] = x.(int)
+	if !ok {
+		return 0
+	}
+	return n
+}
+
+func receive(ch chan string) (string, bool) {
+	let msg: string
+	let open: bool
+	[msg, open] = <-ch
+	return msg, open
+}
+
+func parsed(m map[int]string, s string) bool {
+	try {
+		const [_, ok] = m[strconv.Atoi(s)]
+		return ok
+	} catch {
+		return false
+	}
+}

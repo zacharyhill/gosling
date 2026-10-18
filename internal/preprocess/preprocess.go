@@ -31,7 +31,10 @@ type Result struct {
 	// Consts holds the offsets of the names that a const declares in a
 	// for-of loop, a header, or a destructuring pattern.
 	Consts []int
-	edits  []edit
+	// CommaOK holds the offsets of the destructuring statements that became
+	// comma-ok forms, such as v, ok := m[key].
+	CommaOK []int
+	edits   []edit
 }
 
 // Error is a syntax error at an offset into the original source.

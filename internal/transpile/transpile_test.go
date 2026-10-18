@@ -199,6 +199,11 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:4:6: p.Z undefined",
 		},
 		{
+			name: "comma-ok destructuring of a slice index",
+			src:  "package p\nfunc f(rows [][]int) int {\n\tconst [a, b] = rows[0]\n\treturn a + b\n}",
+			want: "x.gol:3:17: rows[0] is not a map index, a type assertion, or a receive; to destructure the value, assign it to a variable first",
+		},
+		{
 			name: "nullish coalescing on a value that is never nil",
 			src:  "package p\nfunc f(n int) int {\n\treturn n ?? 1\n}",
 			want: "x.gol:3:9: left side of ?? is never nil",

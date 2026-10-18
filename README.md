@@ -249,6 +249,16 @@ const {Name: name} = load(path) // tmp := load(path); name := tmp.Name
 
 Field names must match exactly. gosling evaluates a complex right side one time, into a temporary. An index past the end of a slice panics, as in Go.
 
+An array pattern with two names has the Go comma-ok meaning if the right side is an index expression, a type assertion, or a receive:
+
+```go
+const [v, ok] = m[key]     // v, ok := m[key]
+const [n, isInt] = x.(int) // n, isInt := x.(int)
+const [msg, open] = <-ch   // msg, open := <-ch
+```
+
+gosling selects this form from the syntax. So `const [a, b] = rows[i]` is an error if `rows` is a slice. To destructure the element, assign it to a variable first.
+
 ### let and const
 
 In `.gol` files, declare variables with `let` and `const`. `:=` is an error. `var` in a function is an error. Package-level `var` is allowed, because `let` has no grouped form.

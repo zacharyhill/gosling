@@ -16,6 +16,7 @@ func TestProcess(test *testing.T) {
 		coalesce []int
 		unions   []Union
 		consts   []int
+		commaOK  []int
 	}{
 		{
 			name: "try catch with binding",
@@ -227,6 +228,50 @@ func TestProcess(test *testing.T) {
 			consts: []int{len("func f() {\n\ttmp := load(); "), len("func f() {\n\ttmp := load(); x, _, ")},
 		},
 		{
+			name:    "comma-ok map index",
+			src:     "func f() {\n\tconst [v, ok] = m[key(k)]\n}",
+			want:    "func f() {\n\tv, ok := m[key(k)]\n}",
+			consts:  []int{len("func f() {\n\t"), len("func f() {\n\tv, ")},
+			commaOK: []int{len("func f() {\n\t")},
+		},
+		{
+			name:    "comma-ok type assertion",
+			src:     "func f() {\n\tlet [n, _] = x.y.(int)\n}",
+			want:    "func f() {\n\tn, _ := x.y.(int)\n}",
+			commaOK: []int{len("func f() {\n\t")},
+		},
+		{
+			name:    "comma-ok receive assigns",
+			src:     "func f() {\n\t[msg, open] = <-c.chans[0]\n}",
+			want:    "func f() {\n\tmsg, open = <-c.chans[0]\n}",
+			commaOK: []int{len("func f() {\n\t")},
+		},
+		{
+			name:    "comma-ok right side keeps gosling syntax",
+			src:     "func f() {\n\tconst [v, ok] = m[t`${a}`]\n}",
+			want:    "func f() {\n\tv, ok := m[__goslingT(``, a, ``)]\n}",
+			consts:  []int{len("func f() {\n\t"), len("func f() {\n\tv, ")},
+			commaOK: []int{len("func f() {\n\t")},
+		},
+		{
+			name:   "slice expression is not comma-ok",
+			src:    "func f() {\n\tlet [a, b] = xs[1:]\n}",
+			want:   "func f() {\n\ttmp := xs[1:]; a, b := tmp[0], tmp[1]\n}",
+			splits: []int{len("func f() {\n\ttmp := xs[1:]")},
+		},
+		{
+			name:   "index in a larger expression is not comma-ok",
+			src:    "func f() {\n\tlet [a, b] = *ps[0]\n}",
+			want:   "func f() {\n\ttmp := *ps[0]; a, b := tmp[0], tmp[1]\n}",
+			splits: []int{len("func f() {\n\ttmp := *ps[0]")},
+		},
+		{
+			name:   "three names are not comma-ok",
+			src:    "func f() {\n\tlet [a, b, c] = m[k]\n}",
+			want:   "func f() {\n\ttmp := m[k]; a, b, c := tmp[0], tmp[1], tmp[2]\n}",
+			splits: []int{len("func f() {\n\ttmp := m[k]")},
+		},
+		{
 			name: "block statement is not destructuring",
 			src:  "func f() {\n\t{\n\t\ta()\n\t}\n}",
 			want: "func f() {\n\t{\n\t\ta()\n\t}\n}",
@@ -367,6 +412,9 @@ func TestProcess(test *testing.T) {
 			}
 			if !slices.Equal(result.Consts, testCase.consts) {
 				test.Errorf("consts %v, want %v", result.Consts, testCase.consts)
+			}
+			if !slices.Equal(result.CommaOK, testCase.commaOK) {
+				test.Errorf("comma-ok %v, want %v", result.CommaOK, testCase.commaOK)
 			}
 			if !slices.Equal(result.Splits, testCase.splits) {
 				test.Errorf("splits %v, want %v", result.Splits, testCase.splits)
