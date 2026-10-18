@@ -1,0 +1,51 @@
+package defaults
+
+import (
+	"fmt"
+	"time"
+)
+
+const defaultHost = "localhost"
+
+type Options struct{ Limit int }
+
+type Client struct{ host string }
+
+func Dial(addr string, timeout time.Duration = 5*time.Second, retries int = 3) string {
+	return fmt.Sprint(addr, timeout, retries)
+}
+
+func Connect(host string = defaultHost, port? int) string {
+	return fmt.Sprint(host, port)
+}
+
+func (c *Client) Get(path string, opts? Options, verbose bool = false) string {
+	return fmt.Sprint(c.host, path, opts.Limit, verbose)
+}
+
+func calls(c *Client) {
+	fmt.Println(Dial("a"))
+	fmt.Println(Dial("a", time.Second))
+	fmt.Println(Dial("a", time.Second, 1))
+	fmt.Println(Connect())
+	fmt.Println(c.Get("/"))
+	fmt.Println((*Client).Get(c, "/x", Options{Limit: 2}))
+	fmt.Println(Dial(
+		"multi",
+	))
+}
+
+func hidden() string {
+	let defaultHost = "other"
+	return Connect() + defaultHost
+}
+
+type Point struct{ X, Y int }
+
+var v = 2
+
+func scale(n int = v) int { return n }
+
+func moved(p Point) Point {
+	return Point{...p, X: scale()}
+}

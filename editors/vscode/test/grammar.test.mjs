@@ -179,6 +179,15 @@ test("ternary operator", () => {
   assertScope(source, "??", "keyword.operator.nullish.gol");
 });
 
+test("default and optional parameters", () => {
+  const source = "package p\n\nfunc Dial(addr string, timeout time.Duration = 5*time.Second, port? int) {}";
+  assertScope(source, "timeout", "variable.parameter");
+  assertScope(source, "=", "keyword.operator.assignment");
+  assertScope(source, "port", "variable.parameter.gol");
+  assertScope(source, "?", "keyword.operator.optional.gol");
+  assertScope(source, "int", "storage.type");
+});
+
 test("union types", () => {
   const source = "package p\n\ntype Shape = Circle | Square | *Polygon";
   assertScope(source, "Shape", "entity.name.type");

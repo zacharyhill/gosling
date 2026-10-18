@@ -154,6 +154,12 @@ type file struct {
 	// addressed holds the address markers around values of optional fields.
 	addressed map[*ast.CallExpr]bool
 	hasRegex  bool
+	// defaultedFuncs holds the functions of the file with default values.
+	defaultedFuncs []*defaultedFunc
+	// defaultCalls holds the calls that omit parameters with default values.
+	defaultCalls map[*ast.CallExpr]defaultCall
+	// defaultImports holds the import paths that default values use.
+	defaultImports map[string]bool
 }
 
 // position maps a position in the preprocessed file to the original source.
@@ -186,6 +192,8 @@ type transpiler struct {
 	enums map[*types.TypeName][]enumMember
 	// packageNameCount numbers the package-level names that lowering adds.
 	packageNameCount int
+	// defaults maps each function with default values to them.
+	defaults map[*types.Func]*defaultedFunc
 }
 
 // Transpile converts the .gol files of one package to Go.
@@ -386,6 +394,8 @@ func newFile(input Input, preprocessed *preprocess.Result) *file {
 		enumSelectors:  map[*ast.ParenExpr]*ast.SelectorExpr{},
 		stringCalls:    map[*ast.CallExpr]*stringCall{},
 		addressed:      map[*ast.CallExpr]bool{},
+		defaultCalls:   map[*ast.CallExpr]defaultCall{},
+		defaultImports: map[string]bool{},
 	}
 }
 
@@ -405,7 +415,13 @@ func (transpiler *transpiler) addParseErrors(file *file, err error) {
 		return
 	}
 	for _, parseError := range errorList {
-		transpiler.diagnostics.Add(file.positionAt(file.preprocessed.OrigOffset(parseError.Pos.Offset)), parseError.Msg)
+		offset := file.preprocessed.OrigOffset(parseError.Pos.Offset)
+		message := parseError.Msg
+		isDefaultOutsideDecl := strings.HasPrefix(message, "missing ',' in parameter list") && bytes.HasPrefix(file.original[offset:], []byte("="))
+		if isDefaultOutsideDecl {
+			message = "default values are only supported in function and method declarations"
+		}
+		transpiler.diagnostics.Add(file.positionAt(offset), message)
 	}
 }
 
@@ -480,6 +496,7 @@ func (transpiler *transpiler) check() *types.Info {
 		}
 	}
 	transpiler.checkConstAssignments(astFiles, typeInfo)
+	transpiler.resolveDefaults(typeInfo)
 	if transpiler.unresolvedArrows() {
 		return typeInfo // lowering reports the arrows, other errors are noise
 	}
@@ -545,7 +562,7 @@ func (transpiler *transpiler) isSpurious(typeError types.Error, typeInfo *types.
 	if file := transpiler.fileAt(typeError.Pos); file != nil {
 		// A bad union variant also breaks its generated method. Rewriting
 		// already reports bad spreads.
-		if badUnions[file][file.preprocessed.OrigOffset(file.tokenFile.Offset(typeError.Pos))] || file.inBadSpread(typeError.Pos) {
+		if badUnions[file][file.preprocessed.OrigOffset(file.tokenFile.Offset(typeError.Pos))] || file.inBadSpread(typeError.Pos) || file.isCoveredByDefaults(typeError) {
 			return true
 		}
 	}

@@ -13,7 +13,8 @@ const TernaryMarker = "__goslingQ"
 // without a matching : is not a ternary. questionMark reports it later.
 func (processor *processor) findTernaries() {
 	for tokenIndex := range processor.tokens {
-		if !processor.isLoneQuestion(tokenIndex) {
+		// A ternary arm cannot be empty, so ?: is an optional parameter.
+		if !processor.isLoneQuestion(tokenIndex) || processor.tokenAt(tokenIndex+1).is(token.COLON) {
 			continue
 		}
 		colonIndex, ok := processor.findTernaryColon(tokenIndex)
