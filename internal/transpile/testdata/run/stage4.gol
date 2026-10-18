@@ -12,6 +12,14 @@ type User struct {
 	Admin bool
 }
 
+func findAny[T any](xs []T, keep func(T) bool) *T {
+	return xs.find(keep)
+}
+
+func findPointer[P *int](xs []P) P {
+	return xs.find(p => *p > 1)
+}
+
 func main() {
 	let users = []User{{"ada", 36, true}, {"bob", 17, false}, {"cy", 25, false}}
 	let adults = users.filter(u => u.Age >= 18).map(u => strings.ToUpper(u.Name))
@@ -23,6 +31,10 @@ func main() {
 	let nums = []int{5, 2, 8}
 	slices.SortFunc(nums, (a, b) => b - a)
 	fmt.Println(nums, nums.includes(8), nums.indexOf(2))
+	let zero = findAny([]int{0, 3}, n => n == 0)
+	fmt.Println(*zero, findAny([]int{0}, n => n > 2) == nil)
+	let one, two = 1, 2
+	fmt.Println(*findPointer([]*int{&one, &two}), findPointer([]*int{&one}) == nil)
 	let compose = (f func(int) int, g func(int) int) => (x int) => g(f(x))
 	let inc = (x int) => x + 1
 	fmt.Println(compose(inc, x => x * 10)(4))
