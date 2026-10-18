@@ -451,6 +451,8 @@ A parameter without a type gets it from the context:
 
 Without a context, add types. The result type comes from the context or from the body. If the context has no result, an expression body becomes a statement. So `names.forEach(n => fmt.Println(n))` works.
 
+`nil` has no type. If the body returns only `nil` for a result, the type must come from the context, as in `let f: func() error = () => nil`.
+
 ### Array methods
 
 Slices have `map`, `filter`, `reduce`, `forEach`, `find`, `findIndex`, `some`, `every`, `includes`, and `indexOf`. A callback can be an arrow or a function value. If the callback has a second parameter, it gets the index.

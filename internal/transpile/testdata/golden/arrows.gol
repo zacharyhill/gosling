@@ -113,3 +113,10 @@ func statementOnNextLine(names []string) {
 		fmt.Println(n),
 	)
 }
+
+func bareReturn() func() {
+	let stop = () => {
+		return
+	}
+	return stop
+}

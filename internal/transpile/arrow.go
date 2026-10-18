@@ -10,6 +10,8 @@ import (
 	"github.com/zacharyhill/gosling/internal/preprocess"
 )
 
+const errNilArrowResult = "cannot infer the result type of this arrow function from nil; give it a function type, as in let f: func() error = () => nil"
+
 // arrow is one arrow function. Several type-check passes fill in its
 // placeholder types, from the source, the surrounding context, or the type
 // of its body.
@@ -30,6 +32,7 @@ type arrow struct {
 	// that the arrow needs. gosling already reported the error.
 	hasHiddenType bool
 	isVoidBlock   bool // block body without a value return; only the context gives results
+	hasNilResult  bool // the body returns only untyped nil for a result
 }
 
 func (arrow *arrow) node() ast.Expr {
@@ -58,8 +61,8 @@ func (file *file) findArrows() {
 				arrowFunc.untyped = append(arrowFunc.untyped, paramIdent)
 			}
 		}
-		if len(funcLit.Body.List) == 1 {
-			arrowFunc.bodyReturn, _ = funcLit.Body.List[0].(*ast.ReturnStmt)
+		if returnStmt, ok := getSoleStmt(funcLit.Body).(*ast.ReturnStmt); ok && len(returnStmt.Results) > 0 {
+			arrowFunc.bodyReturn = returnStmt
 		}
 		if arrowFunc.bodyReturn == nil && !returnsValue(funcLit.Body) {
 			funcLit.Type.Results = nil
@@ -74,6 +77,13 @@ func (file *file) findArrows() {
 			replaceNode(file.ast, arrowFunc.funcLit, arrowFunc.nilStandIn)
 		}
 	}
+}
+
+func getSoleStmt(body *ast.BlockStmt) ast.Stmt {
+	if len(body.List) != 1 {
+		return nil
+	}
+	return body.List[0]
 }
 
 func returnsValue(body *ast.BlockStmt) bool {
@@ -126,7 +136,9 @@ func (transpiler *transpiler) fixArrows(file *file, typeInfo *types.Info) bool {
 		case ok && context.resultsKnown:
 			changed = transpiler.setResults(file, arrowFunc, context.results) || changed
 		case arrowFunc.nilStandIn == nil:
-			if results, ok := file.bodyResults(typeInfo, arrowFunc); ok {
+			results, ok := file.bodyResults(typeInfo, arrowFunc)
+			arrowFunc.hasNilResult = ok && slices.Contains(results, nil)
+			if ok && !arrowFunc.hasNilResult {
 				changed = transpiler.setResults(file, arrowFunc, results) || changed
 			}
 		}
@@ -192,7 +204,8 @@ func (transpiler *transpiler) arrowTypeExpr(file *file, arrowFunc *arrow, goType
 }
 
 // bodyResults infers the results of an arrow from its return statements.
-// Each result takes the first type that is not untyped nil.
+// Each result takes the first type that is not untyped nil. A result that is
+// always untyped nil stays nil.
 func (file *file) bodyResults(typeInfo *types.Info, arrowFunc *arrow) ([]types.Type, bool) {
 	var returns []*ast.ReturnStmt
 	ast.Inspect(arrowFunc.funcLit.Body, func(node ast.Node) bool {
@@ -211,7 +224,7 @@ func (file *file) bodyResults(typeInfo *types.Info, arrowFunc *arrow) ([]types.T
 	}
 	var resultTypes []types.Type
 	for _, returnStmt := range returns {
-		got, ok := returnTypes(typeInfo, returnStmt)
+		got, ok := file.returnTypes(typeInfo, returnStmt)
 		if !ok {
 			return nil, false
 		}
@@ -224,15 +237,15 @@ func (file *file) bodyResults(typeInfo *types.Info, arrowFunc *arrow) ([]types.T
 			}
 		}
 	}
-	if slices.Contains(resultTypes, nil) {
-		return nil, false // always nil, so the type is unknown
-	}
 	return resultTypes, true
 }
 
-func returnTypes(typeInfo *types.Info, returnStmt *ast.ReturnStmt) ([]types.Type, bool) {
+func (file *file) returnTypes(typeInfo *types.Info, returnStmt *ast.ReturnStmt) ([]types.Type, bool) {
 	var resultTypes []types.Type
 	for _, resultExpr := range returnStmt.Results {
+		if file.isNilStandIn(resultExpr) {
+			return nil, false
+		}
 		resultType := typeInfo.Types[resultExpr].Type
 		if resultType == nil || resultType == types.Typ[types.Invalid] || hasPlaceholder(resultType) {
 			return nil, false
@@ -246,6 +259,15 @@ func returnTypes(typeInfo *types.Info, returnStmt *ast.ReturnStmt) ([]types.Type
 		resultTypes = append(resultTypes, resultType)
 	}
 	return resultTypes, true
+}
+
+// isNilStandIn reports whether expr is the nil that stands in for an arrow
+// with unknown parameter types. Its type says nothing about the arrow.
+func (file *file) isNilStandIn(expr ast.Expr) bool {
+	expr = ast.Unparen(expr)
+	return slices.ContainsFunc(file.arrows, func(arrowFunc *arrow) bool {
+		return arrowFunc.nilStandIn != nil && arrowFunc.nilStandIn == expr
+	})
 }
 
 // hasPlaceholder reports whether goType depends on an unresolved arrow.
@@ -326,6 +348,10 @@ func (lowerer *lowerer) lowerArrows() {
 		for paramIndex, placeholder := range arrowFunc.untyped {
 			name, _ := lowerer.typeName(arrowFunc.params[paramIndex])
 			lowerer.replace(placeholder.Pos(), placeholder.End(), name, 0)
+		}
+		if arrowFunc.hasNilResult {
+			lowerer.errorf(lowerer.file, arrowFunc.funcLit.Pos(), errNilArrowResult)
+			continue
 		}
 		if !arrowFunc.resolved && !arrowFunc.isVoidBlock {
 			continue // the type checker already reported the error

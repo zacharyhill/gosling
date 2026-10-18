@@ -162,3 +162,10 @@ func statementOnNextLine(names []string) {
 		}
 	}
 }
+
+func bareReturn() func() {
+	stop := func() {
+		return
+	}
+	return stop
+}
