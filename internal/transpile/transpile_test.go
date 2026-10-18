@@ -264,6 +264,16 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:8: try block must be followed by catch",
 		},
 		{
+			name: "type error after annotated parameters",
+			src:  "package p\nfunc f(a: int, b: int): string {\n\treturn b\n}",
+			want: "x.gol:3:9: cannot use b (variable of type int) as string value in return statement",
+		},
+		{
+			name: "go parameter order with result colon",
+			src:  "package p\nfunc f(a int): bool {\n\treturn true\n}",
+			want: "x.gol:2:8: write name: type for every parameter",
+		},
+		{
 			name: "parse error positions map to source",
 			src:  "package p\nfunc f() {\n\ttry { let x = } catch (e) {}\n}",
 			want: "x.gol:3:16: expected operand",

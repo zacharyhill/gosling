@@ -53,6 +53,9 @@ func (processor *processor) arrow(tokenIndex int) (int, error) {
 
 // arrowParams rewrites the parameter list closed by the ) at token rparenIndex.
 func (processor *processor) arrowParams(rparenIndex int) error {
+	if processor.typedArrows[processor.tokens[rparenIndex].offset] {
+		return nil
+	}
 	lparenIndex, depth := -1, 0
 	for tokenIndex := rparenIndex; tokenIndex >= 0; tokenIndex-- {
 		switch processor.tokens[tokenIndex].kind {
