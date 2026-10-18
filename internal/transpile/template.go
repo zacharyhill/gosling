@@ -52,7 +52,8 @@ func (lowerer *lowerer) lowerTemplate(call *ast.CallExpr, fmtPrefix string) {
 			continue
 		}
 		pieceType := lowerer.typeInfo.Types[piece].Type
-		if bits := floatBits(pieceType); bits > 0 && lowerer.formatFloat(piece, bits, line, depth) {
+		if bits := floatBits(pieceType); bits > 0 {
+			lowerer.wrapInFormatFloat(piece, bits, line, depth)
 			format.WriteString("%s")
 			continue
 		}
@@ -65,24 +66,24 @@ func (lowerer *lowerer) lowerTemplate(call *ast.CallExpr, fmtPrefix string) {
 	lowerer.replace(pieces[len(pieces)-2].End(), call.Rparen+1, ")", line)
 }
 
-// formatFloat wraps a float argument in strconv.FormatFloat, because %v
-// prints 1e+06 and JavaScript prints 1000000. It reports false if the file
-// cannot use strconv or float64.
-func (lowerer *lowerer) formatFloat(arg ast.Expr, bits, line, depth int) bool {
+// wrapInFormatFloat wraps a float argument in strconv.FormatFloat, because %v
+// prints 1e+06 and JavaScript prints 1000000. It reports an error if the
+// file cannot use strconv or float64.
+func (lowerer *lowerer) wrapInFormatFloat(arg ast.Expr, bits, line, depth int) {
 	strconvName, ok := lowerer.importNameAt(arg.Pos(), "strconv", "strconv")
 	if !ok {
-		return false
+		lowerer.errorf(lowerer.file, arg.Pos(), "template literal needs package strconv, but the name strconv is already used in this file")
+		return
 	}
 	openText, closeText := "FormatFloat(", ", 'f', -1, 64)"
 	if bits == 32 {
 		if !lowerer.checkBuiltins(arg.Pos(), "template literal", "float64") {
-			return false
+			return
 		}
 		openText, closeText = "FormatFloat(float64(", "), 'f', -1, 32)"
 	}
 	lowerer.insertOrdered(arg.Pos(), qualify(strconvName)+openText, line, depth)
 	lowerer.insertOrdered(arg.End(), closeText, line, -depth)
-	return true
 }
 
 // rawText returns a text piece of a template literal, with escapes decoded
