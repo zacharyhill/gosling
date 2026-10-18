@@ -66,10 +66,16 @@ type matchedRun struct {
 	oldStart, newStart, length int
 }
 
-// diffText matches the equal lines of two texts. It trims the common
-// prefix and suffix, then finds the longest common subsequence of the
-// lines between them.
+// diffText matches the equal text of two texts. It matches equal lines,
+// then the equal characters at the start and end of each changed region.
 func diffText(oldText, newText []byte) textShift {
+	return textShift{matches: refineGaps(matchLineRuns(oldText, newText), oldText, newText)}
+}
+
+// matchLineRuns matches the equal lines of two texts. It trims the common prefix
+// and suffix, then finds the longest common subsequence of the lines
+// between them.
+func matchLineRuns(oldText, newText []byte) []matchedRun {
 	oldLines, newLines := splitLines(oldText), splitLines(newText)
 	prefix := 0
 	for prefix < len(oldLines) && prefix < len(newLines) && bytes.Equal(oldLines[prefix], newLines[prefix]) {
@@ -88,7 +94,7 @@ func diffText(oldText, newText []byte) textShift {
 	for lineIndex := suffix; lineIndex > 0; lineIndex-- {
 		pairs = append(pairs, [2]int{len(oldLines) - lineIndex, len(newLines) - lineIndex})
 	}
-	return textShift{matches: refineGaps(runsFromPairs(pairs, oldLines, newLines), oldText, newText)}
+	return runsFromPairs(pairs, oldLines, newLines)
 }
 
 // splitLines splits text after each newline. The last line has no newline.

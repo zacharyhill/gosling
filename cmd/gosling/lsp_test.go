@@ -379,6 +379,7 @@ func TestLSP(test *testing.T) {
 	test.Run("deleted gol file loses its output", session.checkFileDelete)
 	test.Run("syntax error becomes a diagnostic", session.checkSyntaxError)
 	test.Run("edit after the last good version still maps", session.checkStaleMapping)
+	test.Run("changed lines that parse work despite a syntax error", session.checkChangedLinesWithSyntaxError)
 	test.Run("completion in code with a type error", session.checkCompletion)
 	test.Run("arrow parameters map to the gol file", session.checkArrowParams)
 	client.request("shutdown", nil)
@@ -459,6 +460,24 @@ func (session *lspSession) checkStaleMapping(test *testing.T) {
 	if len(locations) != 1 || locations[0].Range.Start != want {
 		test.Errorf("got %+v, want %+v", locations, want)
 	}
+}
+
+// checkChangedLinesWithSyntaxError adds a function and a call to it, and
+// leaves a syntax error in another function. The new lines parse, so
+// definition works on them.
+func (session *lspSession) checkChangedLinesWithSyntaxError(test *testing.T) {
+	edited := strings.Replace(lspMain, "func main() {", "func extra() string {\n\treturn \"extra\"\n}\n\nfunc main() {\n\tfmt.Println(extra())", 1)
+	edited = strings.Replace(edited, "return string(data), nil", "return string(data), nil +", 1)
+	session.changeMain(edited)
+	session.client.waitForDiagnostics(session.mainURI, func(diagnostics []lspDiagnostic) bool {
+		return len(diagnostics) > 0 && diagnostics[0].Source == "gosling"
+	})
+	locations := session.definition(test, edited, "extra())")
+	want := positionOf(test, edited, "extra() string")
+	if len(locations) != 1 || locations[0].URI != session.mainURI || locations[0].Range.Start != want {
+		test.Errorf("got %+v, want %+v", locations, want)
+	}
+	session.changeMain(lspMain)
 }
 
 func (session *lspSession) checkCompletion(test *testing.T) {

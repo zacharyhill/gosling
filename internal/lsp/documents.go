@@ -109,14 +109,20 @@ const severityError = 1
 
 // regenerate transpiles the package with the editor text of its open
 // documents. A file that fails keeps its last good version, so gopls keeps
-// working on the old code.
+// working on the old code. A syntax error stops the whole package. So a
+// document with a syntax error takes only the changed lines that parse.
 func (server *server) regenerate(packageState *packageState) error {
 	packageState.dirty = false
 	sources := map[string][]byte{}
 	for _, document := range server.documentsIn(packageState.dir) {
 		sources[document.path] = document.text
 	}
+	parseErr := server.useParseableVersions(packageState, sources)
 	outputs, err := server.generator.Generate(packageState.dir, sources, false)
+	if parseErr != nil {
+		// Other errors describe the parseable versions, not the editor text.
+		err = parseErr
+	}
 	packageState.problems = map[string][]diagnostic{}
 	if err != nil {
 		server.recordProblems(packageState, err)
@@ -131,6 +137,24 @@ func (server *server) regenerate(packageState *packageState) error {
 		}
 	}
 	return server.publishPackageDiagnostics(packageState)
+}
+
+// useParseableVersions replaces each source with parse errors by a version
+// that parses, if the document parsed before. It returns the parse errors.
+func (server *server) useParseableVersions(packageState *packageState, sources map[string][]byte) error {
+	var parseErrors []error
+	for golPath, text := range sources {
+		input := transpile.Input{Path: golPath, Src: text}
+		err := transpile.FindParseErrors(input)
+		if err == nil {
+			continue
+		}
+		parseErrors = append(parseErrors, err)
+		if previous := packageState.fileForGol(golPath); previous != nil {
+			sources[golPath] = buildParseableVersion(input, previous.golText, err)
+		}
+	}
+	return errors.Join(parseErrors...)
 }
 
 // keepPreviousFiles adds each previous file that newFiles does not replace.
