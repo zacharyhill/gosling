@@ -181,10 +181,14 @@ func (writer *outputWriter) writeEdit(currentEdit resolvedEdit) {
 	directiveLength := 0
 	if isMultiline {
 		writer.buffer.WriteString("\n")
-		directiveStart := writer.buffer.Len()
-		writer.directive(currentEdit.line)
-		directiveLength = writer.buffer.Len() - directiveStart
-		writer.buffer.WriteString(restLines)
+		// Text that ends with a newline needs no directive here. The next
+		// token gets one.
+		if restLines != "" {
+			directiveStart := writer.buffer.Len()
+			writer.directive(currentEdit.line)
+			directiveLength = writer.buffer.Len() - directiveStart
+			writer.buffer.WriteString(restLines)
+		}
 	}
 	writer.addEditCopies(currentEdit.copies, textStart, len(firstLine), directiveLength)
 	if isMultiline || bytes.IndexByte(writer.src[currentEdit.start:currentEdit.end], '\n') >= 0 {
