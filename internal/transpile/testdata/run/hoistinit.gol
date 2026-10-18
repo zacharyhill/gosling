@@ -1,0 +1,81 @@
+package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+func trace(label string, n int) int {
+	fmt.Println("eval", label)
+	return n
+}
+
+func half(n int) (int, error) {
+	fmt.Println("eval half")
+	if n%2 != 0 {
+		return 0, fmt.Errorf("%d is odd", n)
+	}
+	return n / 2, nil
+}
+
+func compare(n int) string {
+	try {
+		if let x = trace("init", n); x > half(x) {
+			return "bigger"
+		}
+		return "not bigger"
+	} catch (e) {
+		return t`error: ${e}`
+	}
+}
+
+func classify(s string) string {
+	try {
+		switch let x = trace("init", len(s)); half(x) {
+		case 0:
+			return "empty"
+		default:
+			return "text"
+		}
+	} catch (e) {
+		return t`error: ${e}`
+	}
+}
+
+func kind(s string) string {
+	try {
+		switch let n = trace("init", len(s)); any(strconv.Atoi(s[:n])).(type) {
+		case int:
+			return "int"
+		default:
+			return "?"
+		}
+	} catch {
+		return "bad"
+	}
+}
+
+func checkedInit(a, b string) string {
+	try {
+		switch let n = strconv.Atoi(a); n + strconv.Atoi(b) {
+		case 3:
+			return "three"
+		default:
+			return "other"
+		}
+	} catch (e) {
+		return t`error: ${e}`
+	}
+}
+
+func main() {
+	fmt.Println(compare(4))
+	fmt.Println(compare(3))
+	fmt.Println(classify("ab"))
+	fmt.Println(classify("abc"))
+	fmt.Println(kind("12"))
+	fmt.Println(kind("x"))
+	fmt.Println(checkedInit("1", "2"))
+	fmt.Println(checkedInit("x", "2"))
+	fmt.Println(checkedInit("1", "y"))
+}
