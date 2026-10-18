@@ -78,10 +78,11 @@ func (regions tryRegionList) contain(parentOf map[ast.Node]ast.Node, call *ast.C
 	return false
 }
 
-// isValueTuple reports whether the results of call are exactly (T, error).
+// isValueTuple reports whether call has exactly two results, and the second
+// one is an error result.
 func isValueTuple(typeInfo *types.Info, call *ast.CallExpr) bool {
 	tuple, ok := typeInfo.Types[call].Type.(*types.Tuple)
-	return ok && tuple.Len() == 2 && types.Identical(tuple.At(1).Type(), errorType)
+	return ok && tuple.Len() == 2 && isErrorResult(tuple.At(1).Type())
 }
 
 // singleValueUse reports whether call is where Go needs a single value.
@@ -253,7 +254,7 @@ func (lowerer *lowerer) hoistCall(site *hoistSite, marker *ast.CallExpr, try *tr
 	if isNested || scope == nil {
 		scope, end = nil, site.end
 	}
-	errVar := lowerer.pickErrorVar(try, scope, site.from, end)
+	errVar := lowerer.pickErrorVar(try, scope, site.from, end, lastResultType(lowerer.typeInfo, call))
 	target.jumps++
 	site.add(hoistPiece{
 		before: valueVar + ", " + errVar + " := ",

@@ -110,8 +110,9 @@ func (lowerer *lowerer) nextTryID() int {
 // not be a catch variable of an enclosing try block or a package-level name.
 // With a scope, := declares the name at position. So the name must reuse an
 // earlier error variable of that scope, or not occur later in the scope. If
-// end is valid, the name must not occur in [position, end).
-func (lowerer *lowerer) pickErrorVar(try *tryContext, scope *types.Scope, position, end token.Pos) string {
+// end is valid, the name must not occur in [position, end). An earlier
+// variable is reused only if it has the type errorResult.
+func (lowerer *lowerer) pickErrorVar(try *tryContext, scope *types.Scope, position, end token.Pos, errorResult types.Type) string {
 	for attempt := 1; ; attempt++ {
 		name := "err"
 		if attempt > 1 {
@@ -121,7 +122,7 @@ func (lowerer *lowerer) pickErrorVar(try *tryContext, scope *types.Scope, positi
 			continue
 		}
 		if scope != nil {
-			canReuse, isFree := lowerer.fitsScope(name, scope, position)
+			canReuse, isFree := lowerer.fitsScope(name, scope, position, errorResult)
 			if canReuse {
 				return name
 			}
@@ -138,9 +139,9 @@ func (lowerer *lowerer) pickErrorVar(try *tryContext, scope *types.Scope, positi
 
 // fitsScope reports whether := at position can reuse name as an error
 // variable of scope. It also reports whether name is free in the rest of scope.
-func (lowerer *lowerer) fitsScope(name string, scope *types.Scope, position token.Pos) (canReuse, isFree bool) {
+func (lowerer *lowerer) fitsScope(name string, scope *types.Scope, position token.Pos, errorResult types.Type) (canReuse, isFree bool) {
 	if object := scope.Lookup(name); object != nil {
-		return object.Pos() < position && isErrorVar(object), false
+		return object.Pos() < position && isVarOfType(object, errorResult), false
 	}
 	// A bare return cannot see a named result that := shadows.
 	if _, outerObject := scope.LookupParent(name, position); lowerer.namedResults[outerObject] {
@@ -159,9 +160,9 @@ func excludedByTry(try *tryContext, name string) bool {
 	return false
 }
 
-func isErrorVar(object types.Object) bool {
+func isVarOfType(object types.Object, varType types.Type) bool {
 	variable, ok := object.(*types.Var)
-	return ok && types.Identical(variable.Type(), errorType)
+	return ok && types.Identical(variable.Type(), varType)
 }
 
 // pickTempVar returns a temporary name not referenced in [from, to) and

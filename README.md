@@ -285,7 +285,8 @@ Rules:
 - Outside a try block, an assignment such as `x = f()` must receive the error, as in Go. Otherwise gosling reports an error.
 - gosling does not change a call that already receives its error, such as `const n, err = f()`.
 - gosling checks all calls that return an error, including `Close()` and `fmt.Fprintf`. To skip a check, write `_ = c.Close()`.
-- Only a last `error` result counts. A call such as `func f() (error, int)` used as a statement is an error.
+- Only the last result counts. A call such as `func f() (error, int)` used as a statement is an error.
+- A last result of a pointer or interface type that implements `error`, such as `*MyError`, also counts. gosling compares the typed result with nil before it puts the result in the catch variable. So a nil `*MyError` is not a failure. Other types that implement `error`, such as `type Code int`, do not count, because they cannot be nil.
 - `catch { ... }` without a variable is allowed.
 - Try blocks can be nested. A failure in a catch block goes to the outer try.
 - If the try block always ends in `return`, `break`, `continue`, `goto`, `panic`, or a call that never returns, gosling does not add a jump over the catch block.
@@ -545,7 +546,6 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 
 - gosling does not check calls in `if let x = f(); ...` initializers. These calls are errors.
 - gosling checks calls that return `(A, B, error)` only as statements.
-- Only the type `error` counts. A last result of type `*MyError` does not.
 - A panic does not run `finally` blocks.
 - Destructuring patterns cannot be nested. Object patterns have no rest element.
 - `?.[index]`, `?.(call)`, and `??=` are not supported.

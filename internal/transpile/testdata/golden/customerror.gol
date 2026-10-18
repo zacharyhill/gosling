@@ -1,0 +1,94 @@
+package customerror
+
+type MyError struct{ Code int }
+
+func (myError *MyError) Error() string { return "failed" }
+
+type coded interface {
+	error
+	Code() int
+}
+
+func find(ok bool) (int, *MyError) {
+	if !ok {
+		return 0, &MyError{Code: 1}
+	}
+	return 1, nil
+}
+
+func check(ok bool) *MyError {
+	if !ok {
+		return &MyError{Code: 2}
+	}
+	return nil
+}
+
+func lookup() (string, coded) { return "x", nil }
+
+func bare(ok bool) {
+	try {
+		check(ok)
+	} catch (e) {
+		println(e.Error())
+	}
+}
+
+func define(ok bool) int {
+	try {
+		const n = find(ok)
+		return n
+	} catch {
+		return -1
+	}
+}
+
+func noReuse(ok bool) int {
+	try {
+		let err: error
+		println(err)
+		const n = find(ok)
+		return n
+	} catch {
+		return -1
+	}
+}
+
+func assign(ok bool) (n int) {
+	try {
+		n = find(ok)
+	} catch (e) {
+		println(e.Error())
+	}
+	return n
+}
+
+func hoisted(ok bool) int {
+	try {
+		return find(ok) * 2
+	} catch {
+		return 0
+	}
+}
+
+type status int
+
+func (status status) Error() string { return "status" }
+
+func currentStatus() status { return 0 }
+
+func valueType() {
+	try {
+		currentStatus()
+		check(true)
+	} catch {
+		println("failed")
+	}
+}
+
+func iface() string {
+	try {
+		return lookup()
+	} catch {
+		return ""
+	}
+}

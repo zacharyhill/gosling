@@ -280,13 +280,16 @@ func (lowerer *lowerer) lowerTryStmt(stmt ast.Stmt, try *tryContext) bool {
 	target.jumps++
 	lowerer.checkedAssigns[site.assign] = true
 	jump := func(errVar string) string { return lowerer.failTo(try, target, errVar) }
+	errorResult := lastResultType(lowerer.typeInfo, site.call)
 	switch {
 	case site.assign == nil:
-		errVar := lowerer.pickErrorVar(try, nil, token.NoPos, token.NoPos)
+		errVar := lowerer.pickErrorVar(try, nil, token.NoPos, token.NoPos, errorResult)
 		lowerer.checkBare(stmt, resultCount, errVar, jump(errVar))
 	case site.assign.Tok == token.DEFINE:
-		errVar := lowerer.pickErrorVar(try, lowerer.scopeAt(stmt.Pos()), stmt.Pos(), token.NoPos)
+		errVar := lowerer.pickErrorVar(try, lowerer.scopeAt(stmt.Pos()), stmt.Pos(), token.NoPos, errorResult)
 		lowerer.checkAssign(stmt, site, errVar, jump(errVar))
+	case !types.Identical(errorResult, errorType):
+		lowerer.checkTypedAssign(stmt, site, resultCount, try, target)
 	default:
 		// A plain assignment cannot declare a temporary, so the error goes
 		// directly into the catch variable.
@@ -298,6 +301,35 @@ func (lowerer *lowerer) lowerTryStmt(stmt ast.Stmt, try *tryContext) bool {
 		lowerer.checkAssign(stmt, site, target.catchVar, jump(target.catchVar))
 	}
 	return true
+}
+
+// checkTypedAssign checks a plain assignment whose error result has a type
+// such as *MyError. The catch variable has type error, and a nil *MyError in
+// it is not nil. So the check compares the typed result first:
+//
+//	val, err := f(); x = val; if err != nil { ...jump to catch... }
+func (lowerer *lowerer) checkTypedAssign(stmt ast.Stmt, site callSite, resultCount int, try, target *tryContext) {
+	anchor := lowerer.withLabels(stmt)
+	valueVars := make([]string, resultCount-1)
+	for valueIndex := range valueVars {
+		valueVars[valueIndex] = lowerer.fresh("val")
+	}
+	valueList := strings.Join(valueVars, ", ")
+	errVar := lowerer.pickErrorVar(try, lowerer.scopeAt(anchor.Pos()), anchor.Pos(), token.NoPos, lastResultType(lowerer.typeInfo, site.call))
+	line := lowerer.line(stmt.Pos())
+	offset := lowerer.offset(anchor.Pos())
+	lowerer.edits = append(lowerer.edits, edit{
+		start:  offset,
+		end:    offset,
+		line:   line,
+		move:   &[2]int{lowerer.offset(site.call.Pos()), lowerer.offset(site.call.End())},
+		before: valueList + ", " + errVar + " := ",
+		after:  "\n",
+	})
+	// The call ends the statement. An insertion after the statement would
+	// also be inside the moved call, so the check replaces the call.
+	checkCode := fmt.Sprintf("%s\nif %s != nil {\n%s\n}", valueList, errVar, lowerer.failTo(try, target, errVar))
+	lowerer.drop(site.call.Pos(), site.call.End(), checkCode, line)
 }
 
 // checkableCall returns the fallible call in stmt that try should check,
@@ -370,8 +402,36 @@ func addBlankForErrors(file *file, typeInfo *types.Info) bool {
 
 var errorType = types.Universe.Lookup("error").Type()
 
-// fallible reports whether expr is a call whose last result is error, and
-// how many results it has.
+var errorInterface = errorType.Underlying().(*types.Interface)
+
+// isErrorResult reports whether a last result of type resultType counts as
+// a failure. Besides error, a pointer or an interface that implements error
+// counts, such as *MyError. Other types that implement error cannot be nil.
+func isErrorResult(resultType types.Type) bool {
+	if types.Identical(resultType, errorType) {
+		return true
+	}
+	if _, isTypeParam := types.Unalias(resultType).(*types.TypeParam); isTypeParam {
+		return false
+	}
+	switch resultType.Underlying().(type) {
+	case *types.Pointer, *types.Interface:
+		return types.Implements(resultType, errorInterface)
+	}
+	return false
+}
+
+// lastResultType returns the type of the last result of the call expr.
+func lastResultType(typeInfo *types.Info, expr ast.Expr) types.Type {
+	resultType := typeInfo.Types[expr].Type
+	if tuple, ok := resultType.(*types.Tuple); ok {
+		return tuple.At(tuple.Len() - 1).Type()
+	}
+	return resultType
+}
+
+// fallible reports whether expr is a call whose last result is an error result,
+// and how many results it has.
 func fallible(typeInfo *types.Info, expr ast.Expr) (int, bool) {
 	call, ok := ast.Unparen(expr).(*ast.CallExpr)
 	if !ok {
@@ -382,11 +442,11 @@ func fallible(typeInfo *types.Info, expr ast.Expr) (int, bool) {
 	}
 	switch resultType := typeInfo.Types[expr].Type.(type) {
 	case *types.Tuple:
-		return resultType.Len(), resultType.Len() > 0 && types.Identical(resultType.At(resultType.Len()-1).Type(), errorType)
+		return resultType.Len(), resultType.Len() > 0 && isErrorResult(resultType.At(resultType.Len()-1).Type())
 	case nil:
 		return 0, false
 	default:
-		return 1, types.Identical(resultType, errorType)
+		return 1, isErrorResult(resultType)
 	}
 }
 
