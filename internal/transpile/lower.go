@@ -105,6 +105,7 @@ func (lowerer *lowerer) lowerFile() {
 	lowerer.lowerSpread()
 	lowerer.lowerForOfBlanks()
 	lowerer.lowerOptionalValues()
+	lowerer.lowerRegexes()
 	lowerer.emitImports()
 	for body := range lowerer.file.panicAtEnd {
 		lowerer.checkBuiltins(body.Rbrace, "try", "panic")

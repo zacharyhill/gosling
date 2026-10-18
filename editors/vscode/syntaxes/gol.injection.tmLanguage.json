@@ -7,6 +7,9 @@
       "include": "#template"
     },
     {
+      "include": "#regex"
+    },
+    {
       "include": "#catch"
     },
     {
@@ -113,6 +116,24 @@
           "include": "source.gol"
         }
       ]
+    },
+    "regex": {
+      "comment": "A / starts a regex literal only where an operand starts, as in JavaScript.",
+      "match": "(?:(?<=^)|(?<=[=(,:\\[{!&|?;+\\-*%<>^])|(?<=\\breturn))\\s*(/)(?![/*])((?:\\\\.|\\[(?:\\\\.|[^\\]\\\\\\n])*\\]|[^/\\\\\\[\\n])+)(/)([a-zA-Z]*)",
+      "captures": {
+        "1": {
+          "name": "punctuation.definition.string.begin.regexp.gol"
+        },
+        "2": {
+          "name": "string.regexp.gol"
+        },
+        "3": {
+          "name": "punctuation.definition.string.end.regexp.gol"
+        },
+        "4": {
+          "name": "keyword.other.regexp-flags.gol"
+        }
+      }
     },
     "catch": {
       "match": "\\b(catch)(?:\\s+(panic)\\b)?(?:\\s*(\\()\\s*(\\w+)\\s*(?:(\\))|(:)|(is)\\b))?",

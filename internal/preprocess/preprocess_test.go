@@ -1181,6 +1181,36 @@ func TestProcess(test *testing.T) {
 			src:  "x := try(a)\ny := try.b",
 			want: "x := try(a)\ny := try.b",
 		},
+		{
+			name: "regex literal",
+			src:  `ok := /^\d+$/.MatchString(s)`,
+			want: "ok := __goslingRegexp(`^\\d+$`).MatchString(s)",
+		},
+		{
+			name: "regex literal with flags",
+			src:  "re := /a.b/is",
+			want: "re := __goslingRegexp(`(?is)a.b`)",
+		},
+		{
+			name: "regex literal with comment markers and escaped slash",
+			src:  "re := /[/*]\\/x/\nn := a / b /c",
+			want: "re := __goslingRegexp(`[/*]/x`)\nn := a / b /c",
+		},
+		{
+			name: "regex literal after keyword and arrow",
+			src:  "return/a/\nf(s => /b/.MatchString(s))",
+			want: "return __goslingRegexp(`a`)\nf(func(s __goslingU) __goslingR { return __goslingRegexp(`b`).MatchString(s) })",
+		},
+		{
+			name: "regex literal with backtick",
+			src:  "re := /`/",
+			want: "re := __goslingRegexp(\"`\")",
+		},
+		{
+			name: "division after closing brackets",
+			src:  "n := (a) / b[0] / T{}.x / 2",
+			want: "n := (a) / b[0] / T{}.x / 2",
+		},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {
@@ -1325,6 +1355,10 @@ func TestProcessErrors(test *testing.T) {
 		{"optional field in name list", "type C struct { A, B? int }", "declare optional field B on its own line", len("type C struct { A, B")},
 		{"optional embedded field", "type C struct { B? }", "optional field B needs a type", len("type C struct { B")},
 		{"question mark in interface", "type I interface { M?() }", "the ? operator is not supported", len("type I interface { M")},
+		{"unterminated regex", "re := /abc\nx()", "unterminated regex literal", len("re := ")},
+		{"invalid regex", "re := /a(/", "error parsing regexp: missing closing )", len("re := ")},
+		{"unsupported regex flag", "re := /a/g", "regex flag g is not supported", len("re := ")},
+		{"repeated regex flag", "re := /a/ii", "regex flag i is repeated", len("re := ")},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {

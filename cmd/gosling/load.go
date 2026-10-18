@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/zacharyhill/gosling/internal/preprocess"
 	"github.com/zacharyhill/gosling/internal/transpile"
 	"golang.org/x/mod/modfile"
 )
@@ -202,6 +203,10 @@ func readHeader(filePath string, src []byte) (sourceFile, error) {
 			return sourceFile{}, err
 		}
 		source.imports = append(source.imports, importedPath)
+	}
+	// Type checking needs package regexp for regex literals.
+	if filepath.Ext(filePath) == sourceExt && preprocess.UsesRegex(src) {
+		source.imports = append(source.imports, "regexp")
 	}
 	return source, nil
 }

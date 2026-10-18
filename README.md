@@ -25,6 +25,7 @@ Features:
 - `catch panic` for panics
 - `try` expressions: `try strconv.Atoi(s) catch 0`
 - Template literals and tags: `` t`hello ${name}` ``, `` sql`select * from users where id = ${id}` ``
+- Regex literals: `/^\d+$/i.MatchString(s)`
 - Destructuring: `const {Name: name, Port} = cfg`, `let [first, ...rest] = xs`
 - `let` and `const` declarations: `let n = 0`, `let names: []string`, `const data = os.ReadFile(path)`
 - Parameter types after a colon: `func f(a: int, b: string): bool`
@@ -508,6 +509,34 @@ const q = sql`select * from users where id = ${id}` // sql([]string{"select * fr
 - `t` is the built-in tag. A function with the name `t` cannot be a tag.
 - In a struct, a raw string directly after a field type is a field tag, not a template literal. The same applies to an import path.
 - Only a `t` template can contain an escaped backtick. A tagged template cannot have a format, such as `${x:.2f}`.
+
+### Regex literals
+
+A regex literal becomes a `*regexp.Regexp`. In a function, gosling moves the `regexp.MustCompile` call to a new package-level variable, so the pattern compiles one time:
+
+```go
+func isNumber(s string) bool {
+	return /^\d+$/.MatchString(s)
+}
+```
+
+becomes:
+
+```go
+var re1 = regexp.MustCompile(`^\d+$`)
+
+func isNumber(s string) bool {
+	return re1.MatchString(s)
+}
+```
+
+At package level, the literal becomes a `regexp.MustCompile` call in place. So `var word = /\w+/` needs no new variable.
+
+- The pattern uses Go [RE2 syntax](https://pkg.go.dev/regexp/syntax), not JavaScript syntax. gosling compiles each pattern and reports an invalid pattern as an error at the literal.
+- The flags `i`, `m`, and `s` become a prefix: `/a.b/is` becomes `` `(?is)a.b` ``. Other flags, such as `g`, are errors.
+- Write `\/` for a `/` in the pattern. A `/` in a character class, such as `[/]`, needs no backslash.
+- As in JavaScript, a `/` after an operand is a division. So `a / b / c` stays a division. A `/` at the start of an operand starts a regex literal.
+- A regex literal cannot contain a newline.
 
 ### Destructuring
 
@@ -1145,7 +1174,7 @@ gosling adds the imports that the output needs. If the package name is already i
 
 Some output must write a type, such as the result of `filter` or `??`. If a local declaration hides the name of that type, gosling reports an error. Rename the local declaration.
 
-Error variables are `err`, `err2`, and so on. Labels are `catch_N`, `end_N`, `finally_N`, and `panic_N`. gosling does not use a name that the file already uses. Variables also do not use a name that the package declares at package level.
+Error variables are `err`, `err2`, and so on. Labels are `catch_N`, `end_N`, `finally_N`, and `panic_N`. gosling does not use a name that the file already uses. Variables also do not use a name that the package declares at package level. Regex variables are `re1`, `re2`, and so on.
 
 The output uses builtins such as `len`, `append`, `make`, and `nil`. If a declaration shadows a builtin where gosling needs it, gosling reports an error.
 
@@ -1167,6 +1196,8 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - An arrow cannot get a type from the context if a local declaration hides the name of that type. Rename the local declaration.
 - Only a package-level `const` with one name can hold a generic arrow. Go function literals cannot have type parameters.
 - Only composite literals in the same package take a `T` value for an optional field. Other packages see a plain `*T` field. An assignment also needs a pointer: `cfg.Host = &host`.
+- Regex literals do not support JavaScript-only syntax, such as lookahead `(?=...)` and backreferences `\1`. RE2 does not have them.
+- In a template literal, a regex literal cannot contain `}`.
 
 ## How it works
 

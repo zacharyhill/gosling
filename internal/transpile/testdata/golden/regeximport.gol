@@ -1,0 +1,10 @@
+package regeximport
+
+import (
+	"regexp"
+	"strings"
+)
+
+func hasDigit(s string) bool {
+	return /\d/.MatchString(strings.TrimSpace(s))
+}

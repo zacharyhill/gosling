@@ -290,7 +290,7 @@ func isTypeToken(current lexeme, depth int) bool {
 func isOperandEnd(current lexeme) bool {
 	switch current.kind {
 	case token.IDENT, token.INT, token.FLOAT, token.IMAG, token.CHAR, token.STRING,
-		token.RPAREN, token.RBRACK, token.RBRACE:
+		token.RPAREN, token.RBRACK, token.RBRACE, token.INC, token.DEC:
 		return true
 	}
 	return false

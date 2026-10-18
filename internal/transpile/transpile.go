@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"golang.org/x/tools/go/ast/astutil"
@@ -152,6 +153,7 @@ type file struct {
 	optionalFields []*ast.Ident
 	// addressed holds the address markers around values of optional fields.
 	addressed map[*ast.CallExpr]bool
+	hasRegex  bool
 }
 
 // position maps a position in the preprocessed file to the original source.
@@ -182,6 +184,8 @@ type transpiler struct {
 	literalUnions map[*types.TypeName][]*types.Const
 	// enums maps each enum type to its members, in declaration order.
 	enums map[*types.TypeName][]enumMember
+	// packageNameCount numbers the package-level names that lowering adds.
+	packageNameCount int
 }
 
 // Transpile converts the .gol files of one package to Go.
@@ -320,6 +324,7 @@ func (transpiler *transpiler) buildFile(input Input, reservedNames map[string]bo
 	}
 	golFile.recordTernaries()
 	golFile.findArrows()
+	golFile.hasRegex = bytes.Contains(preprocessed.Src, []byte(preprocess.RegexMarker+"("))
 	return golFile, nil
 }
 
@@ -328,7 +333,7 @@ func (transpiler *transpiler) buildFile(input Input, reservedNames map[string]bo
 func (transpiler *transpiler) reportGoDeclarations(input Input) {
 	golFile := &file{path: input.Path, original: input.Src}
 	// The Go parser reports scanner errors later.
-	sourceScanner, tokenFile := newScanner(preprocess.MaskBackticks(input.Src), 0)
+	sourceScanner, tokenFile := newScanner(preprocess.MaskRegexes(preprocess.MaskBackticks(input.Src)), 0)
 	braceDepth := 0
 	for {
 		position, kind, _ := sourceScanner.Scan()
@@ -500,7 +505,7 @@ func (transpiler *transpiler) filesToCheck() ([]*ast.File, error) {
 		astFiles = append(astFiles, file.ast)
 	}
 	astFiles = append(astFiles, transpiler.plainGoFiles...)
-	markersFile, err := parser.ParseFile(transpiler.fileSet, "gosling_markers.go", markerDecls(astFiles[0].Name.Name), 0)
+	markersFile, err := parser.ParseFile(transpiler.fileSet, "gosling_markers.go", markerDecls(astFiles[0].Name.Name, transpiler.usesRegex()), 0)
 	if err != nil {
 		return nil, err
 	}
@@ -534,7 +539,7 @@ func (transpiler *transpiler) typeCheck(astFiles []*ast.File) (*types.Info, []ty
 // isSpurious reports whether gosling's rewriting caused typeError, or
 // another diagnostic already covers it.
 func (transpiler *transpiler) isSpurious(typeError types.Error, typeInfo *types.Info, badUnions map[*file]map[int]bool) bool {
-	if transpiler.fmtUsedByTemplates(typeError) {
+	if transpiler.isUsedByLowering(typeError) {
 		return true
 	}
 	if file := transpiler.fileAt(typeError.Pos); file != nil {
@@ -585,8 +590,12 @@ func (transpiler *transpiler) endsInNoReturnTry(rbrace token.Pos, typeInfo *type
 
 // markerDecls declares the markers in preprocessed files, so these files
 // type-check. gosling never emits this declaration file.
-func markerDecls(packageName string) string {
-	return "package " + packageName + "\n\n" +
+func markerDecls(packageName string, usesRegex bool) string {
+	header := "package " + packageName + "\n\n"
+	if usesRegex {
+		header += "import \"regexp\"\n\n" + regexMarkerDecl
+	}
+	return header +
 		"type " + preprocess.UntypedMarker + " = any\n" +
 		"type " + preprocess.ResultMarker + " = any\n" +
 		"func " + preprocess.TMarker + "(...any) string { return \"\" }\n" +
@@ -617,14 +626,20 @@ func (transpiler *transpiler) unresolvedArrows() bool {
 	return false
 }
 
-// fmtUsedByTemplates reports an unused fmt import in a file with template
-// literals. Lowering makes these literals use fmt.
-func (transpiler *transpiler) fmtUsedByTemplates(typeError types.Error) bool {
-	if !strings.HasPrefix(typeError.Msg, `"fmt" imported`) || !strings.HasSuffix(typeError.Msg, "not used") {
+// isUsedByLowering reports an unused fmt import in a file with template
+// literals, or an unused regexp import in a file with regex literals.
+// Lowering makes these literals use the import.
+func (transpiler *transpiler) isUsedByLowering(typeError types.Error) bool {
+	return transpiler.isImportUsedByMarker(typeError, "fmt", preprocess.TMarker) ||
+		transpiler.isImportUsedByMarker(typeError, "regexp", preprocess.RegexMarker)
+}
+
+func (transpiler *transpiler) isImportUsedByMarker(typeError types.Error, importPath, marker string) bool {
+	if !strings.HasPrefix(typeError.Msg, strconv.Quote(importPath)+" imported") || !strings.HasSuffix(typeError.Msg, "not used") {
 		return false
 	}
 	file := transpiler.fileAt(typeError.Pos)
-	return file != nil && bytes.Contains(file.preprocessed.Src, []byte(preprocess.TMarker+"("))
+	return file != nil && bytes.Contains(file.preprocessed.Src, []byte(marker+"("))
 }
 
 // augment rewrites the AST with type information from the last pass. It

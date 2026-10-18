@@ -1,0 +1,26 @@
+package main
+
+import "fmt"
+
+func classify(s string) string {
+	switch {
+	case /^\d+$/.MatchString(s):
+		return "number"
+	case /^[a-z]+$/i.MatchString(s):
+		return "word"
+	}
+	return "other"
+}
+
+func main() {
+	for (const s of []string{"42", "Hello", "a/b"}) {
+		fmt.Println(s, classify(s))
+	}
+	fmt.Println(/[\/,]/.Split("a/b,c", -1))
+	fmt.Println(t`${/o+/.FindString("foo")}`)
+	const half = 10 / 2
+	fmt.Println(half)
+	const strict = half > 3
+	const digits = strict ? /^\d+$/ : /\d/
+	fmt.Println(digits.MatchString("a1"), t`${/b?:b/.FindString("ab:bc"):q}`, "x-y".split("-").map(part => /y/.MatchString(part)))
+}

@@ -944,6 +944,21 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:17: cannot use 300 (untyped int constant) as int8 value in struct literal (overflows)",
 		},
 		{
+			name: "invalid regex literal",
+			src:  "package p\nfunc f(s string) bool {\n\treturn /a(?=b)/.MatchString(s)\n}",
+			want: "x.gol:3:9: error parsing regexp: invalid or unsupported Perl syntax: `(?=`",
+		},
+		{
+			name: "regex literal text is not Go syntax",
+			src:  "package p\nfunc f(s string) bool {\n\tlet ok = /a:=\\{/.MatchString(s)\n\tvar x int\n\treturn ok\n}",
+			want: "x.gol:4:2: use let instead of var in a function",
+		},
+		{
+			name: "regex literal needs package regexp but the name is taken",
+			src:  "package p\nfunc f(regexp string) bool {\n\treturn /a/.MatchString(regexp)\n}",
+			want: "regex literal needs package regexp, but the name regexp is already used in this file",
+		},
+		{
 			name: "missing catch",
 			src:  "package p\nfunc f() {\n\ttry { }\n}",
 			want: "x.gol:3:8: try block must be followed by catch",
