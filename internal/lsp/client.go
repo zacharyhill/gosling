@@ -22,23 +22,23 @@ var positionMethods = map[string]bool{
 }
 
 // serverCapabilities lists only the features that work on .gol files.
-// Formatting would change generated code, so the server does not include it.
 var serverCapabilities = map[string]any{
 	"textDocumentSync": map[string]any{
 		"openClose": true,
 		"change":    1, // full text on each change
 		"save":      map[string]any{"includeText": false},
 	},
-	"definitionProvider":        true,
-	"typeDefinitionProvider":    true,
-	"implementationProvider":    true,
-	"referencesProvider":        true,
-	"hoverProvider":             true,
-	"documentHighlightProvider": true,
-	"documentSymbolProvider":    true,
-	"completionProvider":        map[string]any{"triggerCharacters": []string{"."}},
-	"signatureHelpProvider":     map[string]any{"triggerCharacters": []string{"(", ","}},
-	"renameProvider":            map[string]any{"prepareProvider": true},
+	"definitionProvider":         true,
+	"typeDefinitionProvider":     true,
+	"implementationProvider":     true,
+	"referencesProvider":         true,
+	"hoverProvider":              true,
+	"documentHighlightProvider":  true,
+	"documentSymbolProvider":     true,
+	"completionProvider":         map[string]any{"triggerCharacters": []string{"."}},
+	"signatureHelpProvider":      map[string]any{"triggerCharacters": []string{"(", ","}},
+	"renameProvider":             map[string]any{"prepareProvider": true},
+	"documentFormattingProvider": true,
 	"workspace": map[string]any{
 		"fileOperations": map[string]any{"didRename": golFileFilter, "didDelete": golFileFilter},
 	},
@@ -168,7 +168,10 @@ func (server *server) handleClientRequest(message *rpcMessage) error {
 	}
 	var params textDocumentParams
 	if json.Unmarshal(message.Params, &params) == nil {
-		if _, isGol := golPathOf(params.TextDocument.URI); isGol {
+		if golPath, isGol := golPathOf(params.TextDocument.URI); isGol {
+			if message.Method == "textDocument/formatting" {
+				return server.formatDocument(message.ID, golPath)
+			}
 			return server.respondClient(message.ID, nil)
 		}
 	}
