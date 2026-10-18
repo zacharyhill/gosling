@@ -118,6 +118,44 @@ func placeAt(typeExpr ast.Expr, position token.Pos) {
 	})
 }
 
+// isNameHidden reports whether typeExpr, read at position, does not mean
+// goType because a local declaration hides one of its names.
+func (transpiler *transpiler) isNameHidden(typeExpr ast.Expr, goType types.Type, position token.Pos) bool {
+	if transpiler.checkedPackage == nil {
+		return false
+	}
+	typeAndValue, err := types.Eval(transpiler.fileSet, transpiler.checkedPackage, position, types.ExprString(typeExpr))
+	if err == nil {
+		return !typeAndValue.IsType() || !types.Identical(typeAndValue.Type, goType)
+	}
+	// A package that the file does not import yet fails to evaluate. Only a
+	// local name that hides a package name is an error.
+	scope := transpiler.checkedPackage.Scope().Innermost(position)
+	if scope == nil {
+		return false
+	}
+	return isPackageNameHidden(typeExpr, scope, position)
+}
+
+// isPackageNameHidden reports whether a package name in typeExpr refers to a
+// declaration that is not a package, as seen from scope at position.
+func isPackageNameHidden(typeExpr ast.Expr, scope *types.Scope, position token.Pos) bool {
+	isHidden := false
+	ast.Inspect(typeExpr, func(node ast.Node) bool {
+		selector, ok := node.(*ast.SelectorExpr)
+		if !ok {
+			return true
+		}
+		if packageIdent, ok := selector.X.(*ast.Ident); ok {
+			_, object := scope.LookupParent(packageIdent.Name, position)
+			_, isPackage := object.(*types.PkgName)
+			isHidden = isHidden || (object != nil && !isPackage)
+		}
+		return true
+	})
+	return isHidden
+}
+
 // typeNameIn prints goType as file writes it. It imports the packages that
 // the file does not have, also into the AST if inAST is true. It reports
 // false if a package name is already used in the file.

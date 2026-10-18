@@ -76,3 +76,15 @@ func laterReturnTypes(n int) (int, error) {
 	}
 	return check(n)
 }
+
+type entry struct{ Name string }
+
+func paramNamedLikeType(entries []entry) []string {
+	return entries.map(entry => entry.Name)
+}
+
+func localType() []int {
+	type entry struct{ Count int }
+	let entries = []entry{{1}}
+	return entries.map(e => e.Count)
+}

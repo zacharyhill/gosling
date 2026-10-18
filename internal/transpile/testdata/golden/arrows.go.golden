@@ -101,3 +101,29 @@ func laterReturnTypes(n int) (int, error) {
 	}
 	return check(n)
 }
+
+type entry struct{ Name string }
+
+func paramNamedLikeType(entries []entry) []string {
+	return func() []string {
+		xs, f := entries, func(entry entry) string { return entry.Name }
+		out := make([]string, 0, len(xs))
+		for _, x := range xs {
+			out = append(out, f(x))
+		}
+		return out
+	}()
+}
+
+func localType() []int {
+	type entry struct{ Count int }
+	entries := []entry{{1}}
+	return func() []int {
+		xs, f := entries, func(e entry) int { return e.Count }
+		out := make([]int, 0, len(xs))
+		for _, x := range xs {
+			out = append(out, f(x))
+		}
+		return out
+	}()
+}

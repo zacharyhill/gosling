@@ -26,6 +26,9 @@ type arrow struct {
 	resolved          bool            // result type is isKnown
 	results           []types.Type    // empty for no result
 	usedAsStmt        bool            // expression body used as a statement
+	// hasHiddenType is true when a local declaration hides the name of a type
+	// that the arrow needs. gosling already reported the error.
+	hasHiddenType bool
 }
 
 func (arrow *arrow) node() ast.Expr {
@@ -101,7 +104,7 @@ func (transpiler *transpiler) fixArrows(file *file, typeInfo *types.Info) bool {
 	changed := false
 	parentOf := parents(file.ast)
 	for _, arrowFunc := range file.arrows {
-		if arrowFunc.nilStandIn == nil && arrowFunc.resolved {
+		if (arrowFunc.nilStandIn == nil && arrowFunc.resolved) || arrowFunc.hasHiddenType {
 			continue
 		}
 		context, ok := transpiler.arrowContext(file, typeInfo, parentOf, arrowFunc)
@@ -134,7 +137,7 @@ func (transpiler *transpiler) setParams(file *file, arrowFunc *arrow, params []t
 	fields := arrowFunc.funcLit.Type.Params.List
 	typeExprs := make([]ast.Expr, len(params))
 	for paramIndex, param := range params {
-		paramExpr, ok := transpiler.typeExpr(file, param, fields[paramIndex].Type.Pos())
+		paramExpr, ok := transpiler.arrowTypeExpr(file, arrowFunc, param, fields[paramIndex].Type.Pos())
 		if !ok {
 			return false
 		}
@@ -152,7 +155,7 @@ func (transpiler *transpiler) setParams(file *file, arrowFunc *arrow, params []t
 func (transpiler *transpiler) setResults(file *file, arrowFunc *arrow, results []types.Type) bool {
 	fields := make([]*ast.Field, len(results))
 	for resultIndex, resultType := range results {
-		resultExpr, ok := transpiler.typeExpr(file, resultType, arrowFunc.funcLit.Pos())
+		resultExpr, ok := transpiler.arrowTypeExpr(file, arrowFunc, resultType, arrowFunc.funcLit.Pos())
 		if !ok {
 			return false
 		}
@@ -169,6 +172,22 @@ func (transpiler *transpiler) setResults(file *file, arrowFunc *arrow, results [
 		arrowFunc.funcLit.Body.List[0] = &ast.ExprStmt{X: arrowFunc.bodyReturn.Results[0]}
 	}
 	return true
+}
+
+// arrowTypeExpr returns the expression for a type that arrowFunc needs. It
+// reports an error if a local declaration at the arrow hides a name of the
+// type, because the expression would then mean another type.
+func (transpiler *transpiler) arrowTypeExpr(file *file, arrowFunc *arrow, goType types.Type, position token.Pos) (ast.Expr, bool) {
+	typeExpr, ok := transpiler.typeExpr(file, goType, position)
+	if !ok {
+		return nil, false
+	}
+	if transpiler.isNameHidden(typeExpr, goType, arrowFunc.funcLit.Pos()) {
+		arrowFunc.hasHiddenType = true
+		transpiler.errorf(file, arrowFunc.funcLit.Pos(), "the inferred type %s cannot be written here, because a local declaration hides the name; rename the local declaration", displayName(goType))
+		return nil, false
+	}
+	return typeExpr, true
 }
 
 // bodyResults infers the results of an arrow from its return statements.
@@ -296,6 +315,9 @@ func expectFunc(goType types.Type) (funcContext, bool) {
 // lowerArrows writes the resolved types over the arrow placeholders.
 func (lowerer *lowerer) lowerArrows() {
 	for _, arrowFunc := range lowerer.file.arrows {
+		if arrowFunc.hasHiddenType {
+			continue
+		}
 		if arrowFunc.nilStandIn != nil {
 			lowerer.errorf(lowerer.file, arrowFunc.funcLit.Pos(), "cannot infer the parameter types of this arrow function; add types, as in (x int) => ...")
 			continue

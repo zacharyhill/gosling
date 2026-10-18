@@ -225,6 +225,16 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:10: cannot infer the parameter types of this arrow function; add types, as in (x int) => ...",
 		},
 		{
+			name: "arrow parameter type hidden by a local type",
+			src:  "package p\ntype item struct{ Name string }\nvar global = []item{{\"a\"}}\nfunc f() {\n\ttype item struct{ Count int }\n\tprintln(global.map(it => it.Name))\n}",
+			want: "x.gol:6:21: the inferred type item cannot be written here, because a local declaration hides the name; rename the local declaration",
+		},
+		{
+			name: "arrow result type hidden by a local variable",
+			src:  "package p\ntype item struct{ Name string }\nfunc make2(f func() item) {}\nfunc zero() item { return item{} }\nfunc f() {\n\tlet item = 1\n\t_ = item\n\tmake2(() => zero())\n}",
+			want: "x.gol:8:8: the inferred type item cannot be written here, because a local declaration hides the name; rename the local declaration",
+		},
+		{
 			name: "forEach used as a value",
 			src:  "package p\nfunc f(xs []int) {\n\tlet y = xs.forEach(x => println(x))\n\t_ = y\n}",
 			want: "x.gol:3:10: forEach can only be used as a statement",
