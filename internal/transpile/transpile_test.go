@@ -934,6 +934,16 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:4:16: cannot use ... in call to non-variadic g",
 		},
 		{
+			name: "optional field value of the wrong type",
+			src:  "package p\ntype C struct{ Host? string }\nvar c = C{Host: 5}",
+			want: "x.gol:3:17: cannot use 5 (untyped int constant) as *string value in struct literal",
+		},
+		{
+			name: "optional field value that overflows",
+			src:  "package p\ntype C struct{ Port? int8 }\nvar c = C{Port: 300}",
+			want: "x.gol:3:17: cannot use 300 (untyped int constant) as int8 value in struct literal (overflows)",
+		},
+		{
 			name: "missing catch",
 			src:  "package p\nfunc f() {\n\ttry { }\n}",
 			want: "x.gol:3:8: try block must be followed by catch",

@@ -53,7 +53,9 @@ type Result struct {
 	// Params holds the offsets of the statements that declare the names of
 	// destructured parameters.
 	Params []int
-	edits  []edit
+	// Optionals holds the offsets of the names of optional struct fields.
+	Optionals []int
+	edits     []edit
 }
 
 // Error is a syntax error at an offset into the original source.
@@ -106,6 +108,7 @@ const (
 	frameTry
 	frameCatch
 	framePanic
+	frameStruct
 )
 
 type frame struct {
@@ -368,6 +371,8 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		return tokenIndex, processor.rewriteTryExpression(tokenIndex)
 	case processor.isEnum(tokenIndex):
 		return processor.rewriteEnum(tokenIndex)
+	case isQuestion(current) && processor.isOptionalField(tokenIndex):
+		return processor.optionalField(tokenIndex)
 	case isQuestion(current) && processor.ternaryParts[tokenIndex]:
 		processor.rewriteTernary(tokenIndex)
 	case current.is(token.COLON) && processor.ternaryParts[tokenIndex]:
@@ -415,6 +420,8 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		return tokenIndex, processor.typedArrow(tokenIndex)
 	case current.is(token.LBRACK) && processor.hasSpreadElement(tokenIndex):
 		return processor.sliceSpread(tokenIndex)
+	case current.is(token.LBRACE) && tokenIndex > 0 && processor.tokens[tokenIndex-1].is(token.STRUCT):
+		processor.braceStack = append(processor.braceStack, frame{kind: frameStruct})
 	case current.is(token.LBRACE) || current.is(token.LBRACK):
 		processor.openBracket(current, pendingTry)
 	case current.is(token.RPAREN) || current.is(token.RBRACK):

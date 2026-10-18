@@ -1,0 +1,43 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+)
+
+type Config struct {
+	Host? string `json:"host,omitempty"`
+	Port? int    `json:"port,omitempty"`
+}
+
+func describe(cfg *Config) string {
+	return t`${cfg?.Host ?? "localhost"}:${cfg?.Port ?? 80}`
+}
+
+func main() {
+	let host = "example.com"
+	const cfg = Config{Host: host}
+	host = "changed"
+	fmt.Println(describe(&cfg), describe(nil))
+	let port = 9000
+	const shared = Config{Port: &port}
+	port = 9001
+	fmt.Println(describe(&shared))
+	const secure = true
+	const merged = Config{...cfg, Port: secure ? 443 : 80}
+	const {Host, Port} = merged
+	fmt.Println(*Host, *Port, describe(&merged))
+	let fallback = 8080
+	let empty = Config{}
+	empty.Port ??= &fallback
+	fmt.Println(*empty.Port, empty.Host == nil)
+	try {
+		const encoded = json.Marshal(Config{Port: 8080})
+		fmt.Println(string(encoded))
+		let decoded: Config
+		json.Unmarshal([]byte(`{"host":"a"}`), &decoded)
+		fmt.Println(*decoded.Host, decoded.Port == nil)
+	} catch (e) {
+		fmt.Println("error:", e)
+	}
+}

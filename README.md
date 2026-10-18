@@ -39,6 +39,7 @@ Features:
 - Union types with exhaustive switches: `type Shape = Circle | Square`, `type Method = "GET" | "POST"`
 - Enums with exhaustive switches: `enum Color { Red, Green, Blue }`
 - Struct shorthand and spread: `User{name, age}`, `[...a, ...b]`, `Point{...p, X: 5}`, `{...defaults, ...overrides}`, `f(...xs)`
+- Optional struct fields: `Host? string`
 
 ## Why
 
@@ -1113,6 +1114,31 @@ sum(0, ...xs, 2, ...ys)      // sum(0, slices.Concat(xs, []int{2}, ys)...)
 - In a call, a spread fills the variadic parameter. All arguments from the first spread to the end go into it. A spread cannot fill other parameters.
 - One spread at the end of a call passes the slice itself, as `xs...` does in Go. So the function can change its elements. Other call spreads make a new slice.
 
+### Optional fields
+
+In a struct type, `Name? T` declares a field of type `*T`. Struct tags stay:
+
+```go
+type Config struct {
+	Host? string `json:"host,omitempty"` // Host *string `json:"host,omitempty"`
+	Port? int                             // Port *int
+}
+```
+
+In a composite literal, an optional field also takes a value of type `T`. gosling stores a pointer to a copy of the value:
+
+```go
+const cfg = Config{Host: host, Port: 8080}
+
+cfg := Config{Host: func(v string) *string { return &v }(host), Port: func(v int) *int { return &v }(8080)}
+```
+
+A value of type `*T`, such as `&port` or `nil`, stays as it is. Use `?.` and `??` to read the fields: `cfg.Port ?? 80`.
+
+- Write `Host? string`, not `Host?: string`. The field type comes after the name, as in Go.
+- Declare each optional field on its own line. `A, B? int` is an error.
+- The type of an optional field cannot be a pointer.
+
 ### Imports and generated names
 
 gosling adds the imports that the output needs. If the package name is already in use in the file, gosling reports an error. If another file of the package declares the name, the import gets an alias, such as `fmtpkg`.
@@ -1140,6 +1166,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - VS Code highlights the name in `name: type` parameters as a type.
 - An arrow cannot get a type from the context if a local declaration hides the name of that type. Rename the local declaration.
 - Only a package-level `const` with one name can hold a generic arrow. Go function literals cannot have type parameters.
+- Only composite literals in the same package take a `T` value for an optional field. Other packages see a plain `*T` field. An assignment also needs a pointer: `cfg.Host = &host`.
 
 ## How it works
 

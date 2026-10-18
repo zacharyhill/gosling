@@ -1,0 +1,36 @@
+package optional
+
+import "time"
+
+type Config struct {
+	Host?    string `json:"host,omitempty"`
+	Port?    int64
+	Timeout? time.Duration
+	Name     string
+}
+
+func literal(host string) Config {
+	return Config{Host: host, Port: 8080, Name: "api"}
+}
+
+func positional(port int64) Config {
+	return Config{nil, port, nil, "web"}
+}
+
+func pointerKept(host *string) Config {
+	return Config{Host: host, Timeout: time.Second}
+}
+
+func shorthand(Host string) Config {
+	return Config{Host, Name: "x"}
+}
+
+type Box[T any] struct{ V? T }
+
+func generic[T any](v T) Box[T] {
+	return Box[T]{V: v}
+}
+
+func read(cfg *Config) string {
+	return cfg?.Host ?? "localhost"
+}
