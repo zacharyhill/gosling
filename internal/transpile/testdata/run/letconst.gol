@@ -36,4 +36,12 @@ func init() {
 	if const doubled = sum * 2; doubled > 10 {
 		fmt.Println(t`doubled: ${doubled}`)
 	}
+	let big: int64 = 0
+	for (let i: int64 = 1 << 40; i < 1<<40+3; i++) {
+		big += i
+	}
+	fmt.Println(big)
+	if let ratio: float64 = 1; ratio/3 > 0.3 {
+		fmt.Println("ratio", ratio/3)
+	}
 }

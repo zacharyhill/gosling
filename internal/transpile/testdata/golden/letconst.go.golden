@@ -3,6 +3,7 @@
 package letconst
 
 import (
+	"io"
 	"os"
 	"strings"
 )
@@ -86,6 +87,29 @@ func headers(m map[string]int, ch chan int, value any) int {
 			total += v
 		}
 	default:
+	}
+	return total
+}
+
+func typedHeaders(n int64, r io.Reader, ok bool) int64 {
+	var total int64
+	for i := int64(0); i < n; i++ {
+		total += i
+	}
+	for scale := float64(1); scale < 4; scale *= 2 {
+		total += int64(scale)
+	}
+	if w := io.Writer(os.Stdout); w != nil && ok {
+		total++
+	}
+	if p := (*int)(nil); p == nil {
+		total++
+	}
+	switch rd := io.Reader(r); rd.(type) {
+	case *os.File:
+		total++
+	}
+	for next := (func(int64) int64)(func(x int64) int64 { return x + 1 }); total < n; total = next(total) {
 	}
 	return total
 }

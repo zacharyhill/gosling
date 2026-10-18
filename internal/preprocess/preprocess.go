@@ -125,6 +125,8 @@ func (processor *processor) nesting() nesting {
 type pendingCloser struct {
 	start nesting
 	text  string
+	// afterIndex is the index of a token that the rewrite cannot end at or before.
+	afterIndex int
 }
 
 type processor struct {
@@ -485,7 +487,7 @@ func (result *Result) OrigRange(start, end int) (int, bool) {
 func (processor *processor) finishClosers(tokenIndex int) {
 	for len(processor.pendingClosers) > 0 {
 		pending := processor.pendingClosers[len(processor.pendingClosers)-1]
-		if processor.nesting() != pending.start {
+		if processor.nesting() != pending.start || tokenIndex <= pending.afterIndex {
 			return
 		}
 		switch processor.tokenAt(tokenIndex).kind {

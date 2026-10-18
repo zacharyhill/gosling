@@ -1,6 +1,7 @@
 package letconst
 
 import (
+	"io"
 	"os"
 	"strings"
 )
@@ -73,6 +74,29 @@ func headers(m map[string]int, ch chan int, value any) int {
 			total += v
 		}
 	default:
+	}
+	return total
+}
+
+func typedHeaders(n int64, r io.Reader, ok bool) int64 {
+	let total: int64
+	for (let i: int64 = 0; i < n; i++) {
+		total += i
+	}
+	for (let scale: float64 = 1; scale < 4; scale *= 2) {
+		total += int64(scale)
+	}
+	if const w: io.Writer = os.Stdout; w != nil && ok {
+		total++
+	}
+	if let p: *int = nil; p == nil {
+		total++
+	}
+	switch let rd: io.Reader = r; rd.(type) {
+	case *os.File:
+		total++
+	}
+	for (let next: func(int64) int64 = x => x + 1; total < n; total = next(total)) {
 	}
 	return total
 }
