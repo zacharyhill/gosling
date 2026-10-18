@@ -731,6 +731,38 @@ func TestLineDirectiveAfterComma(test *testing.T) {
 	})
 }
 
+// TestLineDirectiveHoistedCall checks that a call that try moves before its
+// statement keeps its own line.
+func TestLineDirectiveHoistedCall(test *testing.T) {
+	src := "package p\n\nimport \"strconv\"\n\nfunc sum(a, b string) (int, error) {\n\ttry {\n\t\treturn max(\n" +
+		"\t\t\tstrconv.Atoi(a),\n\t\t\tstrconv.Atoi(b),\n\t\t), nil\n\t} catch (e) {\n\t\treturn 0, e\n\t}\n}\n"
+	outputs, err := Transpile(Config{Importer: importer.Default(), LineDirectives: true}, []Input{{Path: "p.gol", Src: []byte(src)}})
+	if err != nil {
+		test.Fatal(err)
+	}
+	fileSet := token.NewFileSet()
+	parsed, err := parser.ParseFile(fileSet, "p.go", outputs[0].Src, parser.ParseComments)
+	if err != nil {
+		test.Fatal(err)
+	}
+	wantLines := map[string]int{"a": 8, "b": 9}
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok || len(call.Args) != 1 {
+			return true
+		}
+		selector, ok := call.Fun.(*ast.SelectorExpr)
+		if !ok || selector.Sel.Name != "Atoi" {
+			return true
+		}
+		argumentName := call.Args[0].(*ast.Ident).Name
+		if got := fileSet.PositionFor(call.Pos(), true).Line; got != wantLines[argumentName] {
+			test.Errorf("strconv.Atoi(%s) maps to line %d, want %d\n%s", argumentName, got, wantLines[argumentName], outputs[0].Src)
+		}
+		return true
+	})
+}
+
 func writeFile(test *testing.T, path, content string) {
 	test.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {

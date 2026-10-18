@@ -32,6 +32,8 @@ type edit struct {
 type resolvedEdit struct {
 	edit
 	copies []copiedRange
+	// movedFrom is the start of the moved source range, or -1.
+	movedFrom int
 }
 
 // emit applies the edits to the preprocessed source and formats the result.
@@ -170,9 +172,8 @@ func (writer *outputWriter) writeSource(srcOffset int, text []byte) {
 
 func (writer *outputWriter) writeEdit(currentEdit resolvedEdit) {
 	writer.copyOriginal(currentEdit.start)
-	if writer.needsDirective && currentEdit.text != "" {
-		writer.directive(writer.lineAt(nextNonSpace(writer.src, currentEdit.start)))
-		writer.needsDirective = false
+	if currentEdit.text != "" {
+		writer.writeEditDirective(currentEdit)
 	}
 	textStart := writer.buffer.Len()
 	firstLine, restLines, isMultiline := strings.Cut(currentEdit.text, "\n")
@@ -190,6 +191,22 @@ func (writer *outputWriter) writeEdit(currentEdit resolvedEdit) {
 		writer.needsDirective = true
 	}
 	writer.copiedUpTo = currentEdit.end
+}
+
+// writeEditDirective writes a line directive before the text of an edit when
+// the output line no longer matches the source. Moved code keeps the line of
+// its source.
+func (writer *outputWriter) writeEditDirective(currentEdit resolvedEdit) {
+	nextLine := writer.lineAt(nextNonSpace(writer.src, currentEdit.start))
+	isMoved := currentEdit.movedFrom >= 0
+	switch {
+	case isMoved && (writer.needsDirective || writer.lineAt(currentEdit.movedFrom) != nextLine):
+		writer.directive(writer.lineAt(currentEdit.movedFrom))
+		writer.needsDirective = false
+	case writer.needsDirective:
+		writer.directive(nextLine)
+		writer.needsDirective = false
+	}
 }
 
 // addEditCopies records the copied ranges of an edit's text. The text starts
@@ -250,8 +267,9 @@ func (lowerer *lowerer) resolve(from, to int) ([]resolvedEdit, error) {
 	sortEdits(kept)
 	resolved := make([]resolvedEdit, 0, len(kept))
 	for _, currentEdit := range kept {
-		finished := resolvedEdit{edit: currentEdit}
+		finished := resolvedEdit{edit: currentEdit, movedFrom: -1}
 		if currentEdit.move != nil {
+			finished.movedFrom = currentEdit.move[0]
 			moved, movedCopies, err := lowerer.render(currentEdit.move[0], currentEdit.move[1])
 			if err != nil {
 				return nil, err
