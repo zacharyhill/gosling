@@ -34,6 +34,7 @@ Features:
 - Arrow functions: `x => x * 2`, `(a, b) => a + b`
 - Array methods on slices and arrays: `nums.filter(n => n%2 == 0).map(n => n * n)`
 - Map methods: `ages.has(name)`, `ages.get(name) ?? 0`, `ages.keys()`
+- String methods: `name.trim().toLowerCase().startsWith("a")`
 - `.length`: `xs.length` becomes `len(xs)`
 - Union types with exhaustive switches: `type Shape = Circle | Square`, `type Method = "GET" | "POST"`
 - Enums with exhaustive switches: `enum Color { Red, Green, Blue }`
@@ -911,6 +912,41 @@ for (let i = 0; i < xs.length; i++) { // for i := 0; i < len(xs); i++ {
 - For a string, `length` is the number of bytes, as for `len`. JavaScript counts UTF-16 code units.
 - A field or method named `length` has priority.
 - Code cannot assign to `length`.
+
+### String methods
+
+Strings have these methods. Most become a call to the `strings` package:
+
+| Method                   | Output                                      |
+| ------------------------ | ------------------------------------------- |
+| `s.includes(x)`          | `strings.Contains(s, x)`                    |
+| `s.startsWith(x)`        | `strings.HasPrefix(s, x)`                   |
+| `s.endsWith(x)`          | `strings.HasSuffix(s, x)`                   |
+| `s.split(sep)`           | `strings.Split(s, sep)`                     |
+| `s.trim()`               | `strings.TrimSpace(s)`                      |
+| `s.trimStart()`          | `strings.TrimLeftFunc(s, unicode.IsSpace)`  |
+| `s.trimEnd()`            | `strings.TrimRightFunc(s, unicode.IsSpace)` |
+| `s.toUpperCase()`        | `strings.ToUpper(s)`                        |
+| `s.toLowerCase()`        | `strings.ToLower(s)`                        |
+| `s.replace(old, new)`    | `strings.Replace(s, old, new, 1)`           |
+| `s.replaceAll(old, new)` | `strings.ReplaceAll(s, old, new)`           |
+| `s.indexOf(x)`           | `strings.Index(s, x)`                       |
+| `s.lastIndexOf(x)`       | `strings.LastIndex(s, x)`                   |
+| `s.repeat(n)`            | `strings.Repeat(s, n)`                      |
+
+`slice`, `padStart`, `padEnd`, and `at` become function literals:
+
+- `s.slice(start, end)` gives the text from `start` to `end`. `end` is optional. A negative index counts from the end, and an index past the end stops at the end, as in JavaScript. So `s.slice(-3)` gives the last three bytes.
+- `s.padStart(width, pad)` and `s.padEnd(width, pad)` add copies of `pad` before or after `s`, until `s` has `width` bytes. `pad` is optional. The default is a space.
+- `s.at(i)` gives the byte at `i` as a string, `s[i:i+1]`. A negative index counts from the end. An index out of range panics, as in Go.
+
+Rules:
+
+- The methods apply to all string types, including named types. The result is a `string`. A method of the type with the same name has priority.
+- Lengths and indexes count bytes of UTF-8, as Go does. JavaScript counts UTF-16 code units. So the results differ for text that is not ASCII: `"héllo".slice(0, 2)` gives `"h\xc3"`, not `"hé"`.
+- `s.split("")` splits into UTF-8 characters, not UTF-16 code units.
+- `indexOf` and `lastIndexOf` have no start index. `replace` takes a string, not a regular expression.
+- gosling adds the `strings` and `unicode` imports if necessary.
 
 ### Union types
 

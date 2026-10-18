@@ -103,6 +103,8 @@ type file struct {
 	arrayCalls     map[*ast.CallExpr]*arrayCall
 	// lengths maps each len call that replaced x.length to the selector.
 	lengths map[*ast.CallExpr]*ast.SelectorExpr
+	// stringCalls maps each string method marker call to its call.
+	stringCalls map[*ast.CallExpr]*stringCall
 	// identNames holds every identifier name in the source. Added imports
 	// must not use these names.
 	identNames map[string]bool
@@ -372,6 +374,7 @@ func newFile(input Input, preprocessed *preprocess.Result) *file {
 		ternaries:      map[*ast.CallExpr]bool{},
 		ternaryStmts:   map[*ast.IfStmt]*ast.CallExpr{},
 		enumSelectors:  map[*ast.ParenExpr]*ast.SelectorExpr{},
+		stringCalls:    map[*ast.CallExpr]*stringCall{},
 	}
 }
 
@@ -593,7 +596,8 @@ func markerDecls(packageName string) string {
 		ternaryMarkerDecl +
 		spreadMarkerDecls +
 		defaultMarkerDecls +
-		arrayMarkerDecls()
+		arrayMarkerDecls() +
+		stringMarkerDecls()
 }
 
 func (transpiler *transpiler) unresolvedArrows() bool {
@@ -626,6 +630,7 @@ func (transpiler *transpiler) augment(typeInfo *types.Info) bool {
 		changed = destructureTuples(file, typeInfo) || changed
 		changed = transpiler.rewriteArrayCalls(file, typeInfo) || changed
 		changed = transpiler.rewriteLengths(file, typeInfo) || changed
+		changed = transpiler.rewriteStringCalls(file, typeInfo) || changed
 		changed = transpiler.wrapNested(file, typeInfo) || changed
 		changed = transpiler.typeUntypedSpreads(file, typeInfo) || changed
 		changed = transpiler.expandShorthand(file, typeInfo) || changed

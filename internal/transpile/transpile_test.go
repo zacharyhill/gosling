@@ -614,6 +614,26 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:31: invalid operation: acc + float64(n) (mismatched types int and float64)",
 		},
 		{
+			name: "string slice with too many arguments",
+			src:  "package p\nfunc f(s string) string {\n\treturn s.slice(1, 2, 3)\n}",
+			want: "x.gol:3:9: slice expects 1 or 2 arguments",
+		},
+		{
+			name: "string method with a wrong argument type",
+			src:  "package p\nfunc f(s string) bool {\n\treturn s.includes(1)\n}",
+			want: "x.gol:3:20: cannot use 1 (untyped int constant) as string value in argument to includes",
+		},
+		{
+			name: "string slice with a shadowed builtin",
+			src:  "package p\nfunc f(s string, max int) string {\n\treturn s.slice(max)\n}",
+			want: "x.gol:3:9: slice needs the builtin max, but a declaration shadows it here; rename that declaration",
+		},
+		{
+			name: "string method needs strings but the name is taken",
+			src:  "package p\nfunc f(strings string) bool {\n\treturn strings.includes(\"a\")\n}",
+			want: "x.gol:3:9: includes needs package strings, but the name strings is already used in this file",
+		},
+		{
 			name: "switch missing union variants",
 			src:  "package p\ntype A struct{}\ntype B struct{}\ntype C struct{}\ntype U = A | B | C\nfunc f(u U) {\n\tswitch u.(type) {\n\tcase A:\n\t}\n}",
 			want: "x.gol:7:2: switch on U is missing cases: B, C",

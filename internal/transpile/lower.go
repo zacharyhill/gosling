@@ -99,6 +99,7 @@ func (lowerer *lowerer) lowerFile() {
 	lowerer.lowerArrows()
 	lowerer.lowerArrays()
 	lowerer.lowerLengths()
+	lowerer.lowerStrings()
 	lowerer.lowerUnions()
 	lowerer.lowerEnums()
 	lowerer.lowerSpread()

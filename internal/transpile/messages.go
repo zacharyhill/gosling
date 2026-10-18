@@ -164,7 +164,7 @@ func cleanCall(name, text string) (string, string, bool) {
 		return args[0] + " ? " + args[1] + " : " + args[2], after, true
 	case name == arrayRefMarker && len(args) == 1:
 		return args[0], strings.TrimPrefix(after, "[:]"), true
-	case isMethodMarker(name) && len(args) > 0:
+	case (isMethodMarker(name) || strings.HasPrefix(name, stringMarkerPrefix)) && len(args) > 0:
 		return args[0] + "." + markerDisplayName(name) + "(" + strings.Join(args[1:], ", ") + ")", after, true
 	}
 	return "", "", false
@@ -263,7 +263,7 @@ func markerDisplayName(name string) string {
 	case preprocess.OMarker:
 		return "?."
 	}
-	for _, prefix := range []string{arrayMarkerPrefix, mapMarkerPrefix} {
+	for _, prefix := range []string{arrayMarkerPrefix, mapMarkerPrefix, stringMarkerPrefix} {
 		if method, ok := strings.CutPrefix(name, prefix); ok {
 			return arrayMethodName(method)
 		}
