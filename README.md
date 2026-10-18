@@ -97,6 +97,7 @@ gosling -lines=false # do not add line directives
 gosling -v ./...     # show progress for each directory
 gosling -version     # print the gosling version
 gosling fmt -w ./... # format .gol files
+gosling lint golangci-lint run ./... # show linter positions in .gol files
 ```
 
 To use `go generate`, add `//go:generate gosling` to a `.go` file in the package.
@@ -120,6 +121,29 @@ gosling reads `//go:build` lines and `_GOOS` and `_GOARCH` file name suffixes in
 gosling generates all `.gol` files on each system. It type-checks a file with the build configuration of the system if the file matches it. Otherwise it uses a configuration that matches the file. For example, it uses `GOOS=windows` for `foo_windows.gol`, and the `integration` tag for `//go:build integration`. Each configuration includes only the `.gol` and `.go` files that match it. A file that no configuration matches is an error.
 
 A `.gol` file with `//go:build ignore` can have a different package, such as a main package for `go run`.
+
+### Linters
+
+The Go compiler, `go vet`, and stack traces read the line directives in generated files. So they show `.gol` lines, but not columns.
+
+golangci-lint does not show `.gol` positions. By default it skips generated files, so it finds no issues in `.gol` code. To lint them, disable this exclusion in `.golangci.yml`:
+
+```yaml
+version: "2"
+linters:
+  exclusions:
+    generated: disable
+```
+
+This setting also lints other generated files, such as protobuf code. To skip them, add their paths to `linters.exclusions.paths`.
+
+golangci-lint then shows positions in the generated `.go` files. Run it through `gosling lint` to show `.gol` positions:
+
+```sh
+gosling lint golangci-lint run --output.text.print-issued-lines=false ./...
+```
+
+`gosling lint` runs the command and changes each position in a generated file, such as `main.go:36:11`, to the position in its `.gol` file. It works with any linter that writes positions as `file.go:line:column`. A position in code that gosling generates changes to the nearest `.gol` token before it. A generated file that is out of date or cannot be read keeps its positions, and `gosling lint` shows a warning that names it. The exit code is the exit code of the command. The `--output.text.print-issued-lines=false` flag hides the lines of Go code that golangci-lint shows under each issue.
 
 ## Editor support
 
