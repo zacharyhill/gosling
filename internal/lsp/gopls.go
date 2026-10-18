@@ -3,6 +3,7 @@ package lsp
 import (
 	"encoding/json"
 	"path/filepath"
+	"regexp"
 	"strings"
 )
 
@@ -14,8 +15,39 @@ func (server *server) handleGoplsMessage(message *rpcMessage) error {
 		return server.forwardRegistrations(message)
 	case message.Method == "textDocument/publishDiagnostics":
 		return server.handleGoplsDiagnostics(message)
+	case message.Method == "window/showMessage" && server.isGeneratedFileWarning(message):
+		return nil
 	}
 	return server.writeClient(message)
+}
+
+// generatedFileWarningRE matches the gopls warning for the first edit of a
+// generated file. gopls names only the base name of the file.
+var generatedFileWarningRE = regexp.MustCompile(`^Warning: editing (.+\.go), a generated file\.$`)
+
+// isGeneratedFileWarning reports whether message is the gopls warning about
+// an edit of a file that the server generates. The server makes these
+// edits, not the user.
+func (server *server) isGeneratedFileWarning(message *rpcMessage) bool {
+	var params struct {
+		Message string `json:"message"`
+	}
+	if json.Unmarshal(message.Params, &params) != nil {
+		return false
+	}
+	matches := generatedFileWarningRE.FindStringSubmatch(params.Message)
+	if matches == nil {
+		return false
+	}
+	warnedFileName := matches[1]
+	for _, packageState := range server.packages {
+		for goPath := range packageState.files {
+			if filepath.Base(goPath) == warnedFileName {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func (server *server) handleGoplsResponse(message *rpcMessage) error {
