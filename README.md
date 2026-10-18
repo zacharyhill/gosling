@@ -448,6 +448,7 @@ A parameter without a type gets it from the context:
 - a function argument, including generic functions such as `slices.SortFunc`
 - a variable or assignment with a function type
 - a `return` in a function that returns a function type
+- an element of a composite literal, such as `[]func(string) bool{s => s != ""}`, a map value, or a struct field
 
 Without a context, add types. The result type comes from the context or from the body. If the context has no result, an expression body becomes a statement. So `names.forEach(n => fmt.Println(n))` works.
 
