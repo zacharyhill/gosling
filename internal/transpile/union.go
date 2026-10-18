@@ -3,6 +3,7 @@ package transpile
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/types"
 	"slices"
 	"strings"
@@ -98,8 +99,14 @@ func (lowerer *lowerer) checkExhaustive(typeSwitch *ast.TypeSwitchStmt) {
 			missing = append(missing, displayName(instance))
 		}
 	}
+	lowerer.reportMissingCases(typeSwitch.Pos(), displayName(union), missing)
+}
+
+// reportMissingCases reports a switch on typeName that does not list the
+// missing cases.
+func (lowerer *lowerer) reportMissingCases(position token.Pos, typeName string, missing []string) {
 	if len(missing) > 0 {
-		lowerer.errorf(lowerer.file, typeSwitch.Pos(), "switch on %s is missing cases: %s", displayName(union), strings.Join(missing, ", "))
+		lowerer.errorf(lowerer.file, position, "switch on %s is missing cases: %s", typeName, strings.Join(missing, ", "))
 	}
 }
 

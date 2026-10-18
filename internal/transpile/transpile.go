@@ -143,6 +143,9 @@ type file struct {
 	// ternaryStmts maps each if statement that replaced a ternary statement
 	// to the marker call.
 	ternaryStmts map[*ast.IfStmt]*ast.CallExpr
+	// enumSelectors maps each enum constant that replaced a selector, such
+	// as Color.Red, to the selector.
+	enumSelectors map[*ast.ParenExpr]*ast.SelectorExpr
 }
 
 // position maps a position in the preprocessed file to the original source.
@@ -171,6 +174,8 @@ type transpiler struct {
 	unions map[*types.TypeName][]types.Type
 	// literalUnions maps each literal union type to its constants.
 	literalUnions map[*types.TypeName][]*types.Const
+	// enums maps each enum type to its members, in declaration order.
+	enums map[*types.TypeName][]enumMember
 }
 
 // Transpile converts the .gol files of one package to Go.
@@ -366,6 +371,7 @@ func newFile(input Input, preprocessed *preprocess.Result) *file {
 		tuples:         map[*ast.AssignStmt]*tupleDestructure{},
 		ternaries:      map[*ast.CallExpr]bool{},
 		ternaryStmts:   map[*ast.IfStmt]*ast.CallExpr{},
+		enumSelectors:  map[*ast.ParenExpr]*ast.SelectorExpr{},
 	}
 }
 
@@ -464,6 +470,7 @@ func (transpiler *transpiler) check() *types.Info {
 		return typeInfo // lowering reports the arrows, other errors are noise
 	}
 	badUnions := transpiler.collectUnions()
+	transpiler.collectEnums()
 	for _, typeError := range typeErrors {
 		switch {
 		case transpiler.isSpurious(typeError, typeInfo, badUnions):
@@ -627,6 +634,7 @@ func (transpiler *transpiler) augment(typeInfo *types.Info) bool {
 		changed = usePtrCoalesce(file, typeInfo) || changed
 		changed = useDefaultPtr(file, typeInfo) || changed
 		changed = transpiler.fixTernaryTypes(file, typeInfo) || changed
+		changed = transpiler.rewriteEnumSelectors(file, typeInfo) || changed
 		changed = addBlankForErrors(file, typeInfo) || changed
 		changed = dropForOfBlanks(file, typeInfo) || changed
 	}

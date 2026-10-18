@@ -36,6 +36,7 @@ Features:
 - Map methods: `ages.has(name)`, `ages.get(name) ?? 0`, `ages.keys()`
 - `.length`: `xs.length` becomes `len(xs)`
 - Union types with exhaustive switches: `type Shape = Circle | Square`, `type Method = "GET" | "POST"`
+- Enums with exhaustive switches: `enum Color { Red, Green, Blue }`
 - Struct shorthand and spread: `User{name, age}`, `[...a, ...b]`, `Point{...p, X: 5}`, `{...defaults, ...overrides}`, `f(...xs)`
 
 ## Why
@@ -992,6 +993,55 @@ func (Err[T]) isResult(T) {}
 
 The marker method takes the type parameters. So `Ok[string]` is not a `Result[int]`. A switch on `Result[int]` must list `Ok[int]` and `Err[int]`. A variant without the type parameters, such as `Err`, is an error. Add the type parameter to it, as in `type Err[T any] struct{ Msg string }`.
 
+### Enums
+
+```go
+enum Color { Red, Green, Blue }
+```
+
+becomes:
+
+```go
+type Color int
+
+const (
+	ColorRed Color = iota
+	ColorGreen
+	ColorBlue
+)
+
+func (v Color) String() string {
+	switch v {
+	case ColorRed:
+		return "Red"
+	case ColorGreen:
+		return "Green"
+	case ColorBlue:
+		return "Blue"
+	}
+	return "Color(" + strconv.Itoa(int(v)) + ")"
+}
+```
+
+- Each member becomes a constant. Its name is the enum name, then the member name with an upper-case first letter. So `enum level { debug }` gives `levelDebug`.
+- `Color.Red` is the same as `ColorRed`. `pkg.Color.Red` is the same as `pkg.ColorRed`. gosling uses this rule only if the type has no field or method `Red` and its package has a constant `ColorRed` of the type.
+- Commas or line breaks separate the members.
+- A member can have a value: `enum Status { Active = 1, Disabled = 4, Deleted }`. A member without a value is one more than the member before it, as in TypeScript. The first member is 0.
+- `String()` returns the member name. If two members have the same value, it returns the first name. Do not declare a `String` method for an enum.
+- In a string enum, each member has a string value: `enum Level { Debug = "debug", Info = "info" }`. Its type is `string`, and it has no `String` method.
+- Declare enums at package level.
+
+A `switch` on an enum in a `.gol` file must list all members or have a `default` case:
+
+```go
+switch color {
+case Color.Red:
+}
+// error: switch on Color is missing cases: ColorGreen, ColorBlue
+```
+
+gosling does not check a switch if a case is not a constant.
+
 ### Struct shorthand and spread
 
 ```go
@@ -1048,6 +1098,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - Object patterns have no rest element.
 - In a try block, an optional call that returns an error must be a statement to be checked.
 - A line cannot start with the `?` or the `:` of a ternary.
+- In the value of an enum member, refer to other members as `Color.Red` or `ColorRed`, not `Red`.
 - gosling does not check switches in `.go` files.
 - In a `case` expression, a function type or literal cannot use `):`. Use Go order there.
 - VS Code highlights the name in `name: type` parameters as a type.

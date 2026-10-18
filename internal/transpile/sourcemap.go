@@ -99,14 +99,15 @@ type scannedToken struct {
 
 // buildSourceMap pairs the tokens of the unformatted output with the tokens
 // of the final output. gofmt changes only the space between tokens, so the
-// token sequences match. A token that the writer copied from the
-// preprocessed source, and that preprocessing did not change, gets a span.
+// token sequences match. Each part of a token that the writer copied from
+// the preprocessed source, and that preprocessing did not change, gets a
+// span. So ColorRed, made from Red, maps its last three bytes.
 func buildSourceMap(file *file, unformatted []byte, copies []copiedRange, formatted []byte) SourceMap {
 	var sourceMap SourceMap
 	for _, pair := range alignTokens(scanTokens(unformatted), scanTokens(formatted)) {
-		golOffset, ok := golOffsetOf(file, copies, pair[0])
-		if ok {
-			sourceMap.byGo = append(sourceMap.byGo, span{golOffset: golOffset, goOffset: pair[1].offset, length: len(pair[1].text)})
+		for _, piece := range copiedPieces(file, copies, pair[0]) {
+			piece.goOffset += pair[1].offset
+			sourceMap.byGo = append(sourceMap.byGo, piece)
 		}
 	}
 	sourceMap.byGol = slices.Clone(sourceMap.byGo)
@@ -114,27 +115,33 @@ func buildSourceMap(file *file, unformatted []byte, copies []copiedRange, format
 	return sourceMap
 }
 
-// golOffsetOf returns the .gol offset of a token in the unformatted output.
-func golOffsetOf(file *file, copies []copiedRange, unformattedToken scannedToken) (int, bool) {
+// copiedPieces returns a span for each part of a token in the unformatted
+// output that comes unchanged from the .gol file. The goOffset of each span
+// is relative to the start of the token.
+func copiedPieces(file *file, copies []copiedRange, unformattedToken scannedToken) []span {
 	tokenEnd := unformattedToken.offset + len(unformattedToken.text)
-	next := sort.Search(len(copies), func(copyIndex int) bool { return copies[copyIndex].outOffset > unformattedToken.offset })
-	for copyIndex := next - 1; copyIndex >= 0; copyIndex-- {
+	first := sort.Search(len(copies), func(copyIndex int) bool {
+		return copies[copyIndex].outOffset+copies[copyIndex].length > unformattedToken.offset
+	})
+	var pieces []span
+	for copyIndex := first; copyIndex < len(copies) && copies[copyIndex].outOffset < tokenEnd; copyIndex++ {
 		copied := copies[copyIndex]
-		if copied.length == 0 {
+		pieceStart, pieceEnd := max(copied.outOffset, unformattedToken.offset), min(copied.outOffset+copied.length, tokenEnd)
+		if pieceStart >= pieceEnd {
 			continue
 		}
-		if tokenEnd > copied.outOffset+copied.length {
-			return 0, false
+		srcStart := copied.srcOffset + pieceStart - copied.outOffset
+		srcEnd := srcStart + pieceEnd - pieceStart
+		for _, origPiece := range file.preprocessed.OrigPieces(srcStart, srcEnd) {
+			tokenOffset := pieceStart - unformattedToken.offset + origPiece.Start - srcStart
+			pieceText := unformattedToken.text[tokenOffset : tokenOffset+origPiece.End-origPiece.Start]
+			golEnd := min(origPiece.OrigStart+len(pieceText), len(file.original))
+			if string(file.original[origPiece.OrigStart:golEnd]) == pieceText {
+				pieces = append(pieces, span{golOffset: origPiece.OrigStart, goOffset: tokenOffset, length: len(pieceText)})
+			}
 		}
-		srcStart := copied.srcOffset + unformattedToken.offset - copied.outOffset
-		golOffset, ok := file.preprocessed.OrigRange(srcStart, srcStart+len(unformattedToken.text))
-		golEnd := min(golOffset+len(unformattedToken.text), len(file.original))
-		if !ok || string(file.original[golOffset:golEnd]) != unformattedToken.text {
-			return 0, false
-		}
-		return golOffset, true
 	}
-	return 0, false
+	return pieces
 }
 
 // scanTokens returns the tokens that gofmt keeps. gofmt adds and removes

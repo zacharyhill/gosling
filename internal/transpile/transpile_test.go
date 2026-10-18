@@ -659,6 +659,21 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:4:24: 3 is not a value of Code",
 		},
 		{
+			name: "switch missing enum members",
+			src:  "package p\nenum Color { Red, Green, Blue }\nfunc f(c Color) {\n\tswitch c {\n\tcase Color.Green:\n\t}\n}",
+			want: "x.gol:4:2: switch on Color is missing cases: ColorRed, ColorBlue",
+		},
+		{
+			name: "unknown enum member",
+			src:  "package p\nenum Color { Red }\nfunc f() Color {\n\treturn Color.Purple\n}",
+			want: "x.gol:4:15: Color.Purple undefined",
+		},
+		{
+			name: "enum with its own String method",
+			src:  "package p\nenum Color { Red }\nfunc (c Color) String() string { return \"\" }\n",
+			want: "x.gol:3:16: method Color.String already declared",
+		},
+		{
 			name: "union variant from another package",
 			src:  "package p\nimport \"time\"\ntype A struct{}\ntype U = A | time.Time\n",
 			want: "x.gol:4:1: union variant time.Time must be a type declared in this package",
