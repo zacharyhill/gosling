@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 	"strings"
 
 	"github.com/zacharyhill/gosling/internal/preprocess"
@@ -123,6 +124,9 @@ func (lowerer *lowerer) lowerCat(call *ast.CallExpr, callee *ast.Ident) {
 		lowerer.errorf(lowerer.file, call.Pos(), "spread needs package slices and the element type, but a needed name is already used in this file")
 		return
 	}
+	if slices.ContainsFunc(call.Args, isOneCall) && lowerer.reportHiddenType(slice.Elem(), elementType, call.Pos()) {
+		return
+	}
 	lowerer.replace(callee.Pos(), callee.End(), qualify(slicesName)+"Concat", line)
 	for _, arg := range call.Args {
 		if oneCall, ok := callTo(arg, preprocess.OneMarker); ok {
@@ -130,6 +134,11 @@ func (lowerer *lowerer) lowerCat(call *ast.CallExpr, callee *ast.Ident) {
 			lowerer.replace(oneCall.Rparen, oneCall.Rparen+1, "}", line)
 		}
 	}
+}
+
+func isOneCall(arg ast.Expr) bool {
+	_, ok := callTo(arg, preprocess.OneMarker)
+	return ok
 }
 
 // lowerWith writes T(__goslingWith(base, T{X: 1})) as

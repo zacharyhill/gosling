@@ -529,6 +529,8 @@ const p2 = Point{...p, X: 5} // func() Point { v := p; v.X = 5; return v }()
 
 gosling adds the imports that the output needs. If the package name is already in use in the file, gosling reports an error. If another file of the package declares the name, the import gets an alias, such as `fmtpkg`.
 
+Some output must write a type, such as the result of `filter` or `??`. If a local declaration hides the name of that type, gosling reports an error. Rename the local declaration.
+
 Error variables are `err`, `err2`, and so on. Labels are `catch_N`, `end_N`, and `finally_N`. gosling does not use a name that the file already uses. Variables also do not use a name that the package declares at package level.
 
 ## Errors and line numbers

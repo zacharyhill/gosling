@@ -333,6 +333,36 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:18: " + errNilArrowResult,
 		},
 		{
+			name: "filter result type hidden by a local type",
+			src:  "package p\ntype inner struct{}\ntype item struct{ In inner }\nvar global = []item{{}}\nfunc keep(x item) bool { return true }\nfunc pick() *item { return nil }\nfunc f() {\n\ttype item int\n\t_ = global.filter(keep)\n}",
+			want: "x.gol:9:6: the inferred type []item cannot be written here, because a local declaration hides the name; rename the local declaration",
+		},
+		{
+			name: "includes element type hidden by a local type",
+			src:  "package p\ntype inner struct{}\ntype item struct{ In inner }\nvar global = []item{{}}\nfunc keep(x item) bool { return true }\nfunc pick() *item { return nil }\nfunc f() {\n\ttype item int\n\t_ = global.includes(global[0])\n}",
+			want: "x.gol:9:6: the inferred type item cannot be written here, because a local declaration hides the name; rename the local declaration",
+		},
+		{
+			name: "slice spread element type hidden by a local type",
+			src:  "package p\ntype inner struct{}\ntype item struct{ In inner }\nvar global = []item{{}}\nfunc keep(x item) bool { return true }\nfunc pick() *item { return nil }\nfunc f() {\n\ttype item int\n\t_ = [...global, global[0]]\n}",
+			want: "x.gol:9:6: the inferred type item cannot be written here, because a local declaration hides the name; rename the local declaration",
+		},
+		{
+			name: "nullish result type hidden by a local type",
+			src:  "package p\ntype inner struct{}\ntype item struct{ In inner }\nvar global = []item{{}}\nfunc keep(x item) bool { return true }\nfunc pick() *item { return nil }\nfunc f() {\n\ttype item int\n\t_ = pick() ?? global[0]\n}",
+			want: "x.gol:9:6: the inferred type item cannot be written here, because a local declaration hides the name; rename the local declaration",
+		},
+		{
+			name: "optional chain result type hidden by a local type",
+			src:  "package p\ntype inner struct{}\ntype item struct{ In inner }\nvar global = []item{{}}\nfunc keep(x item) bool { return true }\nfunc pick() *item { return nil }\nfunc f() {\n\ttype inner int\n\t_ = pick()?.In\n}",
+			want: "x.gol:9:6: the inferred type inner cannot be written here, because a local declaration hides the name; rename the local declaration",
+		},
+		{
+			name: "finally return type hidden by a local type",
+			src:  "package p\ntype inner struct{}\ntype item struct{ In inner }\nvar global = []item{{}}\nfunc keep(x item) bool { return true }\nfunc pick() *item { return nil }\nfunc f() item {\n\ttype item int\n\ttry {\n\t\treturn global[0]\n\t} finally {\n\t\tprintln()\n\t}\n}",
+			want: "x.gol:9:2: the inferred type item cannot be written here, because a local declaration hides the name; rename the local declaration",
+		},
+		{
 			name: "forEach used as a value",
 			src:  "package p\nfunc f(xs []int) {\n\tlet y = xs.forEach(x => println(x))\n\t_ = y\n}",
 			want: "x.gol:3:10: forEach can only be used as a statement",

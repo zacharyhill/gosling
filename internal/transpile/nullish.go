@@ -225,6 +225,9 @@ func (lowerer *lowerer) lowerCoalesce(call *ast.CallExpr) {
 		lowerer.typeNameTakenError(allOperands[0].Pos(), "??", typeText)
 		return
 	}
+	if lowerer.reportHiddenType(resultType, typeText, allOperands[0].Pos()) {
+		return
+	}
 	chain := coalesceChain{
 		resultType: resultType,
 		typeText:   typeText,
@@ -343,6 +346,9 @@ func (lowerer *lowerer) lowerChain(root ast.Expr) {
 	typeText, ok := lowerer.typeName(resultType)
 	if !ok {
 		lowerer.typeNameTakenError(root.Pos(), "optional chain", typeText)
+		return
+	}
+	if lowerer.reportHiddenType(resultType, typeText, root.Pos()) {
 		return
 	}
 	closing := lowerer.guards(root, "func() "+typeText+" {\n", links, tempVar, "return ")
