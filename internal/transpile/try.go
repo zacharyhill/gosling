@@ -33,14 +33,17 @@ type tryContext struct {
 	// A try with only a finally block is not a jump target. Failures go
 	// to an enclosing try.
 	isFinallyOnly bool
-	finally       *finallyLayer
-	outer         *tryContext
+	// A guard context is the body of a try with catch panic. The body runs
+	// in a function literal. It is not a jump target.
+	isGuard bool
+	finally *finallyLayer
+	outer   *tryContext
 }
 
 // target returns the try block that a failing call jumps to, if any.
 func (tryContext *tryContext) target() *tryContext {
 	for ; tryContext != nil; tryContext = tryContext.outer {
-		if !tryContext.isCatchBody && !tryContext.isFinallyOnly {
+		if !tryContext.isCatchBody && !tryContext.isFinallyOnly && !tryContext.isGuard {
 			return tryContext
 		}
 	}
@@ -52,6 +55,8 @@ func (tryContext *tryContext) catchLabel() string { return fmt.Sprintf("catch_%d
 func (tryContext *tryContext) endLabel() string { return fmt.Sprintf("end_%d", tryContext.id) }
 
 func (tryContext *tryContext) finallyLabel() string { return fmt.Sprintf("finally_%d", tryContext.id) }
+
+func (tryContext *tryContext) panicLabel() string { return fmt.Sprintf("panic_%d", tryContext.id) }
 
 // callSite is a statement-level call: a bare call or the single right side
 // of an assignment.
@@ -92,6 +97,45 @@ type tryStatement struct {
 	// if chain of the clauses.
 	chainEnd       string
 	isCatchDropped bool
+	panicBlock     *ast.BlockStmt // nil without a catch panic clause
+	panicBody      []ast.Stmt     // the user's catch panic code, without generated lines
+	panicEnd       int            // offset after the generated catch panic prologue
+	panicPrologue  string
+	guard          *guard // nil without a catch panic clause
+}
+
+// handler is the catch clauses or the catch panic block in the output.
+type handler struct {
+	label string
+	// isCatch is true for the catch clauses. emitCatches writes their
+	// prologues.
+	isCatch     bool
+	stmt        ast.Stmt // the block, or the if chain of typed catch clauses
+	rbrace      token.Pos
+	prologue    string
+	prologueEnd int // offset after the generated prologue
+}
+
+func (parts *tryStatement) collectHandlers() []handler {
+	var handlers []handler
+	if parts.hasCatch() && !parts.isCatchDropped {
+		handlers = append(handlers, handler{
+			label:   parts.context.catchLabel(),
+			isCatch: true,
+			stmt:    parts.catchStmt(),
+			rbrace:  parts.lastCatchRbrace(),
+		})
+	}
+	if parts.panicBlock != nil {
+		handlers = append(handlers, handler{
+			label:       parts.context.panicLabel(),
+			stmt:        parts.panicBlock,
+			rbrace:      parts.panicBlock.Rbrace,
+			prologue:    parts.panicPrologue,
+			prologueEnd: parts.panicEnd,
+		})
+	}
+	return handlers
 }
 
 func (lowerer *lowerer) lowerTry(stmt *ast.IfStmt, preprocessedTry preprocess.Try, outerTry *tryContext) {
@@ -104,10 +148,13 @@ func (lowerer *lowerer) lowerTry(stmt *ast.IfStmt, preprocessedTry preprocess.Tr
 		// Before the emit, because unmatched errors can add finally state.
 		parts.chainEnd = lowerer.buildCatchChainEnd(parts)
 	}
+	if parts.guard != nil {
+		parts.panicPrologue = lowerer.panicPrologue(parts)
+	}
 	switch {
 	case parts.finallyBlock != nil:
 		lowerer.emitFinally(parts)
-	case parts.isCatchDropped:
+	case parts.isCatchDropped && parts.guard == nil:
 		lowerer.emitWithoutCatch(parts)
 	default:
 		lowerer.emitTry(parts)
@@ -138,12 +185,22 @@ func (lowerer *lowerer) newTryStatement(stmt *ast.IfStmt, preprocessedTry prepro
 		}
 	}
 	if len(preprocessedTry.Filters) > 0 {
+		// The preprocessor rejects catch panic after typed catch clauses.
 		lowerer.addFilters(parts, preprocessedTry)
 		return parts
 	}
-	if preprocessedTry.HasCatch {
+	elseBranch := stmt.Else
+	if preprocessedTry.HasCatch && preprocessedTry.HasPanic {
+		chain := stmt.Else.(*ast.IfStmt) // else if true { catch } else { catch panic }
+		parts.catch, elseBranch = chain.Body, chain.Else
+	} else if preprocessedTry.HasCatch {
 		parts.catch, _ = stmt.Else.(*ast.BlockStmt)
+	}
+	if parts.catch != nil {
 		parts.catchBody = parts.catch.List
+	}
+	if preprocessedTry.HasPanic {
+		lowerer.attachGuard(parts, elseBranch.(*ast.BlockStmt), preprocessedTry)
 	}
 	if parts.context.hasBinding {
 		parts.catchBody = parts.catchBody[2:] // skip the generated declaration and blank use
@@ -164,7 +221,12 @@ func (lowerer *lowerer) hideShadowedBinding(parts *tryStatement) {
 }
 
 func (lowerer *lowerer) walkTryStatement(parts *tryStatement, binding string, outerTry *tryContext) {
-	lowerer.walkBlock(parts.stmt.Body.List, parts.context)
+	bodyContext := parts.context
+	if parts.guard != nil {
+		bodyContext = parts.guard.context
+		lowerer.checkGuardedBody(parts.stmt.Body)
+	}
+	lowerer.walkBlock(parts.stmt.Body.List, bodyContext)
 	if parts.catch != nil {
 		catchContext := &tryContext{catchVar: binding, isCatchBody: true, finally: parts.context.finally, outer: outerTry}
 		lowerer.walkBlock(parts.catchBody, catchContext)
@@ -172,6 +234,10 @@ func (lowerer *lowerer) walkTryStatement(parts *tryStatement, binding string, ou
 	for _, filter := range parts.filters {
 		filterContext := &tryContext{catchVar: filter.binding, isCatchBody: true, finally: parts.context.finally, outer: outerTry}
 		lowerer.walkBlock(filter.body, filterContext)
+	}
+	if parts.panicBlock != nil {
+		panicContext := &tryContext{catchVar: parts.guard.binding, isCatchBody: true, finally: parts.context.finally, outer: outerTry}
+		lowerer.walkBlock(parts.panicBody, panicContext)
 	}
 	if parts.finallyBlock != nil {
 		lowerer.walkBlock(parts.finallyBlock.List, outerTry) // the finally code runs outside this try
@@ -205,30 +271,73 @@ func (lowerer *lowerer) emitWithoutCatch(parts *tryStatement) {
 //	{ var e error; { try body }; goto end_N; catch_N: { catch body }; end_N: }
 func (lowerer *lowerer) emitTry(parts *tryStatement) {
 	stmt, try := parts.stmt, parts.context
-	head := "{\n{"
-	if try.needsDecl {
-		head = fmt.Sprintf("{\nvar %s error\n{", try.catchVar)
+	head := "{\n"
+	if try.needsDecl && !parts.isCatchDropped {
+		head += fmt.Sprintf("var %s error\n", try.catchVar)
 		lowerer.checkBuiltins(stmt.Pos(), "try", "error")
 	}
+	head += lowerer.guardDecls(parts) + lowerer.bodyOpen(parts)
 	lowerer.replace(stmt.Pos(), stmt.Body.Lbrace+1, head, lowerer.line(stmt.Pos()))
-
-	// Skip the jump over the catch block if the try block cannot complete. The jump
-	// would fail Go's terminating statement check, and go vet reports it as unreachable.
-	canBodyComplete := !neverCompletes(stmt.Body, neverReturns(lowerer.typeInfo))
-	var middle strings.Builder
-	middle.WriteString("}\n")
-	if canBodyComplete {
-		fmt.Fprintf(&middle, "goto %s\n", try.endLabel())
-	}
-	fmt.Fprintf(&middle, "%s:\n{", try.catchLabel())
-	lowerer.emitCatches(parts, middle.String())
-
+	jumps, lastRbrace := lowerer.emitHandlers(parts, try.endLabel())
+	// Without a jump, the end label is unused. A function that ends here
+	// then also passes Go's terminating statement check.
 	tail := "}" + parts.chainEnd + "\n}"
-	if canBodyComplete {
+	if jumps > 0 {
 		tail = fmt.Sprintf("}%s\n%s:\n}", parts.chainEnd, try.endLabel())
 	}
-	rbrace := parts.lastCatchRbrace()
-	lowerer.replace(rbrace, rbrace+1, tail, lowerer.line(rbrace))
+	lowerer.replace(lastRbrace, lastRbrace+1, tail, lowerer.line(lastRbrace))
+}
+
+// emitHandlers rewrites the text from the end of the try body to the end of
+// the last handler. A block that can complete jumps over the handlers after
+// it, to skipLabel. It returns the number of these jumps and the closing
+// brace of the last handler.
+func (lowerer *lowerer) emitHandlers(parts *tryStatement, skipLabel string) (int, token.Pos) {
+	handlers := parts.collectHandlers()
+	from := parts.stmt.Body.Rbrace
+	text := lowerer.bodyClose(parts) + "\n"
+	canComplete := lowerer.canBodyComplete(parts)
+	jumps := 0
+	for handlerIndex, current := range handlers {
+		if canComplete {
+			text += "goto " + skipLabel + "\n"
+			jumps++
+		}
+		text += current.label + ":\n{"
+		to := lowerer.file.tokenFile.Pos(current.prologueEnd)
+		switch {
+		case current.isCatch:
+			lowerer.emitCatches(parts, text)
+		case handlerIndex == 0 && parts.isCatchDropped:
+			lowerer.drop(from, to, text+current.prologue, lowerer.line(from))
+		default:
+			lowerer.replace(from, to, text+current.prologue, lowerer.line(from))
+		}
+		from, text, canComplete = current.rbrace, "}\n", canFallThrough(current.stmt)
+	}
+	return jumps, handlers[len(handlers)-1].rbrace
+}
+
+// canBodyComplete reports whether control can leave the try body at its end.
+// A guarded body runs in a function literal, so only a terminating
+// statement ends it there.
+func (lowerer *lowerer) canBodyComplete(parts *tryStatement) bool {
+	if parts.guard != nil {
+		return !isTerminating(parts.stmt.Body)
+	}
+	return !neverCompletes(parts.stmt.Body, neverReturns(lowerer.typeInfo))
+}
+
+// canFallThrough reports whether control can reach the end of stmt. A
+// block that ends in break or continue cannot, so a jump after it would be
+// unreachable code for go vet.
+func canFallThrough(stmt ast.Stmt) bool {
+	if block, ok := stmt.(*ast.BlockStmt); ok {
+		if branch, ok := lastStmt(block.List).(*ast.BranchStmt); ok && (branch.Tok == token.BREAK || branch.Tok == token.CONTINUE) {
+			return false
+		}
+	}
+	return !isTerminating(stmt)
 }
 
 // findBindingObject returns the catch variable from the declaration that the

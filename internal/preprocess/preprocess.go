@@ -91,11 +91,12 @@ const (
 	frameBlock frameKind = iota
 	frameTry
 	frameCatch
+	framePanic
 )
 
 type frame struct {
 	kind     frameKind
-	tryIndex int // index into Result.Tries for frameTry and frameCatch
+	tryIndex int // index into Result.Tries for frameTry, frameCatch, and framePanic
 }
 
 // nesting records the bracket depth where a pending rewrite starts. The

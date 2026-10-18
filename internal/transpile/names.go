@@ -100,7 +100,7 @@ func (lowerer *lowerer) nextTryID() int {
 	for {
 		lowerer.lastTryID++
 		candidate := &tryContext{id: lowerer.lastTryID}
-		if !lowerer.taken(candidate.catchLabel()) && !lowerer.taken(candidate.endLabel()) && !lowerer.taken(candidate.finallyLabel()) {
+		if !lowerer.taken(candidate.catchLabel()) && !lowerer.taken(candidate.endLabel()) && !lowerer.taken(candidate.finallyLabel()) && !lowerer.taken(candidate.panicLabel()) {
 			return candidate.id
 		}
 	}

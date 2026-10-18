@@ -1,0 +1,186 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"runtime"
+	"strconv"
+)
+
+var log []string
+
+func note(s string) {
+	log = append(log, s)
+}
+
+func flush() {
+	fmt.Println(log)
+	log = nil
+}
+
+func recovers() string {
+	try {
+		note("body")
+		panic("boom")
+	} catch panic (p) {
+		note(t`caught ${p}`)
+		return "recovered"
+	} finally {
+		note("finally")
+	}
+}
+
+func parse(s string) int {
+	try {
+		if s == "panic" {
+			panic("bad input")
+		}
+		let n = strconv.Atoi(s)
+		return n
+	} catch (e) {
+		note("error")
+		return -1
+	} catch panic (p) {
+		note("panic")
+		return -2
+	} finally {
+		note("finally")
+	}
+}
+
+func returnOrder() int {
+	let n = 1
+	try {
+		return n * 10
+	} catch panic {
+		return 0
+	} finally {
+		n = 99
+		note("finally")
+	}
+}
+
+func loop() {
+	for (let i in 5) {
+		try {
+			if i == 1 {
+				continue
+			}
+			if i == 3 {
+				break
+			}
+			if i == 2 {
+				panic(i)
+			}
+			note(t`body ${i}`)
+		} catch panic (p) {
+			note(t`panic ${p}`)
+		} finally {
+			note(t`finally ${i}`)
+		}
+	}
+}
+
+func labeled() {
+outer:
+	for (let i in 3) {
+		for (let j in 3) {
+			try {
+				if j == 1 {
+					continue outer
+				}
+				note(t`${i}${j}`)
+			} catch panic {
+				note("never")
+			}
+		}
+	}
+}
+
+func jump() {
+	try {
+		goto done
+	} catch panic {
+		note("never")
+	} finally {
+		note("finally")
+	}
+	note("skipped")
+done:
+	note("done")
+}
+
+func outerCatch() error {
+	try {
+		try {
+			strconv.Atoi("x")
+			note("unreachable")
+		} catch panic {
+			note("never")
+		} finally {
+			note("inner finally")
+		}
+	} catch (e) {
+		note("outer caught")
+		return e
+	}
+	return nil
+}
+
+func rethrow() {
+	try {
+		try {
+			panic("first")
+		} catch panic (p) {
+			note(t`inner ${p}`)
+			panic(t`again ${p}`)
+		}
+	} catch panic (p) {
+		note(t`outer ${p}`)
+	}
+}
+
+func runtimeError(xs []int) (n int, err error) {
+	try {
+		n = xs[5]
+		return
+	} catch panic (p) {
+		let re, ok = p.(runtime.Error)
+		if ok {
+			err = re
+		}
+	}
+	return
+}
+
+func normal() int {
+	let total = 0
+	try {
+		total = 5
+	} catch panic {
+		total = -1
+	}
+	return total
+}
+
+func main() {
+	fmt.Println(recovers())
+	flush()
+	fmt.Println(parse("7"), parse("x"), parse("panic"))
+	flush()
+	fmt.Println(returnOrder())
+	flush()
+	loop()
+	flush()
+	labeled()
+	flush()
+	jump()
+	flush()
+	fmt.Println(errors.Is(outerCatch(), strconv.ErrSyntax))
+	flush()
+	rethrow()
+	flush()
+	let n, err = runtimeError([]int{1})
+	fmt.Println(n, err != nil)
+	fmt.Println(normal())
+}

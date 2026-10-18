@@ -174,6 +174,40 @@ func TestProcess(test *testing.T) {
 			tries: []Try{{If: 0, Finally: len("if true { a() } ; ")}},
 		},
 		{
+			name: "try catch catch panic finally",
+			src:  "try { a() } catch (e) { b() } catch panic (p) { c() } finally { d() }",
+			want: "if true { a() } else if true { var e error; _ = e; b() } else { var p any; _ = p; c() } ; { d() }",
+			tries: []Try{{
+				If:           0,
+				HasCatch:     true,
+				CatchEnd:     len("if true { a() } else if true { var e error; _ = e;"),
+				Binding:      "e",
+				HasPanic:     true,
+				PanicEnd:     len("if true { a() } else if true { var e error; _ = e; b() } else { var p any; _ = p;"),
+				PanicBinding: "p",
+				Finally:      len("if true { a() } else if true { var e error; _ = e; b() } else { var p any; _ = p; c() } ; "),
+			}},
+		},
+		{
+			name:  "catch panic only",
+			src:   "try { a() } catch panic { c() }",
+			want:  "if true { a() } else { c() }",
+			tries: []Try{{If: 0, HasPanic: true, PanicEnd: len("if true { a() } else {")}},
+		},
+		{
+			name: "bare catch before catch panic",
+			src:  "try { a() } catch { b({}) } catch panic (r) { c() }",
+			want: "if true { a() } else if true { b({}) } else { var r any; _ = r; c() }",
+			tries: []Try{{
+				If:           0,
+				HasCatch:     true,
+				CatchEnd:     len("if true { a() } else if true {"),
+				HasPanic:     true,
+				PanicEnd:     len("if true { a() } else if true { b({}) } else { var r any; _ = r;"),
+				PanicBinding: "r",
+			}},
+		},
+		{
 			name: "slice spread",
 			src:  "all := [...a, x, y, ...b]",
 			want: "all := __goslingCat(a, __goslingOne(x, y), b)",
@@ -689,6 +723,11 @@ func TestProcessErrors(test *testing.T) {
 		{"catch on next line after catch", "try { g() } catch (e is X) { }\ncatch (e) { }", "catch must be on the same line as the closing brace before it", len("try { g() } catch (e is X) { }\n")},
 		{"catch type on two lines", "try { g() } catch (e: interface{\n}) { }", "a catch type must be on one line", len("try { g() } catch (e: ")},
 		{"try expression with catch binding", "n := try g() catch (e) => 0", "a try expression cannot use the error; use a try statement", len("n := try g() ")},
+		{"catch after catch panic", "try { g() } catch panic { } catch (e) { }", "catch panic must be the last catch clause", len("try { g() } catch panic { } ")},
+		{"two catch blocks", "try { g() } catch { } catch (e) { }", "only the last catch can catch all errors", len("try { g() } catch { } ")},
+		{"catch panic after typed catch", "try { g() } catch (e is X) { } catch panic { }", "catch panic cannot follow a typed catch clause", len("try { g() } catch (e is X) { } ")},
+		{"catch panic on next line", "try { g() } catch {\n}\ncatch panic { }", "catch must be on the same line as the closing brace before it", len("try { g() } catch {\n}\n")},
+		{"bad panic binding", "try { g() } catch panic (p any) { }", "expected catch panic (name) or catch panic", len("try { g() } ")},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {

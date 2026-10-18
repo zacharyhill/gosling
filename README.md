@@ -22,6 +22,7 @@ func Load(path string) (Config, error) {
 Features:
 
 - `try` / `catch` / `finally` and `throw`, with typed catch clauses: `catch (e: *fs.PathError)`, `catch (e is fs.ErrNotExist)`
+- `catch panic` for panics
 - `try` expressions: `try strconv.Atoi(s) catch 0`
 - Template literals: `` t`hello ${name}` ``
 - Destructuring: `const {Name: name, Port} = cfg`, `let [first, ...rest] = xs`
@@ -363,7 +364,7 @@ port := func() int {
 
 ### finally
 
-The finally block runs after the try or catch block. It runs on every exit: the end of the block, `return`, `break`, `continue`, `goto`, or a failure that an outer try catches. It does not run on a panic.
+The finally block runs after the try or catch block. It runs on every exit: the end of the block, `return`, `break`, `continue`, `goto`, or a failure that an outer try catches. It does not run on a panic, unless the try statement has a `catch panic` clause.
 
 - gosling evaluates return values before the finally block runs.
 - A `return` in the finally block replaces the pending return.
@@ -392,6 +393,32 @@ try {
 - In other functions, `throw` without a try block is an error.
 - The value must be an `error`.
 - `throw` is a keyword only at the start of a statement, before a value on the same line. So `throw(x)` and `throw = x` use an identifier named `throw`.
+
+### catch panic
+
+A `catch panic` clause catches a panic in the try block. It comes after the catch block, or directly after the try block:
+
+```go
+try {
+	process(job)
+} catch (e) {
+	log.Print(e)
+} catch panic (p) {
+	log.Print("panic: ", p)
+} finally {
+	job.Done()
+}
+```
+
+The variable has the type `any`. It holds the value that `recover` returns. `catch panic { ... }` without a variable is also allowed.
+
+- With `catch panic`, the finally block also runs after a panic in the try block.
+- `catch panic` catches only panics in the try block. A panic in a catch block or in the catch panic block goes up, as in Go.
+- gosling puts the try block in a function literal with a deferred `recover`. `return`, `break`, `continue`, and `goto` work as in Go. The function literal records the exit and returns. The code after the function literal then does the exit.
+- `defer` directly in the try block is an error. It would run at the end of the try block, not at the end of the function. A `defer` in a function literal in the try block is allowed.
+- `runtime.Goexit`, `t.Fatal`, and `os.Exit` are not panics. `catch panic` does not stop them.
+- Before Go 1.21, `catch panic` does not catch `panic(nil)`.
+- `catch panic` cannot follow a typed catch clause.
 
 ### Template literals
 
@@ -605,7 +632,7 @@ gosling adds the imports that the output needs. If the package name is already i
 
 Some output must write a type, such as the result of `filter` or `??`. If a local declaration hides the name of that type, gosling reports an error. Rename the local declaration.
 
-Error variables are `err`, `err2`, and so on. Labels are `catch_N`, `end_N`, and `finally_N`. gosling does not use a name that the file already uses. Variables also do not use a name that the package declares at package level.
+Error variables are `err`, `err2`, and so on. Labels are `catch_N`, `end_N`, `finally_N`, and `panic_N`. gosling does not use a name that the file already uses. Variables also do not use a name that the package declares at package level.
 
 The output uses builtins such as `len`, `append`, `make`, and `nil`. If a declaration shadows a builtin where gosling needs it, gosling reports an error.
 
@@ -616,7 +643,8 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 ## Limitations
 
 - gosling checks calls that return `(A, B, error)` only as statements.
-- A panic does not run `finally` blocks.
+- Without `catch panic`, a panic does not run `finally` blocks. A panic in a catch block or in a catch panic block also does not run them.
+- `catch panic` cannot follow a typed catch clause.
 - Destructuring patterns cannot be nested. Object patterns have no rest element.
 - `?.[index]`, `?.(call)`, and `??=` are not supported.
 - In a try block, an optional call that returns an error is an error.
