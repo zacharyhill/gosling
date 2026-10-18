@@ -3,15 +3,17 @@ package main
 import (
 	"errors"
 	"fmt"
+	"go/build"
 	"go/types"
 
 	"golang.org/x/tools/go/packages"
 )
 
-// newImporter loads type information for the packages that files import.
-// The overlay supplies generated files that can be missing from disk.
-func newImporter(dir string, files []sourceFile, overlay map[string][]byte) (types.Importer, error) {
-	packagesByPath, err := loadImports(dir, uniqueImports(files), overlay)
+// newImporter loads type information for the packages that files import,
+// with the build configuration context. The overlay supplies generated
+// files that can be missing from disk.
+func newImporter(dir string, files []sourceFile, overlay map[string][]byte, context build.Context) (types.Importer, error) {
+	packagesByPath, err := loadImports(dir, uniqueImports(files), overlay, context)
 	if err != nil {
 		return nil, err
 	}
@@ -45,15 +47,18 @@ func uniqueImports(files []sourceFile) []string {
 // loadImports type-checks importPaths and all their dependencies. To name a
 // type, gosling can import a package that it reaches only through one of
 // these.
-func loadImports(dir string, importPaths []string, overlay map[string][]byte) (map[string]*types.Package, error) {
+func loadImports(dir string, importPaths []string, overlay map[string][]byte, context build.Context) (map[string]*types.Package, error) {
 	packagesByPath := map[string]*types.Package{}
 	if len(importPaths) == 0 {
 		return packagesByPath, nil
 	}
+	env, buildFlags := buildContextEnv(context)
 	config := &packages.Config{
-		Mode:    packages.NeedName | packages.NeedTypes | packages.NeedImports | packages.NeedDeps,
-		Dir:     dir,
-		Overlay: overlay,
+		Mode:       packages.NeedName | packages.NeedTypes | packages.NeedImports | packages.NeedDeps,
+		Dir:        dir,
+		Env:        env,
+		BuildFlags: buildFlags,
+		Overlay:    overlay,
 	}
 	loaded, err := packages.Load(config, importPaths...)
 	if err != nil {
