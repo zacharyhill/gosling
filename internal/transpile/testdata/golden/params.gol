@@ -1,0 +1,55 @@
+package params
+
+import (
+	"strconv"
+	"strings"
+)
+
+type User struct{ Name string }
+
+type Shape interface {
+	Area(): float64
+	Scale(by: float64)
+}
+
+func (u: *User) Rename(name: string): string {
+	u.Name = name
+	return u.Name
+}
+
+func parse(text: string, base: int): (n: int, err: error) {
+	try {
+		const parsed = strconv.ParseInt(strings.TrimSpace(text), base, 64)
+		n = int(parsed)
+	} catch (e) {
+		return 0, e
+	}
+	return n, nil
+}
+
+func Map[T, U any](xs: []T, f: func(x: T): U): []U {
+	let out: []U
+	for (const x of xs) {
+		out = append(out, f(x))
+	}
+	return out
+}
+
+func sum(pair: [2]int, rest: ...int): int {
+	let total = pair[0] + pair[1]
+	for (const n of rest) {
+		total += n
+	}
+	return total
+}
+
+func goOrder(a, b int) (int, error) {
+	return a + b, nil
+}
+
+func use() {
+	let isPositive: func(n: int): bool = func(n: int): bool { return n > 0 }
+	const add = (a: int, b: int) => a + b
+	_ = Map([]int{1, 2}, (n: int) => strconv.Itoa(n))
+	_, _ = isPositive(add(1, 2)), sum([2]int{1, 2}, 3)
+}

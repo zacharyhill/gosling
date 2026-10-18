@@ -116,6 +116,9 @@ type processor struct {
 	pendingArrows       []pendingArrow
 	// inserts maps a token index to text to add before that token.
 	inserts map[int]string
+	// typedArrows holds the offsets of the ")" that close arrow parameter
+	// lists that already have "func" in front.
+	typedArrows map[int]bool
 }
 
 // Process rewrites the gosling syntax in src into Go source with marker
@@ -128,6 +131,7 @@ func Process(src []byte) (*Result, error) {
 		identifiers: map[string]bool{},
 		scheduled:   map[int]string{},
 		inserts:     map[int]string{},
+		typedArrows: map[int]bool{},
 	}
 	for _, current := range processor.tokens {
 		if current.kind == token.IDENT {
@@ -279,7 +283,14 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 			return next, err
 		}
 		processor.openBracket(current, pendingTry)
-	case current.is(token.LBRACE) || current.is(token.LBRACK) || current.is(token.LPAREN):
+	case current.is(token.FUNC):
+		return tokenIndex, processor.signature(tokenIndex)
+	case current.is(token.INTERFACE) && processor.tokenAt(tokenIndex+1).is(token.LBRACE):
+		return tokenIndex, processor.interfaceMethods(tokenIndex)
+	case current.is(token.LPAREN):
+		processor.openBracket(current, pendingTry)
+		return tokenIndex, processor.typedArrow(tokenIndex)
+	case current.is(token.LBRACE) || current.is(token.LBRACK):
 		processor.openBracket(current, pendingTry)
 	case current.is(token.RPAREN) || current.is(token.RBRACK):
 		processor.parens--

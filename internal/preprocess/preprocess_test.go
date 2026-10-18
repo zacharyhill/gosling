@@ -346,6 +346,56 @@ func TestProcess(test *testing.T) {
 			src:  "try := 1\nx := try + 2",
 			want: "try := 1\nx := try + 2",
 		},
+		{
+			name: "annotated parameters and result",
+			src:  "func f(a: int, b: string): bool { return true }",
+			want: "func f(a int, b string) bool { return true }",
+		},
+		{
+			name: "annotated method, generics, and variadic",
+			src:  "func (u: *User) Map[T any](xs: ...T): []T {}",
+			want: "func (u *User) Map[T any](xs ...T) []T {}",
+		},
+		{
+			name: "annotated result list",
+			src:  "func f(): (n: int, err: error) {}\nfunc g(): (int, error) {}",
+			want: "func f() (n int, err error) {}\nfunc g() (int, error) {}",
+		},
+		{
+			name: "annotated func literal and func type",
+			src:  "func f() {\n\tlet g: func(n: int): bool = func(n: int): bool { return n > 0 }\n}",
+			want: "func f() {\n\tvar g func(n int) bool = func(n int) bool { return n > 0 }\n}",
+		},
+		{
+			name: "annotated parameter with nested func type",
+			src:  "func apply(f: func(int) int, x: int): int {}",
+			want: "func apply(f func(int) int, x int) int {}",
+		},
+		{
+			name: "go parameter order untouched",
+			src:  "func (User) f(a, b int) (int, error) {}",
+			want: "func (User) f(a, b int) (int, error) {}",
+		},
+		{
+			name: "annotated interface methods",
+			src:  "type S interface {\n\tArea(): float64\n\tScale(by: float64)\n\tfmt.Stringer\n}",
+			want: "type S interface {\n\tArea() float64\n\tScale(by float64)\n\tfmt.Stringer\n}",
+		},
+		{
+			name: "annotated arrow parameters",
+			src:  "f := (x: int, y: int) => x + y",
+			want: "f := func(x int, y int) __goslingR { return x + y }",
+		},
+		{
+			name: "arrow with an annotated func parameter",
+			src:  "f := (g func(n: int) int) => g(1)",
+			want: "f := func(g func(n int) int) __goslingR { return g(1) }",
+		},
+		{
+			name: "func type in a case clause",
+			src:  "switch v.(type) {\ncase func(a: int):\n\tg()\n}",
+			want: "switch v.(type) {\ncase func(a int):\n\tg()\n}",
+		},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {
@@ -407,6 +457,13 @@ func TestProcessErrors(test *testing.T) {
 		{"const destructuring with define", "func f() {\n\tconst {a} := p\n}", "use const {...} = value, not :=", len("func f() {\n\t")},
 		{"let with type in header", "if let x: int = 1; x > 0 { }", "let in an if, for, switch, or case header cannot have a type", len("if ")},
 		{"bad binding", "try { g() } catch (e error) { }", "expected catch (name) or catch", len("try { g() } ")},
+		{"mixed parameter orders", "func f(a: int, b string) {}", "write name: type for every parameter", len("func f(a: int, ")},
+		{"grouped annotated parameters", "func f(a, b: int) {}", "write name: type for every parameter", len("func f(")},
+		{"go parameters with annotated result", "func f(a int): bool {}", "write name: type for every parameter", len("func f(")},
+		{"annotated parameters with go result", "func f(a: int) bool {}", "write ): before the result type", len("func f(a: int) ")},
+		{"annotated parameters with go result list", "func f(a: int) (int, error) {}", "write ): before the result type", len("func f(a: int) ")},
+		{"mixed result list", "func f(): (n: int, error) {}", "write name: type for every parameter", len("func f(): (n: int, ")},
+		{"mixed arrow parameters", "f := (a, b: int) => a", "write name: type for every parameter", len("f := (")},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {

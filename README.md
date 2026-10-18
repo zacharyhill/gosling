@@ -25,6 +25,7 @@ Features:
 - Template literals: `` t`hello ${name}` ``
 - Destructuring: `const {Name: name, Port} = cfg`, `let [first, ...rest] = xs`
 - `let` and `const` declarations: `let n = 0`, `let names: []string`, `const data = os.ReadFile(path)`
+- Parameter types after a colon: `func f(a: int, b: string): bool`
 - `for (const x of xs)`, `for (const k in m)`, and `for (let i = 0; i < n; i++)`
 - Optional chaining and `??`: `user?.Profile?.Name ?? "anon"`
 - Arrow functions: `x => x * 2`, `(a, b) => a + b`
@@ -281,6 +282,23 @@ case let msg, ok = <-ch:        // case msg, ok := <-ch:
 - Code cannot assign to a name that `const` declares in a header.
 - `const ( ... )` groups are plain Go. Their values must be constant.
 
+### Parameter types
+
+Parameters and results can put the type after a colon, as `let` does:
+
+```go
+func parse(text: string, base: int): (int, error) // func parse(text string, base int) (int, error)
+func (u: *User) Rename(name: string): string      // func (u *User) Rename(name string) string
+let isEven: func(n: int): bool                    // var isEven func(n int) bool
+const add = (a: int, b: int) => a + b             // add := func(a int, b int) int { return a + b }
+```
+
+- Go order also works. So Go code that you copy into a `.gol` file stays valid.
+- A function uses one order. If a parameter or the result has a colon, all parameters and named results must have a colon. Write `a: int, b: int`, not `a, b: int`.
+- In that order, the result type comes after `):`, as in `func f(): int`.
+- The receiver can use either order.
+- The rules apply to function declarations, function literals, function types, and interface methods.
+
 ### for...of and for...in
 
 `for (const x of xs)` becomes `for _, x := range xs`. `for (const k in m)` becomes `for k := range m`. `let` also works. With `const`, gosling reports an error if the loop body assigns to the variable.
@@ -424,6 +442,8 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - Unions cannot be generic or be in a `type ( ... )` group.
 - gosling does not check switches in `.go` files.
 - Arrow functions cannot declare a return type. Arrays do not have array methods, only slices.
+- In a `case` expression, a function type or literal cannot use `):`. Use Go order there.
+- VS Code highlights the name in `name: type` parameters as a type.
 - In a slice spread, untyped constants get their default type. Write `int64(1)`, not `1`, in `[...int64s, 1]`.
 - gosling ignores build constraints in `.gol` files.
 

@@ -33,7 +33,7 @@ import (
 	"os"
 )
 
-func load(path string) (string, error) {
+func load(path: string): (string, error) {
 	try {
 		const data = os.ReadFile(path)
 		return string(data), nil
@@ -365,6 +365,7 @@ func TestLSP(test *testing.T) {
 	})
 	test.Run("definition in the same file", session.checkSameFileDefinition)
 	test.Run("definition in another gol file", session.checkOtherFileDefinition)
+	test.Run("definition of an annotated parameter", session.checkAnnotatedParameterDefinition)
 	test.Run("hover on a standard library call", session.checkHover)
 	test.Run("position in generated code has no result", session.checkGeneratedPosition)
 	test.Run("rename across gol files", session.checkRename)
@@ -392,6 +393,14 @@ func TestLSP(test *testing.T) {
 func (session *lspSession) checkSameFileDefinition(test *testing.T) {
 	locations := session.definition(test, lspMain, "load(\"config")
 	want := positionOf(test, lspMain, "load(path")
+	if len(locations) != 1 || locations[0].URI != session.mainURI || locations[0].Range.Start != want {
+		test.Errorf("got %+v, want %s at %+v", locations, session.mainURI, want)
+	}
+}
+
+func (session *lspSession) checkAnnotatedParameterDefinition(test *testing.T) {
+	locations := session.definition(test, lspMain, "path)")
+	want := positionOf(test, lspMain, "path: string")
 	if len(locations) != 1 || locations[0].URI != session.mainURI || locations[0].Range.Start != want {
 		test.Errorf("got %+v, want %s at %+v", locations, session.mainURI, want)
 	}
