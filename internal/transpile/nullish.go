@@ -312,6 +312,10 @@ func (lowerer *lowerer) coalescedValue(chain coalesceChain, leftOperand ast.Expr
 }
 
 func (lowerer *lowerer) lowerChain(root ast.Expr) {
+	if _, parent := outermostParen(lowerer.parents, root); isAddressOf(parent) {
+		lowerer.errorf(lowerer.file, root.Pos(), "cannot take the address of an optional chain")
+		return
+	}
 	links, ok := lowerer.links(root)
 	if !ok {
 		return
@@ -334,6 +338,11 @@ func (lowerer *lowerer) lowerChain(root ast.Expr) {
 	}
 	closing := lowerer.guards(root, "func() "+typeText+" {\n", links, tempVar, "return ")
 	lowerer.insertOrdered(root.End(), closing+"\nreturn "+zeroValue(resultType, typeText)+"\n}()", lowerer.line(root.Pos()), -lowerer.depth(root))
+}
+
+func isAddressOf(node ast.Node) bool {
+	unaryExpr, ok := node.(*ast.UnaryExpr)
+	return ok && unaryExpr.Op == token.AND
 }
 
 // The ?? operator type-checks as one of these calls. With the pointer form,

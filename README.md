@@ -413,6 +413,7 @@ These are errors:
 
 - a left side of `??` that cannot be nil, such as a type parameter with constraint `any`
 - `??` mixed with `||` or `&&` without parentheses
+- the address of an optional chain, such as `&a?.b`
 
 gosling evaluates each link one time:
 
