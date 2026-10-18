@@ -1,0 +1,33 @@
+package length
+
+type Config struct {
+	Names []string
+}
+
+type Ruler struct {
+	length int
+}
+
+type Path []string
+
+func (p Path) length() int { return 7 }
+
+func sizes(xs []int, grid [3]int, cell *[2]int, name string, ages map[string]int, jobs chan int) int {
+	return xs.length + grid.length + cell.length + name.length + ages.length + jobs.length + "abc".length
+}
+
+func nested(cfg *Config, xs []int) int {
+	return cfg?.Names.length + xs.filter(x => x > 0).length + cfg.Names[0].length
+}
+
+func loop(xs []int) int {
+	let total = 0
+	for (let i = 0; i < xs.length; i++) {
+		total += xs[i]
+	}
+	return total
+}
+
+func priority(r Ruler, p Path) int {
+	return r.length + p.length()
+}

@@ -499,6 +499,16 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:20: flatMap callback has type func(x int) int, want func(int) []R",
 		},
 		{
+			name: "assignment to length",
+			src:  "package p\nfunc f(xs []int) {\n\txs.length = 0\n}",
+			want: "x.gol:3:2: cannot assign to len(xs)",
+		},
+		{
+			name: "length of a pointer to a slice",
+			src:  "package p\nfunc f(xs *[]int) int {\n\treturn xs.length\n}",
+			want: "x.gol:3:12: xs.length undefined",
+		},
+		{
 			name: "switch missing union variants",
 			src:  "package p\ntype A struct{}\ntype B struct{}\ntype C struct{}\ntype U = A | B | C\nfunc f(u U) {\n\tswitch u.(type) {\n\tcase A:\n\t}\n}",
 			want: "x.gol:7:2: switch on U is missing cases: B, C",

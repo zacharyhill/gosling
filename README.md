@@ -33,6 +33,7 @@ Features:
 - Arrow functions: `x => x * 2`, `(a, b) => a + b`
 - Array methods on slices and arrays: `nums.filter(n => n%2 == 0).map(n => n * n)`
 - Map methods: `ages.has(name)`, `ages.get(name) ?? 0`, `ages.keys()`
+- `.length`: `xs.length` becomes `len(xs)`
 - Union types with exhaustive switches: `type Shape = Circle | Square`
 - Struct shorthand and spread: `User{name, age}`, `[...a, ...b]`, `Point{...p, X: 5}`
 
@@ -697,6 +698,18 @@ ages.forEach((age, name) => fmt.Println(name, age)) // the value comes first, th
 - The order of `keys`, `values`, `entries`, and `forEach` is random, as for `range`. `keys` does not sort. To sort the keys, assign them to a variable and call `slices.Sort`.
 - `delete` and `forEach` can only be statements.
 - A method of the map type with the same name has priority.
+
+### length
+
+`x.length` becomes `len(x)` for slices, arrays, pointers to arrays, strings, maps, and channels:
+
+```go
+for (let i = 0; i < xs.length; i++) { // for i := 0; i < len(xs); i++ {
+```
+
+- For a string, `length` is the number of bytes, as for `len`. JavaScript counts UTF-16 code units.
+- A field or method named `length` has priority.
+- Code cannot assign to `length`.
 
 ### Union types
 
