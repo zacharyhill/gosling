@@ -1,0 +1,31 @@
+package main
+
+import "fmt"
+
+type Circle struct{ R int }
+
+type Square struct{ Side int }
+
+type Shape = Circle | Square
+
+func pick(n int) Shape {
+	if n%2 == 0 {
+		return Circle{n}
+	}
+	return Square{n}
+}
+
+func describe(n int) string {
+	switch let shape = pick(n); const s = shape.(type) {
+	case Circle:
+		return t`circle ${s.R}`
+	case Square:
+		return t`square ${s.Side}`
+	}
+	return "unreachable"
+}
+
+func main() {
+	fmt.Println(describe(2))
+	fmt.Println(describe(3))
+}

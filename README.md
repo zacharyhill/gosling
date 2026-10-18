@@ -377,6 +377,7 @@ case let msg, ok = <-ch:        // case msg, ok := <-ch:
 ```
 
 - `let` needs a type, a value, or both.
+- The guard of a type switch after an init statement can also use `let` or `const`: `switch let v = f(); const s = v.(type) {`.
 - A header declaration cannot have a type. Write `let i = int64(0)`, not `let i: int64 = 0`.
 - Code cannot assign to a name that `const` declares in a header.
 - `const ( ... )` groups are plain Go. Their values must be constant.

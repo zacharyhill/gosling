@@ -396,6 +396,22 @@ func TestProcess(test *testing.T) {
 			want: "switch v := x.(type) { }",
 		},
 		{
+			name:   "type switch with const after init",
+			src:    "switch let v = f(); const s = v.(type) { }",
+			want:   "switch v := f(); s := v.(type) { }",
+			consts: []int{len("switch v := f(); ")},
+		},
+		{
+			name: "type switch with let after init with call",
+			src:  "switch let v = g(a, b); let s = v.(type) { }",
+			want: "switch v := g(a, b); s := v.(type) { }",
+		},
+		{
+			name: "const after a statement stays",
+			src:  "func f() {\n\tg(); const x = 1\n}",
+			want: "func f() {\n\tg(); const x = 1\n}",
+		},
+		{
 			name: "select case with let",
 			src:  "select { case let v, ok = <-ch: use(v, ok) }",
 			want: "select { case v, ok := <-ch: use(v, ok) }",

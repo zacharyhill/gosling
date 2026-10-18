@@ -57,8 +57,8 @@ func (processor *processor) declaration(tokenIndex int) (int, error) {
 	return tokenIndex, nil
 }
 
-// inHeader reports whether the token at tokenIndex starts the init
-// statement of an if, for, or switch, or the receive of a select case.
+// inHeader reports whether the token at tokenIndex starts the init statement of an if,
+// for, or switch, the receive of a select case, or a type switch guard after an init.
 func (processor *processor) inHeader(tokenIndex int) bool {
 	if tokenIndex == 0 {
 		return false
@@ -68,6 +68,34 @@ func (processor *processor) inHeader(tokenIndex int) bool {
 		return true
 	case token.LPAREN:
 		return tokenIndex >= 2 && processor.tokens[tokenIndex-2].is(token.FOR)
+	case token.SEMICOLON:
+		return previous.text == ";" && processor.isSwitchInitEnd(tokenIndex-1)
+	}
+	return false
+}
+
+// isSwitchInitEnd reports whether the explicit semicolon at semicolonIndex
+// ends the init statement of a switch.
+func (processor *processor) isSwitchInitEnd(semicolonIndex int) bool {
+	depth := 0
+	for tokenIndex := semicolonIndex - 1; tokenIndex >= 0; tokenIndex-- {
+		switch current := processor.tokens[tokenIndex]; current.kind {
+		case token.RPAREN, token.RBRACK, token.RBRACE:
+			depth++
+		case token.LPAREN, token.LBRACK, token.LBRACE:
+			if depth == 0 {
+				return false
+			}
+			depth--
+		case token.SEMICOLON:
+			if depth == 0 {
+				return false
+			}
+		case token.SWITCH:
+			if depth == 0 {
+				return true
+			}
+		}
 	}
 	return false
 }
