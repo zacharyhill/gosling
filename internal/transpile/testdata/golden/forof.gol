@@ -1,5 +1,7 @@
 package forof
 
+import "iter"
+
 func sum(xs []int) int {
 	let total = 0
 	for (const x of xs) {
@@ -22,4 +24,35 @@ func literal() int {
 		n += v
 	}
 	return n
+}
+
+func drain(ch <-chan string) []string {
+	let out: []string
+	for (const s of ch) {
+		out = append(out, s)
+	}
+	return out
+}
+
+func countTo(n int) int {
+	let total = 0
+	for (let i of n) {
+		i *= 2
+		total += i
+	}
+	for (const i of 3) {
+		total += i
+	}
+	return total
+}
+
+func sumSeq(seq iter.Seq[int], pairs iter.Seq2[string, int]) int {
+	let total = 0
+	for (const x of seq) {
+		total += x
+	}
+	for (const v of pairs) {
+		total += v
+	}
+	return total
 }

@@ -399,7 +399,7 @@ const add = (a: int, b: int) => a + b             // add := func(a int, b int) i
 
 ### for...of and for...in
 
-`for (const x of xs)` becomes `for _, x := range xs`. `for (const k in m)` becomes `for k := range m`. `let` also works. With `const`, gosling reports an error if the loop body assigns to the variable.
+`for (const x of xs)` becomes `for _, x := range xs`. For a channel, an integer, or an `iter.Seq`, it becomes `for x := range xs`. `for (const k in m)` becomes `for k := range m`. `let` also works. With `const`, gosling reports an error if the loop body assigns to the variable.
 
 `for (let i = 0; i < n; i++)` becomes `for i := 0; i < n; i++`.
 

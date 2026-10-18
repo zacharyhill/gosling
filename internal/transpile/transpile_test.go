@@ -153,6 +153,16 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:4:3: cannot assign to x: declared with const",
 		},
 		{
+			name: "assignment to a const for-of variable over a channel",
+			src:  "package p\nfunc f(ch chan int) {\n\tfor (const x of ch) {\n\t\tx = 1\n\t\t_ = x\n\t}\n}",
+			want: "x.gol:4:3: cannot assign to x: declared with const",
+		},
+		{
+			name: "assignment to a const for-of variable over an integer",
+			src:  "package p\nfunc f(n int) {\n\tfor (const i of n) {\n\t\ti++\n\t}\n}",
+			want: "x.gol:4:3: cannot assign to i: declared with const",
+		},
+		{
 			name: "assignment to a const destructured variable",
 			src:  "package p\ntype P struct{ X int }\nfunc f(p P) int {\n\tconst {X} = p\n\tX++\n\treturn X\n}",
 			want: "x.gol:5:2: cannot assign to X: declared with const",

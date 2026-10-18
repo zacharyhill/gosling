@@ -87,6 +87,7 @@ func (lowerer *lowerer) lowerFile() {
 	lowerer.lowerArrays()
 	lowerer.lowerUnions()
 	lowerer.lowerSpread()
+	lowerer.lowerForOfBlanks()
 	lowerer.emitImports()
 	for body := range lowerer.file.panicAtEnd {
 		lowerer.checkBuiltins(body.Rbrace, "try", "panic")

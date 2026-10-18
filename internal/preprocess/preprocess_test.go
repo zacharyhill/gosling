@@ -8,14 +8,15 @@ import (
 
 func TestProcess(test *testing.T) {
 	testCases := []struct {
-		name     string
-		src      string
-		want     string
-		tries    []Try
-		splits   []int
-		coalesce []int
-		unions   []Union
-		consts   []int
+		name        string
+		src         string
+		want        string
+		tries       []Try
+		splits      []int
+		coalesce    []int
+		unions      []Union
+		consts      []int
+		forOfBlanks []int
 	}{
 		{
 			name: "try catch with binding",
@@ -288,10 +289,11 @@ func TestProcess(test *testing.T) {
 			want: "func f() {\n\t{\n\t\ta()\n\t}\n}",
 		},
 		{
-			name:   "for of",
-			src:    "for (const item of items) { use(item) }",
-			want:   "for _, item := range items { use(item) }",
-			consts: []int{len("for _, ")},
+			name:        "for of",
+			src:         "for (const item of items) { use(item) }",
+			want:        "for _, item := range items { use(item) }",
+			consts:      []int{len("for _, ")},
+			forOfBlanks: []int{len("for ")},
 		},
 		{
 			name: "for in",
@@ -299,10 +301,11 @@ func TestProcess(test *testing.T) {
 			want: "for k := range m { use(k) }",
 		},
 		{
-			name:   "for of composite literal keeps parens",
-			src:    "for (const n of []int{1, 2}) { use(n) }",
-			want:   "for _, n := range ([]int{1, 2}) { use(n) }",
-			consts: []int{len("for _, ")},
+			name:        "for of composite literal keeps parens",
+			src:         "for (const n of []int{1, 2}) { use(n) }",
+			want:        "for _, n := range ([]int{1, 2}) { use(n) }",
+			consts:      []int{len("for _, ")},
+			forOfBlanks: []int{len("for ")},
 		},
 		{
 			name: "c-style for with let",
@@ -473,6 +476,9 @@ func TestProcess(test *testing.T) {
 			}
 			if !slices.Equal(result.Consts, testCase.consts) {
 				test.Errorf("consts %v, want %v", result.Consts, testCase.consts)
+			}
+			if !slices.Equal(result.ForOfBlanks, testCase.forOfBlanks) {
+				test.Errorf("forOfBlanks %v, want %v", result.ForOfBlanks, testCase.forOfBlanks)
 			}
 			if !slices.Equal(result.Splits, testCase.splits) {
 				test.Errorf("splits %v, want %v", result.Splits, testCase.splits)

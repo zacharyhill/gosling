@@ -127,6 +127,9 @@ type file struct {
 	// constDecls maps each const that became a variable to the := statement
 	// that replaced it. A const that became a var declaration maps to nil.
 	constDecls map[*ast.GenDecl]*ast.AssignStmt
+	// forOfBlanks maps each for-of range statement to the "_" key that
+	// preprocessing added.
+	forOfBlanks map[*ast.RangeStmt]*ast.Ident
 }
 
 // position maps a position in the preprocessed file to the original source.
@@ -267,6 +270,7 @@ func (transpiler *transpiler) buildFile(input Input, reservedNames map[string]bo
 	golFile.tokenFile = transpiler.fileSet.File(astFile.Pos())
 	golFile.recordIdentNames()
 	golFile.recordConstNames()
+	golFile.recordForOfBlanks()
 	for _, preprocessedTry := range preprocessed.Tries {
 		golFile.tries[preprocessedTry.If] = preprocessedTry
 	}
@@ -325,6 +329,7 @@ func newFile(input Input, preprocessed *preprocess.Result) *file {
 		panicAtEnd:    map[*ast.BlockStmt]bool{},
 		constVars:     map[*ast.Ident]bool{},
 		constDecls:    map[*ast.GenDecl]*ast.AssignStmt{},
+		forOfBlanks:   map[*ast.RangeStmt]*ast.Ident{},
 	}
 }
 
@@ -553,6 +558,7 @@ func (transpiler *transpiler) augment(typeInfo *types.Info) bool {
 		changed = transpiler.fixArrows(file, typeInfo) || changed
 		changed = usePtrCoalesce(file, typeInfo) || changed
 		changed = addBlankForErrors(file, typeInfo) || changed
+		changed = dropForOfBlanks(file, typeInfo) || changed
 	}
 	return changed
 }
