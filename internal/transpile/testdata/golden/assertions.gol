@@ -1,0 +1,31 @@
+package assertions
+
+import (
+	"fmt"
+	"io"
+)
+
+type Shape = Circle | Square
+
+type Circle struct{ R float64 }
+
+type Square struct{ Side float64 }
+
+func radius(shape Shape) float64 {
+	return (shape as Circle).R
+}
+
+func describe(value any) string {
+	const [text, ok] = value as fmt.Stringer
+	if ok {
+		return text.String()
+	}
+	if const reader, isReader = value as io.Reader; isReader {
+		return t`reader ${reader}`
+	}
+	return t`count ${value as int + 1}`
+}
+
+func closers(values []any) []io.Closer {
+	return values.map(value => value as io.Closer)
+}

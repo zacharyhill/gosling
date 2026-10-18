@@ -1321,6 +1321,33 @@ func TestProcess(test *testing.T) {
 			src:  "func f() {\n\tusing := 1\n\tusing = 2\n}",
 			want: "func f() {\n\tusing := 1\n\tusing = 2\n}",
 		},
+		{
+			name: "as assertion",
+			src:  "n := x as int + 1\ns := f(a, v.Get() as fmt.Stringer)\nm := y as map[string][]*T\nr := (a + b) as io.Reader",
+			want: "n := x.(int) + 1\ns := f(a, v.Get().(fmt.Stringer))\nm := y.(map[string][]*T)\nr := (a + b).(io.Reader)",
+		},
+		{
+			name: "as assertion with interface and func types",
+			src:  "i := x as interface{ M() }\nf := x as func(int) (bool, error)",
+			want: "i := x.(interface{ M() })\nf := x.(func(int) (bool, error))",
+		},
+		{
+			name:   "as assertion with comma-ok destructuring",
+			src:    "func f() {\n\tconst [v, ok] = x as int\n}",
+			want:   "func f() {\n\tv, ok := x.(int)\n}",
+			consts: []int{len("func f() {\n\t"), len("func f() {\n\tv, ")},
+		},
+		{
+			name: "as as identifier",
+			src:  "as := 1\nx := as + f(as, b.as)\nfunc (r R) as() {}\nvar as T",
+			want: "as := 1\nx := as + f(as, b.as)\nfunc (r R) as() {}\nvar as T",
+		},
+		{
+			name:   "as assertion in a ternary and with a blank value",
+			src:    "func f() {\n\tn := c ? x as int : 0\n\tconst [_, ok] = x as int\n}",
+			want:   "func f() {\n\tn := __goslingQ(c , x.(int) , 0)\n\t_, ok := x.(int)\n}",
+			consts: []int{len("func f() {\n\tn := __goslingQ(c , x.(int) , 0)\n\t_, ")},
+		},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {
@@ -1490,6 +1517,9 @@ func TestProcessErrors(test *testing.T) {
 		{"generator without a body", "func* g() iter.Seq[int]\n", "a generator needs a body", 0},
 		{"yield without a value", "func* g() iter.Seq[int] {\n\tyield\n}", "yield needs a value", len("func* g() iter.Seq[int] {\n\t")},
 		{"using at package level", "using f = open()\n", "using is only supported in functions", 0},
+		{"as after a binary operator", "x := a + b as int", "as applies only to the operand before it; add parentheses, as in (a + b) as T", len("x := a + b ")},
+		{"as after a unary operator", "x := *p as int", "as applies only to the operand before it", len("x := *p ")},
+		{"as destructuring with three names", "func f() {\n\tconst [a, b, c] = x as int\n}", "a type assertion gives two values: [value, ok]", len("func f() {\n\tconst ")},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {

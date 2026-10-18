@@ -1,0 +1,34 @@
+package main
+
+import "fmt"
+
+type celsius float64
+
+func (temperature celsius) String() string { return fmt.Sprintf("%.1fC", float64(temperature)) }
+
+func toInt(value any) (number int, failed bool) {
+	defer func() {
+		failed = recover() != nil
+	}()
+	return value as int, false
+}
+
+func main() {
+	let value: any = 41
+	fmt.Println(value as int + 1)
+	const [text, ok] = value as fmt.Stringer
+	fmt.Println(text, ok)
+	value = celsius(21.5)
+	const stringer, isStringer = value as fmt.Stringer
+	fmt.Println(stringer.String(), isStringer)
+	const values = []any{"a", "b"}
+	fmt.Println(values.map(element => element as string + "!"))
+	fmt.Println(toInt(7))
+	fmt.Println(toInt("seven"))
+	type Box struct{ Item any }
+	let box: *Box = &Box{Item: "boxed"}
+	let empty: *Box
+	fmt.Println(box?.Item as string, len(values) > 1 ? values[1] as string : "none")
+	const [_, isText] = (empty ?? box).Item as int
+	fmt.Println(isText, t`${value as celsius:.0f}`)
+}
