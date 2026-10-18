@@ -1,10 +1,12 @@
 package transpile
 
 import (
+	"cmp"
 	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 	"strings"
 
 	"github.com/zacharyhill/gosling/internal/preprocess"
@@ -265,17 +267,18 @@ func (lowerer *lowerer) checkAssign(stmt ast.Stmt, site callSite, errVar, body s
 }
 
 // lowerTryStmt turns a fallible statement inside a try block into a check
-// that jumps to the catch block.
-func (lowerer *lowerer) lowerTryStmt(stmt ast.Stmt, try *tryContext) {
+// that jumps to the catch block. It reports whether it added a check.
+func (lowerer *lowerer) lowerTryStmt(stmt ast.Stmt, try *tryContext) bool {
 	target := try.target()
 	if target == nil {
-		return
+		return false
 	}
 	site, resultCount, ok := lowerer.checkableCall(stmt)
 	if !ok {
-		return
+		return false
 	}
 	target.jumps++
+	lowerer.checkedAssigns[site.assign] = true
 	jump := func(errVar string) string { return lowerer.failTo(try, target, errVar) }
 	switch {
 	case site.assign == nil:
@@ -294,6 +297,7 @@ func (lowerer *lowerer) lowerTryStmt(stmt ast.Stmt, try *tryContext) {
 		target.isCatchVarRead = true
 		lowerer.checkAssign(stmt, site, target.catchVar, jump(target.catchVar))
 	}
+	return true
 }
 
 // checkableCall returns the fallible call in stmt that try should check,
@@ -314,10 +318,29 @@ func (lowerer *lowerer) checkableCall(stmt ast.Stmt) (callSite, int, bool) {
 		return callSite{}, 0, false
 	}
 	if lowerer.optionalRoots[site.call] {
+		lowerer.checkedAssigns[site.assign] = true
 		lowerer.errorf(lowerer.file, stmt.Pos(), "the error from an optional call is not checked inside try; use an explicit nil check")
 		return callSite{}, 0, false
 	}
 	return site, resultCount, true
+}
+
+// reportUncheckedAssigns reports each assignment that got a blank error for
+// type checking but no check. Its output would not compile.
+func (lowerer *lowerer) reportUncheckedAssigns() {
+	var uncheckedCalls []*ast.CallExpr
+	for assign := range lowerer.file.augmented {
+		if lowerer.checkedAssigns[assign] {
+			continue
+		}
+		if call, ok := ast.Unparen(assign.Rhs[0]).(*ast.CallExpr); ok {
+			uncheckedCalls = append(uncheckedCalls, call)
+		}
+	}
+	slices.SortFunc(uncheckedCalls, func(left, right *ast.CallExpr) int { return cmp.Compare(left.Pos(), right.Pos()) })
+	for _, call := range uncheckedCalls {
+		lowerer.errorf(lowerer.file, call.Pos(), "%s returns an error that is not checked here; assign the error, or move the call into its own statement in a try block", lowerer.file.text(call.Fun))
+	}
 }
 
 func blanks(count int) string { return strings.Repeat("_, ", count) }

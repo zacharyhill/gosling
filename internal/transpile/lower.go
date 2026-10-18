@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"strings"
 )
 
 type lowerer struct {
@@ -19,6 +20,8 @@ type lowerer struct {
 	drops          []edit
 	parents        map[ast.Node]ast.Node
 	consumedHoists map[*ast.CallExpr]bool
+	// checkedAssigns holds the augmented assignments that lowering checked or reported.
+	checkedAssigns map[*ast.AssignStmt]bool
 	optionalRoots  map[ast.Expr]bool
 	// hoistDrops maps each hoisted expression to the drop that replaces it
 	// with its variable.
@@ -33,6 +36,7 @@ func newLowerer(transpiler *transpiler, file *file, typeInfo *types.Info) *lower
 		identPositions: map[string][]token.Pos{},
 		consumedHoists: map[*ast.CallExpr]bool{},
 		hoistDrops:     map[ast.Expr]int{},
+		checkedAssigns: map[*ast.AssignStmt]bool{},
 	}
 	ast.Inspect(file.ast, func(node ast.Node) bool {
 		if ident, ok := node.(*ast.Ident); ok && ident.Pos().IsValid() {
@@ -78,6 +82,7 @@ func (lowerer *lowerer) lowerFile() {
 			lowerer.errorf(lowerer.file, call.Pos(), errUncheckableCall)
 		}
 	}
+	lowerer.reportUncheckedAssigns()
 }
 
 func (lowerer *lowerer) walkBlock(list []ast.Stmt, try *tryContext) {
@@ -117,6 +122,7 @@ func (lowerer *lowerer) walkStmt(stmt ast.Stmt, try *tryContext) {
 	case *ast.ForStmt:
 		lowerer.hoist(stmt, try, stmt.Init)
 		lowerer.hoistLoopCondition(stmt, try)
+		lowerer.lowerInit(stmt, try)
 		lowerer.walkExprs(stmt.Init, stmt.Cond, stmt.Post)
 		lowerer.walkBlock(stmt.Body.List, try)
 	case *ast.RangeStmt:
@@ -125,11 +131,13 @@ func (lowerer *lowerer) walkStmt(stmt ast.Stmt, try *tryContext) {
 		lowerer.walkBlock(stmt.Body.List, try)
 	case *ast.SwitchStmt:
 		lowerer.hoistSwitch(stmt, try)
+		lowerer.lowerInit(stmt, try)
 		lowerer.walkExprs(stmt.Init, stmt.Tag)
 		lowerer.walkClauses(stmt.Body, try)
 	case *ast.TypeSwitchStmt:
 		lowerer.checkExhaustive(stmt)
 		lowerer.hoist(stmt, try, stmt.Init, stmt.Assign)
+		lowerer.lowerInit(stmt, try)
 		lowerer.walkExprs(stmt.Init, stmt.Assign)
 		lowerer.walkClauses(stmt.Body, try)
 	case *ast.SelectStmt:
@@ -160,6 +168,71 @@ func (lowerer *lowerer) walkIf(stmt *ast.IfStmt, try *tryContext) {
 	if stmt.Else != nil {
 		lowerer.walkStmt(stmt.Else, try)
 	}
+}
+
+// lowerInit checks a call in the init statement of a switch or for. A new block holds the init,
+// the check, and the statement. The labels move into the block, so break and continue still work.
+func (lowerer *lowerer) lowerInit(stmt ast.Stmt, try *tryContext) {
+	init, newHeader, keptHeaderStart := lowerer.splitHeader(stmt)
+	if init == nil || !lowerer.lowerTryStmt(init, try) {
+		return
+	}
+	anchor := lowerer.withLabels(stmt)
+	line := lowerer.line(stmt.Pos())
+	lowerer.replace(anchor.Pos(), init.Pos(), "{\n", line)
+	lowerer.replace(init.End(), keptHeaderStart, "\n"+lowerer.buildLabelPrefix(stmt)+newHeader, line)
+	lowerer.insertOrdered(stmt.End(), "\n}", lowerer.line(stmt.End()), -lowerer.depth(stmt))
+}
+
+func (lowerer *lowerer) buildLabelPrefix(stmt ast.Stmt) string {
+	labels := ""
+	for node := lowerer.parents[stmt]; node != nil; node = lowerer.parents[node] {
+		labeled, ok := node.(*ast.LabeledStmt)
+		if !ok {
+			break
+		}
+		labels = labeled.Label.Name + ":\n" + labels
+	}
+	return labels
+}
+
+// splitHeader returns the init statement of stmt, the header text that
+// replaces the init statement, and the position where the kept header starts.
+func (lowerer *lowerer) splitHeader(stmt ast.Stmt) (init ast.Stmt, newHeader string, keptHeaderStart token.Pos) {
+	switch stmt := stmt.(type) {
+	case *ast.ForStmt:
+		if stmt.Init == nil {
+			return nil, "", token.NoPos
+		}
+		return stmt.Init, "for " + lowerer.buildLoopVarCopies(stmt.Init), stmt.Init.End()
+	case *ast.SwitchStmt:
+		if stmt.Tag == nil {
+			return stmt.Init, "switch ", stmt.Body.Lbrace
+		}
+		return stmt.Init, "switch ", stmt.Tag.Pos()
+	case *ast.TypeSwitchStmt:
+		return stmt.Init, "switch ", stmt.Assign.Pos()
+	}
+	return nil, "", token.NoPos
+}
+
+// buildLoopVarCopies returns `i := i` for each variable that init declares. So each
+// iteration still gets its own copy, as Go gives to variables of the loop header.
+func (lowerer *lowerer) buildLoopVarCopies(init ast.Stmt) string {
+	assign, ok := init.(*ast.AssignStmt)
+	if !ok || assign.Tok != token.DEFINE {
+		return ""
+	}
+	var names []string
+	for _, leftSide := range assign.Lhs {
+		if ident, ok := leftSide.(*ast.Ident); ok && ident.Name != "_" && lowerer.typeInfo.Defs[ident] != nil {
+			names = append(names, ident.Name)
+		}
+	}
+	if len(names) == 0 {
+		return ""
+	}
+	return strings.Join(names, ", ") + " := " + strings.Join(names, ", ")
 }
 
 func (lowerer *lowerer) walkClauses(body *ast.BlockStmt, try *tryContext) {

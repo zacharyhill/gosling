@@ -1,0 +1,89 @@
+package stmtinit
+
+import (
+	"fmt"
+	"strconv"
+)
+
+func parse(s string) (any, error) { return strconv.Atoi(s) }
+
+func switchInit(s string) string {
+	try {
+		switch let n = strconv.Atoi(s); n {
+		case 1:
+			return "one"
+		default:
+			return "other"
+		}
+	} catch {
+		return "bad"
+	}
+}
+
+func switchInitNoTag(s string) string {
+	try {
+		switch let n = strconv.Atoi(s); {
+		case n > 0:
+			return "positive"
+		}
+	} catch (e) {
+		return e.Error()
+	}
+	return "other"
+}
+
+func typeSwitchInit(s string) string {
+	try {
+		switch let v = parse(s); v.(type) {
+		case int:
+			return "int"
+		default:
+			return "?"
+		}
+	} catch {
+		return "bad"
+	}
+}
+
+func forInit(s string) []func() int {
+	let funcs: []func() int
+	try {
+		for let i = strconv.Atoi(s); i < 3; i++ {
+			funcs = append(funcs, () => i)
+		}
+	} catch (e) {
+		fmt.Println(e)
+	}
+	return funcs
+}
+
+func forAssignInit(s string) int {
+	let total = 0
+	let i = 0
+	try {
+		for i = strconv.Atoi(s); i < 3; i++ {
+			total += i
+		}
+	} catch {
+		return -1
+	}
+	return total
+}
+
+func labeled(s string) int {
+	let count = 0
+	try {
+	outer:
+		for let i = strconv.Atoi(s); i < 3; i++ {
+			switch let n = strconv.Atoi(s); n {
+			case 0:
+				continue outer
+			default:
+				break outer
+			}
+		}
+	} catch {
+		return -1
+	}
+	return count
+}
