@@ -17,6 +17,19 @@ type Config struct{ Port *int }
 
 var counter int
 
+func profileName[P interface {
+	*User
+	Name() string
+}](u P) string {
+	return u?.Name() ?? "generic"
+}
+
+func (u *User) Name() string { return u.Profile?.Name ?? "unnamed" }
+
+func firstSet[P ~*int](values ...P) P {
+	return values[0] ?? values[1]
+}
+
 func next() *User {
 	counter++
 	return &User{Profile: &Profile{Name: "ada"}}
@@ -34,6 +47,9 @@ func main() {
 	fmt.Println(next()?.Profile?.Name ?? "none", counter)
 	fmt.Println(t`${strings.ToUpper(full?.Profile?.Name ?? "x")} ${nobody?.Profile?.Name}|`)
 	fmt.Println(full.Greet(), (&User{}).Greet())
+	fmt.Println(profileName(nobody), profileName(half), profileName(full))
+	let one = 1
+	fmt.Println(*firstSet(nil, &one))
 	let sb: *strings.Builder
 	sb?.WriteString("ignored")
 	fmt.Println("done")

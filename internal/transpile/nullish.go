@@ -78,10 +78,16 @@ func (lowerer *lowerer) links(root ast.Expr) ([]*ast.SelectorExpr, bool) {
 	}
 	slices.Reverse(links)
 	for _, link := range links {
-		if leftType := lowerer.typeInfo.Types[link.X].Type; !nilable(leftType) {
-			lowerer.errorf(lowerer.file, link.X.End(), "?. needs a pointer or interface on its left, not %s", displayName(leftType))
-			return nil, false
+		leftType := lowerer.typeInfo.Types[link.X].Type
+		if isComparableToNil(leftType) {
+			continue
 		}
+		if _, isTypeParam := leftType.(*types.TypeParam); isTypeParam {
+			lowerer.errorf(lowerer.file, link.X.End(), "?. needs a pointer or interface on its left, but type parameter %s allows types that cannot be nil", displayName(leftType))
+		} else {
+			lowerer.errorf(lowerer.file, link.X.End(), "?. needs a pointer or interface on its left, not %s", displayName(leftType))
+		}
+		return nil, false
 	}
 	return links, true
 }
@@ -253,9 +259,13 @@ func (lowerer *lowerer) coalesceGuard(chain coalesceChain, leftOperand ast.Expr,
 		}
 	}
 	operandType := lowerer.typeInfo.Types[leftOperand].Type
-	isOperandNilable := nilable(operandType)
+	isOperandNilable := isComparableToNil(operandType)
 	if !isOperandNilable && len(links) == 0 {
-		lowerer.errorf(lowerer.file, leftOperand.Pos(), "left side of ?? is never nil")
+		if _, isTypeParam := operandType.(*types.TypeParam); isTypeParam {
+			lowerer.errorf(lowerer.file, leftOperand.Pos(), "left side of ?? cannot be compared with nil: type parameter %s allows types that cannot be nil", displayName(operandType))
+		} else {
+			lowerer.errorf(lowerer.file, leftOperand.Pos(), "left side of ?? is never nil")
+		}
 		return "", false
 	}
 	value, ok := lowerer.coalescedValue(chain, leftOperand, isOperandNilable)
