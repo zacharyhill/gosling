@@ -1,0 +1,23 @@
+package oneline
+
+import "os"
+
+func unused() { try { os.Remove("a") } catch (e) { println(1) } }
+
+func used() { try { os.Remove("a") } catch (e) { println(e.Error()) } }
+
+func bare() { try { os.Remove("a") } catch { println(1) } }
+
+func withFinally() { try { os.Remove("a") } catch (e) { println(1) } finally { println(2) } }
+
+func nested() { try { try { os.Remove("a") } catch (e) { println(1) } } catch (e) { println(2) } }
+
+func shadowed() { try { let e = 1; _ = e; os.Remove("a") } catch (e) { println(e.Error()) } }
+
+func shadowedUnused() { try { let e = 1; _ = e; os.Remove("a") } catch (e) { println(1) } }
+
+func empty() { try { os.Remove("a") } catch (e) {} }
+
+func onlyFinally() { try { os.Remove("a") } finally { println(2) } }
+
+func inLoop() { for { try { os.Remove("a") } catch (e) { println(1); break } } }
