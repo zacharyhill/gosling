@@ -520,7 +520,7 @@ const p2 = Point{...p, X: 5} // func() Point { v := p; v.X = 5; return v }()
 
 ### Imports and generated names
 
-gosling adds the imports that the output needs. If the package name is already in use in the file, gosling reports an error.
+gosling adds the imports that the output needs. If the package name is already in use in the file, gosling reports an error. If another file of the package declares the name, the import gets an alias, such as `fmtpkg`.
 
 Error variables are `err`, `err2`, and so on. Labels are `catch_N`, `end_N`, and `finally_N`. gosling does not use a name that the file already uses. Variables also do not use a name that the package declares at package level.
 

@@ -26,13 +26,6 @@ func (lowerer *lowerer) usedIn(name string, from, to token.Pos) (token.Pos, bool
 
 func (lowerer *lowerer) taken(name string) bool { return len(lowerer.identPositions[name]) > 0 }
 
-// isPackageLevelName reports whether a file of the package declares name at
-// package level. Generated code can refer to such a name that this file does
-// not contain, for example in an inferred arrow parameter type.
-func (lowerer *lowerer) isPackageLevelName(name string) bool {
-	return lowerer.checkedPackage != nil && lowerer.checkedPackage.Scope().Lookup(name) != nil
-}
-
 // fresh returns an identifier not used anywhere in the file and not
 // declared at package level.
 func (lowerer *lowerer) fresh(base string) string {
