@@ -59,8 +59,12 @@ func (processor *processor) arrow(tokenIndex int) (int, error) {
 func (processor *processor) openExpressionBody(assign, greater, bodyStart lexeme) {
 	isParenthesized := bytes.IndexByte(processor.src[greater.end():bodyStart.offset], '\n') >= 0
 	returnText := " { return"
-	if isParenthesized {
+	switch {
+	case isParenthesized:
 		returnText += " ("
+	case bodyStart.offset == greater.end():
+		// Without a space, "return" joins the first token of the body.
+		returnText += " "
 	}
 	processor.replace(assign.offset, greater.end(), ResultMarker+returnText)
 	processor.pendingArrows = append(processor.pendingArrows, pendingArrow{start: processor.nesting(), isParenthesized: isParenthesized})

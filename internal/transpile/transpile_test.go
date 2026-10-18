@@ -929,3 +929,34 @@ func TestIsGenerated(test *testing.T) {
 		test.Error("want false for a file without the gosling header")
 	}
 }
+
+// TestTightSpacing checks that gosling syntax without spaces gives the same
+// output as with spaces.
+func TestTightSpacing(test *testing.T) {
+	const header = "package p\n\ntype U struct{ Name *string }\n\ntype Point struct{ X, Y int }\n\n"
+	for _, testCase := range []struct {
+		signature, spaced, tight string
+	}{
+		{"func f() func(int) int", "x => x * 2", "x=>x*2"},
+		{"func f() func(int, int) int", "(a, b) => a + b", "(a,b)=>a+b"},
+		{"func f() func(int) int", "(a int) => a + 1", "(a int)=>a+1"},
+		{"func f() func(int) int", "x => { return x }", "x=>{ return x }"},
+		{"func f(p *int, q int) int", "p ?? q", "p??q"},
+		{"func f(u *U) string", "u?.Name ?? \"\"", "u?.Name??\"\""},
+		{"func f(xs, ys []int) []int", "[...xs, ...ys]", "[...xs,...ys]"},
+		{"func f(pt Point) Point", "Point{...pt, X: 1}", "Point{...pt,X:1}"},
+	} {
+		var outputs [2]string
+		for index, body := range []string{testCase.spaced, testCase.tight} {
+			src := header + testCase.signature + " {\n\treturn " + body + "\n}\n"
+			transpiled, err := Transpile(Config{Importer: importer.Default()}, []Input{{Path: "p.gol", Src: []byte(src)}})
+			if err != nil {
+				test.Fatalf("%q: %v", body, err)
+			}
+			outputs[index] = string(transpiled[0].Src)
+		}
+		if outputs[0] != outputs[1] {
+			test.Errorf("%q gives\n%s\nwant\n%s", testCase.tight, outputs[1], outputs[0])
+		}
+	}
+}

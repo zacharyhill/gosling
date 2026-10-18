@@ -64,6 +64,11 @@ func TestProcess(test *testing.T) {
 			want: "f(func(x __goslingU) __goslingR { return x * 2 }, y)",
 		},
 		{
+			name: "arrow without spaces",
+			src:  "f(x=>x*2, (a,b)=>a+b)",
+			want: "f(func(x __goslingU)__goslingR { return x*2 }, func(a __goslingU, b __goslingU)__goslingR { return a+b })",
+		},
+		{
 			name: "arrow with untyped parameter list",
 			src:  "xs.reduce((acc, x) => acc + x, 0)",
 			want: "xs.reduce(func(acc __goslingU, x __goslingU) __goslingR { return acc + x }, 0)",
