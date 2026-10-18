@@ -68,6 +68,9 @@ func Serve(ctx context.Context, clientIn io.Reader, clientOut io.Writer, options
 type pendingRequest struct {
 	method string
 	origin *generatedFile
+	// nameRange is the range of a name that the generated file does not
+	// copy, for a rename that gopls does at a use of the name.
+	nameRange *lspRange
 }
 
 type server struct {

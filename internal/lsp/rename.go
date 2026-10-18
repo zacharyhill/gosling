@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
 )
 
 // workspaceEdit holds the parts of an LSP WorkspaceEdit that a rename uses.
@@ -38,71 +39,105 @@ var (
 	errRenameFileChange = errors.New("cannot rename: the rename creates, renames, or deletes files")
 )
 
+// fileRename holds the edits of a rename in one file.
+type fileRename struct {
+	// uri is the file to edit. It is the .gol file of a generated file.
+	uri   string
+	edits []textEdit
+	// file is the generated file, or nil for a file that gosling does not
+	// generate.
+	file *generatedFile
+	// goEdits holds the gopls edits of a generated file, and generatedEdits
+	// the ones in text that gosling generates.
+	goEdits        []textEdit
+	generatedEdits []textEdit
+}
+
+func (rename *fileRename) addEdit(edit textEdit) {
+	// gosling can copy one token to more than one place, so equal edits merge.
+	if !slices.Contains(rename.edits, edit) {
+		rename.edits = append(rename.edits, edit)
+	}
+}
+
 // mapRename maps a gopls rename result to the .gol files. A partial rename
-// breaks the code, so one edit that does not map fails the rename.
+// breaks the code, so the rename fails if one edit does not map.
 func (server *server) mapRename(raw json.RawMessage) (workspaceEdit, error) {
 	var received workspaceEdit
 	if err := json.Unmarshal(raw, &received); err != nil {
 		return workspaceEdit{}, err
 	}
-	var mapped workspaceEdit
+	var changes, documentChanges []*fileRename
 	for uri, edits := range received.Changes {
-		golURI, golEdits, err := server.mapFileEdits(uri, edits)
+		rename, err := server.mapFileEdits(uri, edits)
 		if err != nil {
 			return workspaceEdit{}, err
 		}
-		if mapped.Changes == nil {
-			mapped.Changes = map[string][]textEdit{}
-		}
-		mapped.Changes[golURI] = golEdits
+		changes = append(changes, rename)
 	}
 	for _, change := range received.DocumentChanges {
 		if change.Kind != "" {
 			return workspaceEdit{}, errRenameFileChange
 		}
-		golURI, golEdits, err := server.mapFileEdits(change.TextDocument.URI, change.Edits)
+		rename, err := server.mapFileEdits(change.TextDocument.URI, change.Edits)
 		if err != nil {
 			return workspaceEdit{}, err
 		}
-		if golURI != change.TextDocument.URI {
-			change.TextDocument = versionedDocument{URI: golURI}
-		}
-		change.Edits = golEdits
-		mapped.DocumentChanges = append(mapped.DocumentChanges, change)
+		documentChanges = append(documentChanges, rename)
 	}
-	return mapped, nil
+	if err := server.mapGeneratedEdits(append(slices.Clone(changes), documentChanges...)); err != nil {
+		return workspaceEdit{}, err
+	}
+	return buildMappedEdit(received, changes, documentChanges), nil
 }
 
-// mapFileEdits maps the edits of one file. Edits in a file that gosling does
-// not generate stay the same. gosling can copy one token to more than one
-// place, so equal edits merge.
-func (server *server) mapFileEdits(uri string, edits []textEdit) (string, []textEdit, error) {
+// buildMappedEdit builds the .gol workspace edit from the mapped renames of
+// received.Changes and received.DocumentChanges.
+func buildMappedEdit(received workspaceEdit, changes, documentChanges []*fileRename) workspaceEdit {
+	var mapped workspaceEdit
+	for _, rename := range changes {
+		if mapped.Changes == nil {
+			mapped.Changes = map[string][]textEdit{}
+		}
+		mapped.Changes[rename.uri] = rename.edits
+	}
+	for changeIndex, change := range received.DocumentChanges {
+		rename := documentChanges[changeIndex]
+		if rename.uri != change.TextDocument.URI {
+			change.TextDocument = versionedDocument{URI: rename.uri}
+		}
+		change.Edits = rename.edits
+		mapped.DocumentChanges = append(mapped.DocumentChanges, change)
+	}
+	return mapped
+}
+
+// mapFileEdits maps the edits of copied tokens in one file. It keeps the
+// edits in generated text for mapGeneratedEdits. Edits in a file that
+// gosling does not generate stay the same.
+func (server *server) mapFileEdits(uri string, edits []textEdit) (*fileRename, error) {
 	path, ok := uriToPath(uri)
 	if !ok {
-		return uri, edits, nil
+		return &fileRename{uri: uri, edits: edits}, nil
 	}
 	file := server.generatedFor(path)
 	if file == nil {
 		if isGeneratedPath(path) {
-			return "", nil, fmt.Errorf("cannot rename: %s is out of date, run gosling", path)
+			return nil, fmt.Errorf("cannot rename: %s is out of date, run gosling", path)
 		}
-		return uri, edits, nil
+		return &fileRename{uri: uri, edits: edits}, nil
 	}
 	mapper := server.newMapper(file, true)
-	seen := map[textEdit]bool{}
-	var golEdits []textEdit
+	rename := &fileRename{uri: pathToURI(file.golPath), file: file, goEdits: edits}
 	for _, edit := range edits {
 		golRange, ok := mapper.copiedRange(file, edit.Range)
 		if !ok {
-			return "", nil, errRenameGenerated
+			rename.generatedEdits = append(rename.generatedEdits, edit)
+			continue
 		}
-		golEdit := textEdit{Range: golRange, NewText: edit.NewText}
-		if !seen[golEdit] {
-			seen[golEdit] = true
-			golEdits = append(golEdits, golEdit)
-		}
+		rename.addEdit(textEdit{Range: golRange, NewText: edit.NewText})
 	}
-	return pathToURI(file.golPath), golEdits, nil
+	return rename, nil
 }
 
 // copiedRange maps a range of a generated file to the editor text of its .gol
