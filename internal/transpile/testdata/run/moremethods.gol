@@ -1,0 +1,40 @@
+package main
+
+import "fmt"
+
+type User struct {
+	Name string
+	Age  int
+}
+
+func main() {
+	let users = []User{{"ada", 36}, {"bob", 17}, {"cy", 36}, {"di", 25}}
+	let byAge = users.toSorted((a, b) => a.Age - b.Age)
+	fmt.Println(byAge, users[0].Name)
+	users.sort((a, b) => b.Age - a.Age)
+	fmt.Println(users)
+
+	let nums = []int{3, 1, 2}
+	let sorted = nums.sort()
+	sorted[0] = 10
+	fmt.Println(nums, nums.toReversed(), nums)
+	nums.reverse()
+	fmt.Println(nums)
+
+	let letters = []string{"a", "b", "c", "d", "e"}
+	fmt.Println(letters.slice(1, 3), letters.slice(-2), letters.slice(1, -1), letters.slice(4, 2), letters.slice(-10, 10))
+	let part = letters.slice(0, 2)
+	part[0] = "z"
+	fmt.Println(letters.join(""), part.join(","), []float64{1.5, 2}.join(" "))
+
+	fmt.Println([][]int{{1, 2}, {}, {3}}.flat(), letters.flatMap(s => []string{s, s}).slice(0, 4))
+	fmt.Println(*letters.at(-1), letters.at(5) == nil, *letters.at(0))
+	fmt.Println(*nums.findLast(n => n < 3), nums.findLast(n => n > 99) == nil, nums.findLastIndex((n, i) => n > i), nums.findLastIndex(n => n > 99))
+	fmt.Println(letters.keys(), letters.slice(0, 2).entries())
+
+	let fixed = [3]int{3, 1, 2}
+	fixed.sort()
+	fmt.Println(fixed, *fixed.at(-1), fixed.toReversed(), fixed.join("-"))
+	const ages = map[string]int{"a": 1}
+	fmt.Println(ages.keys(), ages.has("a"))
+}

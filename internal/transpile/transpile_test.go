@@ -479,6 +479,26 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:15: cannot use 1 (untyped int constant) as string value in argument to has",
 		},
 		{
+			name: "sort without a comparator on unordered elements",
+			src:  "package p\ntype P struct{ X int }\nfunc f(ps []P) {\n\tps.sort()\n}",
+			want: "x.gol:4:2: P does not satisfy",
+		},
+		{
+			name: "slice with too many arguments",
+			src:  "package p\nfunc f(xs []int) []int {\n\treturn xs.slice(1, 2, 3)\n}",
+			want: "x.gol:3:9: slice expects 1 to 2 argument(s)",
+		},
+		{
+			name: "slice with a spread argument",
+			src:  "package p\nfunc f(xs []int, bounds []int) []int {\n\treturn xs.slice(1, bounds...)\n}",
+			want: "x.gol:3:21: cannot use bounds (variable of type []int) as int value in argument to slice",
+		},
+		{
+			name: "flatMap callback that does not return a slice",
+			src:  "package p\nfunc f(xs []int) []int {\n\treturn xs.flatMap(x => x)\n}",
+			want: "x.gol:3:20: flatMap callback has type func(x int) int, want func(int) []R",
+		},
+		{
 			name: "switch missing union variants",
 			src:  "package p\ntype A struct{}\ntype B struct{}\ntype C struct{}\ntype U = A | B | C\nfunc f(u U) {\n\tswitch u.(type) {\n\tcase A:\n\t}\n}",
 			want: "x.gol:7:2: switch on U is missing cases: B, C",

@@ -1,0 +1,12 @@
+[{bob 17} {di 25} {ada 36} {cy 36}] ada
+[{ada 36} {cy 36} {di 25} {bob 17}]
+[10 2 3] [3 2 10] [10 2 3]
+[3 2 10]
+[b c] [d e] [b c d] [] [a b c d e]
+abcde z,b 1.5 2
+[1 2 3] [a a b b]
+e true a
+2 true 2 -1
+[0 1 2 3 4] [{0 a} {1 b}]
+[1 2 3] 3 [3 2 1] 1-2-3
+[a] true
