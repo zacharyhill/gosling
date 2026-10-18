@@ -518,6 +518,7 @@ func markerDecls(packageName string) string {
 		"type " + preprocess.UntypedMarker + " = any\n" +
 		"type " + preprocess.ResultMarker + " = any\n" +
 		"func " + preprocess.TMarker + "(...any) string { return \"\" }\n" +
+		"func " + preprocess.ThrowMarker + "(error) any { return nil }\n" +
 		"func " + coalesceMarker + "[T any](x any, d T) T { return d }\n" +
 		"func " + coalescePtrMarker + "[T any](x *T, d T) T { return d }\n" +
 		"func " + hoistMarker + "[T any](v T, err error) T { return v }\n" +

@@ -522,6 +522,26 @@ func TestProcess(test *testing.T) {
 			src:  "switch v.(type) {\ncase func(a: int):\n\tg()\n}",
 			want: "switch v.(type) {\ncase func(a int):\n\tg()\n}",
 		},
+		{
+			name: "throw",
+			src:  "func f() error {\n\tthrow err\n}",
+			want: "func f() error {\n\tpanic(__goslingThrow(err))\n}",
+		},
+		{
+			name: "throw with call in block",
+			src:  "if bad { throw fmt.Errorf(\"x: %w\", e) }",
+			want: "if bad { panic(__goslingThrow(fmt.Errorf(\"x: %w\", e))) }",
+		},
+		{
+			name: "throw with composite literal and arrow",
+			src:  "throw &E{f: x => x}\n",
+			want: "panic(__goslingThrow(&E{f: func(x __goslingU) __goslingR { return x }}))\n",
+		},
+		{
+			name: "throw as identifier",
+			src:  "throw(x)\nthrow = 1\nthrow.Do()\ny := throw",
+			want: "throw(x)\nthrow = 1\nthrow.Do()\ny := throw",
+		},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {
@@ -596,6 +616,7 @@ func TestProcessErrors(test *testing.T) {
 		{"annotated parameters with go result list", "func f(a: int) (int, error) {}", "write ): before the result type", len("func f(a: int) ")},
 		{"mixed result list", "func f(): (n: int, error) {}", "write name: type for every parameter", len("func f(): (n: int, ")},
 		{"mixed arrow parameters", "f := (a, b: int) => a", "write name: type for every parameter", len("f := (")},
+		{"throw without value", "func f() error {\n\tthrow\n}", "throw needs an error value", len("func f() error {\n\t")},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {
