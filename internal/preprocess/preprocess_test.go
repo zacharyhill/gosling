@@ -122,6 +122,21 @@ func TestProcess(test *testing.T) {
 			want: "c := __goslingCat(a)",
 		},
 		{
+			name: "slice spread after elements",
+			src:  "all := [x, y, ...a, z]",
+			want: "all := __goslingCat(__goslingOne(x, y), a, __goslingOne(z))",
+		},
+		{
+			name: "slice spread in keyed element",
+			src:  "m := map[string][]int{\"k\": [x, ...a]}",
+			want: "m := map[string][]int{\"k\": __goslingCat(__goslingOne(x), a)}",
+		},
+		{
+			name: "index and instantiation are not spread",
+			src:  "v := xs[i] + m[k][f(a...)] + F[int, string](ys...)",
+			want: "v := xs[i] + m[k][f(a...)] + F[int, string](ys...)",
+		},
+		{
 			name: "array type is not spread",
 			src:  "a := [...]int{1, 2}",
 			want: "a := [...]int{1, 2}",

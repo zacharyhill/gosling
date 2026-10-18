@@ -35,3 +35,7 @@ func update(p Point) Point {
 func updateShorthand(u User, age int) User {
 	return User{...u, age, tags: [...u.tags, "new"]}
 }
+
+func leadingElements(a []int, x int) [][]int {
+	return [][]int{[x, ...a], [x, 1, ...a, ...a, 2]}
+}
