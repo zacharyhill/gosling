@@ -528,6 +528,15 @@ const add = (a: int, b: int) => a + b             // add := func(a int, b int) i
 
 `for (const x of xs)` becomes `for _, x := range xs`. For a channel, an integer, or an `iter.Seq`, it becomes `for x := range xs`. `for (const k in m)` becomes `for k := range m`. `let` also works. With `const`, gosling reports an error if the loop body assigns to the variable.
 
+A `for...of` loop can destructure each element. gosling declares the names at the start of the loop body:
+
+```go
+for (const {Name, Port} of configs) { // for _, tmp := range configs { Name, Port := tmp.Name, tmp.Port
+for (const [k, v] of pairs) {         // for _, tmp := range pairs { k, v := tmp[0], tmp[1]
+```
+
+A pattern in a `for...in` loop is an error. To read the keys and values of a map, use `for const k, v = range m`.
+
 `for (let i = 0; i < n; i++)` becomes `for i := 0; i < n; i++`.
 
 ### Optional chaining and ??

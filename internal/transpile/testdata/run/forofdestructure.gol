@@ -1,0 +1,37 @@
+package main
+
+import "fmt"
+
+type Config struct {
+	Name string
+	Port int
+}
+
+func main() {
+	const configs = []Config{{"a", 80}, {"b", 443}}
+	for (const {Name, Port: port} of configs) {
+		fmt.Println(Name, port)
+	}
+
+	for (let [k, v, ...rest] of [][]string{{"x", "1", "y"}, {"z", "2"}}) {
+		v += "!"
+		fmt.Println(k, v, rest)
+	}
+
+	let total = 0
+	for (const [a, b] of [][2]int{{1, 2}, {3, 4}}) {
+		total += a * b
+	}
+	fmt.Println(total)
+
+	const ch = make(chan Config, 2)
+	ch <- Config{"c", 0}
+	close(ch)
+	for(const {Name: name, Port = 8080} of ch) {
+		fmt.Println(name, Port)
+	}
+
+	for (const [_, {Name: inner}] of [][]Config{{{}, {"nested", 1}}}) {
+		fmt.Println(inner)
+	}
+}
