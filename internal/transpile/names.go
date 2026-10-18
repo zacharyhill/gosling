@@ -166,19 +166,27 @@ func isVarOfType(object types.Object, varType types.Type) bool {
 }
 
 // pickTempVar returns a temporary name not referenced in [from, to) and
-// not declared at package level.
-func (lowerer *lowerer) pickTempVar(from, to token.Pos) string {
-	return lowerer.pickName("v", from, to)
+// not declared at package level. The name is also not a catch variable of
+// try or an enclosing try block.
+func (lowerer *lowerer) pickTempVar(from, to token.Pos, try *tryContext) string {
+	return lowerer.pickNameExcept("v", from, to, func(name string) bool { return excludedByTry(try, name) })
 }
 
 // pickName returns base, or base with a number, not referenced in [from, to).
 func (lowerer *lowerer) pickName(base string, from, to token.Pos) string {
+	return lowerer.pickNameExcept(base, from, to, nil)
+}
+
+// pickNameExcept is pickName that also skips the names that isExcluded
+// reports, if isExcluded is not nil.
+func (lowerer *lowerer) pickNameExcept(base string, from, to token.Pos, isExcluded func(string) bool) string {
 	for attempt := 1; ; attempt++ {
 		name := base
 		if attempt > 1 {
 			name = base + strconv.Itoa(attempt)
 		}
-		if _, used := lowerer.usedIn(name, from, to); !used && !lowerer.isPackageLevelName(name) {
+		isTaken := isExcluded != nil && isExcluded(name)
+		if _, used := lowerer.usedIn(name, from, to); !used && !lowerer.isPackageLevelName(name) && !isTaken {
 			return name
 		}
 	}

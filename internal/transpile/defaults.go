@@ -109,7 +109,7 @@ func (lowerer *lowerer) lowerDefaultAt(call *ast.CallExpr, closureHeader string)
 func (lowerer *lowerer) lowerDefault(call *ast.CallExpr, closureHeader string) {
 	field, fallback := call.Args[0], call.Args[1]
 	fieldType := lowerer.typeInfo.Types[field].Type
-	tempVar := lowerer.pickTempVar(call.Pos(), call.End())
+	tempVar := lowerer.pickTempVar(call.Pos(), call.End(), nil)
 	condition, result := tempVar+" != nil", tempVar
 	switch {
 	case call.Fun.(*ast.Ident).Name == defaultPtrMarker:

@@ -306,7 +306,7 @@ func (lowerer *lowerer) lowerWith(withCall *ast.CallExpr) {
 		lowerer.typeNameTakenError(spreadExpr.Pos(), "spread", displayName(goType))
 		return
 	}
-	tempVar := lowerer.pickTempVar(spreadExpr.Pos(), spreadExpr.End())
+	tempVar := lowerer.pickTempVar(spreadExpr.Pos(), spreadExpr.End(), nil)
 	header, segments, ok := lowerer.buildSpreadSegments(withCall, spreadExpr, goType, typeText, tempVar)
 	if !ok {
 		return

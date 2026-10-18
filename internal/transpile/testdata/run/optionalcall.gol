@@ -1,0 +1,52 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+type Conn struct{ broken bool }
+
+func (conn *Conn) Close() error {
+	if conn.broken {
+		return errors.New("close failed")
+	}
+	fmt.Println("closed")
+	return nil
+}
+
+func closeConn(conn *Conn) string {
+	try {
+		conn?.Close()
+		return "ok"
+	} catch (e) {
+		return "caught: " + e.Error()
+	}
+}
+
+func closeParenthesized(conn *Conn) string {
+	try {
+		(conn?.Close())
+		return "ok"
+	} catch (e) {
+		return "caught: " + e.Error()
+	}
+}
+
+func runHandler(handlers map[string]func() error, name string) string {
+	try {
+		handlers?.[name]?.()
+		return "ran " + name
+	} catch (e) {
+		return "caught: " + e.Error()
+	}
+}
+
+func main() {
+	fmt.Println(closeConn(nil))
+	fmt.Println(closeConn(&Conn{}))
+	fmt.Println(closeConn(&Conn{broken: true}))
+	fmt.Println(closeParenthesized(&Conn{broken: true}))
+	let handlers = map[string]func() error{"bad": () => errors.New("bad handler")}
+	fmt.Println(runHandler(handlers, "bad"), runHandler(handlers, "none"))
+}
