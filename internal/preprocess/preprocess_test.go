@@ -364,32 +364,57 @@ func TestProcess(test *testing.T) {
 		{
 			name: "struct spread",
 			src:  "p2 := Point{...p, X: 5}",
-			want: "p2 := Point(__goslingWith(p, Point{ X: 5}))",
+			want: "p2 := Point(__goslingWith(p, __goslingKeys(Point{X: 5})))",
 		},
 		{
 			name: "struct spread alone",
 			src:  "p2 := geo.Point{...p}",
-			want: "p2 := geo.Point(__goslingWith(p, geo.Point{}))",
+			want: "p2 := geo.Point(__goslingWith(p))",
 		},
 		{
 			name: "struct spread alone with trailing comma",
 			src:  "p2 := Point{...p,\n}",
-			want: "p2 := Point(__goslingWith(p,\nPoint{}))",
+			want: "p2 := Point(__goslingWith(p,\n))",
 		},
 		{
 			name: "address of struct spread",
 			src:  "p2 := &geo.Point{...p, X: 5}",
-			want: "p2 := __goslingAddr(geo.Point(__goslingWith(p, geo.Point{ X: 5})))",
+			want: "p2 := __goslingAddr(geo.Point(__goslingWith(p, __goslingKeys(geo.Point{X: 5}))))",
 		},
 		{
 			name: "struct spread keeps comment and newline before spread",
 			src:  "p2 := Point{ // c\n\t...p, X: 5}",
-			want: "p2 := Point(__goslingWith( // c\n\tp, Point{ X: 5}))",
+			want: "p2 := Point(__goslingWith( // c\n\tp, __goslingKeys(Point{X: 5})))",
 		},
 		{
 			name: "generic struct spread",
 			src:  "b := Box[int]{...b0, V: f(x)}",
-			want: "b := Box[int](__goslingWith(b0, Box[int]{ V: f(x)}))",
+			want: "b := Box[int](__goslingWith(b0, __goslingKeys(Box[int]{V: f(x)})))",
+		},
+		{
+			name: "map spread",
+			src:  "m := map[string][]int{...a, \"k\": nil, ...b}",
+			want: "m := map[string][]int(__goslingWith(a, __goslingKeys(map[string][]int{\"k\": nil}), b))",
+		},
+		{
+			name: "map spread with pointer values",
+			src:  "m := map[string]*T{...a}",
+			want: "m := map[string]*T(__goslingWith(a))",
+		},
+		{
+			name: "multiplication is not part of the spread type",
+			src:  "x := n * T{...p}",
+			want: "x := n * T(__goslingWith(p))",
+		},
+		{
+			name: "spread without type",
+			src:  "m = {\"k\": 1, ...a,\n}",
+			want: "m = __goslingWith(__goslingKeys(__goslingU{\"k\": 1}), a,\n)",
+		},
+		{
+			name: "nested spread without type",
+			src:  "m := M{\"k\": {...b, ...c}}",
+			want: "m := M{\"k\": __goslingWith(b, c)}",
 		},
 		{
 			name: "union type",
@@ -1031,8 +1056,7 @@ func TestProcessErrors(test *testing.T) {
 		{"literal union in a type group", "type (\n\tM = \"a\" | \"b\"\n)\n", "a literal union needs its own type keyword, not a type group", len("type (\n\t")},
 		{"question mark", "x := f()?", "the ? operator is not supported; use try/catch", len("x := f()")},
 		{"question mark before space", "x := f()? .y", "the ? operator is not supported", len("x := f()")},
-		{"spread not first", "p := Point{X: 1, ...p}", "struct spread must be the first element", len("p := Point{X: 1, ")},
-		{"spread without type", "p := {...q}", "struct spread needs a type name before {", len("p := ")},
+		{"spread with missing comma", "m := M{...a\n}", "missing comma before newline in spread", len("m := M{...a")},
 		{"let without type or value", "func f() {\n\tlet x\n}", "let x needs a type or a value", len("func f() {\n\t")},
 		{"let with keyword after name", "func f() {\n\tlet x := 1\n}", "use let x = value, not :=", len("func f() {\n\t")},
 		{"let destructuring at package level", "let {a} = p\n", "destructuring with let or const is only supported in functions", 0},

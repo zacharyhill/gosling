@@ -691,7 +691,7 @@ func TestErrors(test *testing.T) {
 		{
 			name: "struct spread of another type",
 			src:  "package p\ntype P struct{ X int }\ntype Q struct{ X int }\nfunc f(q Q) P {\n\treturn P{...q, X: 1}\n}",
-			want: "x.gol:5:15: struct spread of type Q into P",
+			want: "x.gol:5:17: struct spread of type Q into P",
 		},
 		{
 			name: "template literal in expression",
@@ -777,6 +777,21 @@ func TestErrors(test *testing.T) {
 			name: "tag function with the wrong signature",
 			src:  "package p\nfunc up(s string) string { return s }\nfunc f() string {\n\treturn up`a`\n}",
 			want: "x.gol:4:11: cannot use []string{…} (value of type []string) as string value in argument to up",
+		},
+		{
+			name: "struct spread after a field",
+			src:  "package p\ntype P struct{ X, Y int }\nfunc f(p P) P {\n\treturn P{X: 1, ...p}\n}",
+			want: "x.gol:4:20: struct spread must be the first element",
+		},
+		{
+			name: "second struct spread",
+			src:  "package p\ntype P struct{ X, Y int }\nfunc f(p, q P) P {\n\treturn {...p, ...q}\n}",
+			want: "x.gol:4:19: struct spread must be the first element",
+		},
+		{
+			name: "spread in braces of a slice type",
+			src:  "package p\nfunc f(a []int) []int {\n\treturn []int{...a}\n}",
+			want: "x.gol:3:9: spread in braces needs a map or struct type; use [...a] for slices",
 		},
 		{
 			name: "missing catch",

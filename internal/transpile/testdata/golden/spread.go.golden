@@ -3,6 +3,7 @@
 package spread
 
 import "time"
+import "maps"
 import "slices"
 
 type User struct {
@@ -101,4 +102,53 @@ type ID int64
 
 func typedConstants(ids []ID, waits []time.Duration) ([]ID, []time.Duration) {
 	return slices.Concat(ids, []ID{1}, ids, []ID{2}), slices.Concat(waits, []time.Duration{5, time.Second})
+}
+
+type Counts map[string]int
+
+func mergeMaps(defaults, overrides Counts, n int) Counts {
+	return func() Counts {
+		v := Counts{}
+		maps.Copy(v, defaults)
+		maps.Copy(v, overrides)
+		v["n"] = n
+		return v
+	}()
+}
+
+func mergeLiteral(a map[string][]int) map[string][]int {
+	return func() map[string][]int {
+		v := map[string][]int{}
+		v["first"] = []int{1}
+		maps.Copy(v, a)
+		return v
+	}()
+}
+
+func mergeUntyped(a, b map[string]Point) map[string]Point {
+	m := func() map[string]Point {
+		v := map[string]Point{}
+		maps.Copy(v, a)
+		v["origin"] = Point{0, 0}
+		maps.Copy(v, b)
+		return v
+	}()
+	return m
+}
+
+func untypedStruct(p Point) Point {
+	return func() Point {
+		v := p
+		v.Y = 1
+		return v
+	}()
+}
+
+func mergePointers(a map[Point]*Point) map[Point]*Point {
+	return func() map[Point]*Point {
+		v := map[Point]*Point{}
+		maps.Copy(v, a)
+		v[Point{1, 2}] = &Point{3, 4}
+		return v
+	}()
 }
