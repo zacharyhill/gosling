@@ -1,0 +1,22 @@
+package main
+
+import "fmt"
+
+func total(nums []int) (sum int, failure any) {
+	defer func() {
+		failure = recover()
+	}()
+	return nums.reduce((acc, n) => acc + n), nil
+}
+
+func main() {
+	fmt.Println(total([]int{1, 2, 3}))
+	fmt.Println(total([]int{7}))
+	fmt.Println(total(nil))
+	let calls: []int
+	let product = []int{2, 3, 4}.reduce((acc, n, i) => {
+		calls = append(calls, i)
+		return acc * n
+	})
+	fmt.Println(product, calls)
+}

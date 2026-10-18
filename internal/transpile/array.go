@@ -103,6 +103,8 @@ type arrayCall struct {
 	returnsPointer bool // find, at, or get returns a pointer
 	// usesNaturalOrder is true for sort or toSorted without a comparator.
 	usesNaturalOrder bool
+	// isFirstElementInit is true for a reduce without an initial value.
+	isFirstElementInit bool
 	// shouldSliceArray is true for an addressable array. The output slices it,
 	// so the loop does not copy it and find points into it.
 	shouldSliceArray bool
@@ -131,6 +133,10 @@ func arrayMarkerDecls() string {
 	builder.WriteString("func " + arrayRefMarker + "[A any](a A) *A { return &a }\n")
 	sliceMethodSet.writeMarkerDecls(&builder)
 	mapMethodSet.writeMarkerDecls(&builder)
+	// A reduce without an initial value accumulates the element type.
+	const reduceFirstDecl = "func %sreduce%s[S ~[]T, T any](xs S, f func(T, T%s) T) T { panic(0) }\n"
+	fmt.Fprintf(&builder, reduceFirstDecl, arrayMarkerPrefix, "F", "")
+	fmt.Fprintf(&builder, reduceFirstDecl, arrayMarkerPrefix, "FI", ", int")
 	return builder.String()
 }
 
@@ -281,14 +287,18 @@ func (transpiler *transpiler) asArrayCall(file *file, typeInfo *types.Info, call
 		return nil, false
 	}
 	methodCall.indexed = count == strings.Count(method.callbackParams, ",")+2
+	methodCall.isFirstElementInit = set == &sliceMethodSet && name == "reduce" && len(call.Args) == 1
 	return methodCall, true
 }
 
 // markerName picks the marker variant. N is for a sort in the natural order.
-// P is for a call that returns a pointer. I is for a callback that also takes
-// the index or key.
+// F is for a reduce that starts with the first element. P is for a call that
+// returns a pointer. I is for a callback that also takes the index or key.
 func (call *arrayCall) markerName() string {
 	name := call.set.markerPrefix + call.method
+	if call.isFirstElementInit {
+		name += "F"
+	}
 	if call.usesNaturalOrder {
 		name += "N"
 	}
@@ -335,6 +345,11 @@ func (transpiler *transpiler) callbackContext(typeInfo *types.Info, call *ast.Ca
 		context.params = []types.Type{elementType, elementType}
 		context.results = []types.Type{types.Typ[types.Int]}
 	case "reduce":
+		if arrayCall.isFirstElementInit {
+			context.params = []types.Type{elementType, elementType}
+			context.results = []types.Type{elementType}
+			break
+		}
 		if len(call.Args) < 3 {
 			return funcContext{}, false
 		}
@@ -371,6 +386,9 @@ func (lowerer *lowerer) lowerArrayCall(marker *ast.CallExpr, arrayCall *arrayCal
 	method := arrayCall.definition()
 	typeText, ok := lowerer.checkArrayCall(marker, arrayCall, method)
 	if !ok || !lowerer.checkBuiltins(receiver.Pos(), arrayCall.method, method.loopBuiltins...) {
+		return
+	}
+	if arrayCall.isFirstElementInit && !lowerer.checkBuiltins(receiver.Pos(), arrayCall.method, "len", "panic") {
 		return
 	}
 	prefixes, ok := lowerer.importArrayPackages(arrayCall)
@@ -482,6 +500,9 @@ func (lowerer *lowerer) checkArgCount(marker *ast.CallExpr, arrayCall *arrayCall
 	if arrayCall.usesNaturalOrder {
 		wantArgs = 0
 	}
+	if arrayCall.isFirstElementInit {
+		wantArgs--
+	}
 	minArgs := wantArgs - method.optionalArgCount
 	if gotArgs <= wantArgs && gotArgs >= minArgs {
 		return true
@@ -558,7 +579,7 @@ func (lowerer *lowerer) arrayBindings(arrayCall *arrayCall, method arrayMethod, 
 		return names.mapName + ", " + names.callback, ", "
 	case arrayCall.isMapCall():
 		return names.mapName, ""
-	case arrayCall.method == "reduce":
+	case arrayCall.method == "reduce" && !arrayCall.isFirstElementInit:
 		return names.slice + ", " + names.callback + ", " + names.accumulator, ", "
 	case arrayCall.method == "slice" && argCount == 2:
 		return names.slice + ", " + names.start + ", " + names.end, ", "
@@ -593,6 +614,9 @@ func arrayLoop(arrayCall *arrayCall, typeText string, names arrayNames) string {
 	case "filter":
 		return fmt.Sprintf("\nvar %[1]s %[2]s\n%[3]s {\nif %[4]s {\n%[1]s = append(%[1]s, %[5]s)\n}\n}\nreturn %[1]s\n}()", names.out, typeText, loop, call, names.element)
 	case "reduce":
+		if arrayCall.isFirstElementInit {
+			return buildReduceFirstLoop(arrayCall, names)
+		}
 		call = strings.Replace(call, names.callback+"(", names.callback+"("+names.accumulator+", ", 1)
 		return fmt.Sprintf("\n%[1]s {\n%[2]s = %[3]s\n}\nreturn %[2]s\n}()", loop, names.accumulator, call)
 	case "forEach":
@@ -635,4 +659,17 @@ func mapLoop(arrayCall *arrayCall, typeText string, names arrayNames) string {
 		return fmt.Sprintf("\nfor _, %[1]s := range %[2]s {\n%[3]s(%[1]s)\n}\n}", names.value, names.mapName, names.callback)
 	}
 	return ""
+}
+
+// emptyReduceMessage is the panic message of a reduce without an initial
+// value on an empty slice. JavaScript throws a TypeError in this case.
+const emptyReduceMessage = "reduce of empty slice with no initial value"
+
+// buildReduceFirstLoop starts the accumulator with the first element.
+func buildReduceFirstLoop(arrayCall *arrayCall, names arrayNames) string {
+	loop := fmt.Sprintf("for _, %[1]s := range %[2]s[1:] {\n%[3]s = %[4]s(%[3]s, %[1]s)\n}", names.element, names.slice, names.accumulator, names.callback)
+	if arrayCall.indexed {
+		loop = fmt.Sprintf("for %[1]s := 1; %[1]s < len(%[2]s); %[1]s++ {\n%[3]s = %[4]s(%[3]s, %[2]s[%[1]s], %[1]s)\n}", names.index, names.slice, names.accumulator, names.callback)
+	}
+	return fmt.Sprintf("\nif len(%[1]s) == 0 {\npanic(%[2]q)\n}\n%[3]s := %[1]s[0]\n%[4]s\nreturn %[3]s\n}()", names.slice, emptyReduceMessage, names.accumulator, loop)
 }

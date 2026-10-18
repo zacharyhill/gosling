@@ -665,7 +665,8 @@ evens := func() []int {
 }()
 ```
 
-- `reduce` needs an initial value: `nums.reduce((acc, n) => acc + float64(n), 0.0)`.
+- Without an initial value, `reduce` starts with the first element, as in JavaScript: `nums.reduce((acc, n) => acc + n)`. The accumulator then has the element type. On an empty slice, this call panics with `reduce of empty slice with no initial value`. JavaScript throws a `TypeError`.
+- With an initial value, the accumulator has the type of that value: `nums.reduce((acc, n) => acc + float64(n), 0.0)`.
 - `find`, `findLast`, and `at` return the element if it can be nil. Otherwise they return a pointer into the slice, or nil. An element of a type parameter can be nil only if each type in its constraint can be nil. So `find` on a `[]T` with `T any` returns `*T`.
 - `findLast` and `findLastIndex` search from the end.
 - `sort` and `reverse` change the slice in place, as in JavaScript. They also return the slice. As a statement, they become `slices.SortStableFunc`, `slices.Sort`, or `slices.Reverse`. `toSorted` and `toReversed` return a changed copy.

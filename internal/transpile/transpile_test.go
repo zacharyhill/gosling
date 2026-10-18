@@ -509,6 +509,11 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:12: xs.length undefined",
 		},
 		{
+			name: "reduce without an initial value keeps the element type",
+			src:  "package p\nfunc f(xs []int) int {\n\treturn xs.reduce((acc, n) => acc + float64(n))\n}",
+			want: "x.gol:3:31: invalid operation: acc + float64(n) (mismatched types int and float64)",
+		},
+		{
 			name: "switch missing union variants",
 			src:  "package p\ntype A struct{}\ntype B struct{}\ntype C struct{}\ntype U = A | B | C\nfunc f(u U) {\n\tswitch u.(type) {\n\tcase A:\n\t}\n}",
 			want: "x.gol:7:2: switch on U is missing cases: B, C",
