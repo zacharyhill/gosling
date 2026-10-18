@@ -766,6 +766,23 @@ case Square:
 - `*Polygon` is a variant, but `Polygon` is not.
 - `Circle` and `*Circle` can both be stored, but only `case Circle` counts.
 
+A union can be generic. Each variant must have the type parameters of the union as its type arguments, in the same order:
+
+```go
+type Result[T any] = Ok[T] | Err[T]
+```
+
+becomes:
+
+```go
+type Result[T any] interface{ isResult(T) }
+
+func (Ok[T]) isResult(T)  {}
+func (Err[T]) isResult(T) {}
+```
+
+The marker method takes the type parameters. So `Ok[string]` is not a `Result[int]`. A switch on `Result[int]` must list `Ok[int]` and `Err[int]`. A variant without the type parameters, such as `Err`, is an error. Add the type parameter to it, as in `type Err[T any] struct{ Msg string }`.
+
 ### Struct shorthand and spread
 
 ```go
@@ -800,7 +817,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - Object patterns have no rest element.
 - `?.[index]`, `?.(call)`, and `??=` are not supported.
 - In a try block, an optional call that returns an error is an error.
-- Unions cannot be generic or be in a `type ( ... )` group.
+- Unions cannot be in a `type ( ... )` group.
 - gosling does not check switches in `.go` files.
 - In a `case` expression, a function type or literal cannot use `):`. Use Go order there.
 - VS Code highlights the name in `name: type` parameters as a type.

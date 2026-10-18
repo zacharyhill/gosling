@@ -1,0 +1,46 @@
+package genericunions
+
+type Ok[T any] struct{ Value T }
+
+type Err[T any] struct{ Msg string }
+
+type Pair[K comparable, V any] struct {
+	Key   K
+	Value V
+}
+
+type Missing[K comparable, V any] struct{ Key K }
+
+// Result holds a value or an error message.
+type Result[T any] = Ok[T] | *Err[T]
+
+type Lookup[K comparable, V any] = Pair[K, V] | Missing[K, V]
+
+func describe(result Result[int]) string {
+	switch let variant = result.(type) {
+	case Ok[int]:
+		return "ok"
+	case *Err[int]:
+		return variant.Msg
+	}
+	return "nil"
+}
+
+func unwrap[T any](result Result[T], fallback T) T {
+	switch let variant = result.(type) {
+	case Ok[T]:
+		return variant.Value
+	case *Err[T]:
+		return fallback
+	}
+	return fallback
+}
+
+func isFound[K comparable, V any](lookup Lookup[K, V]) bool {
+	switch lookup.(type) {
+	case Pair[K, V]:
+		return true
+	default:
+		return false
+	}
+}
