@@ -17,17 +17,11 @@ func requestURL(r *http.Request) any {
 
 func paths(rs []*http.Request) []string {
 	return func() []string {
-		xs, f := func() []*url.URL {
-			xs, f := rs, func(r *http.Request) *url.URL { return r.URL }
-			out := make([]*url.URL, 0, len(xs))
-			for _, x := range xs {
-				out = append(out, f(x))
-			}
-			return out
-		}(), func(u *url.URL) string { return u.Path }
+		xs, f1, f2 := rs, func(r *http.Request) *url.URL { return r.URL }, func(u *url.URL) string { return u.Path }
 		out := make([]string, 0, len(xs))
 		for _, x := range xs {
-			out = append(out, f(x))
+			x2 := f1(x)
+			out = append(out, f2(x2))
 		}
 		return out
 	}()

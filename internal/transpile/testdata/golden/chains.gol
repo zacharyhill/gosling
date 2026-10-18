@@ -1,0 +1,42 @@
+package chains
+
+import "strings"
+
+type User struct {
+	Name string
+	Age  int
+}
+
+type Names []string
+
+func adultNames(users []User) []string {
+	return users.filter(u => u.Age >= 18).map(u => u.Name)
+}
+
+func upperNames(users []User) Names {
+	return users.map(u => u.Name).map(strings.ToUpper).filter(n => n != "")
+}
+
+func totalAge(users []User, minimum int) int {
+	return users.filter(u => u.Age >= minimum).reduce((sum, u) => sum + u.Age, 0)
+}
+
+func firstAdult(users []User) *User {
+	return users.filter(u => u.Age >= 18).find(u => u.Name != "")
+}
+
+func shiftedIndex(ages []int) int {
+	return ages.map((age, i) => age + i).indexOf(3)
+}
+
+func printAll(users []User, out func(string, int)) {
+	users.filter(u => u.Age > 0).map(u => u.Name).forEach(n => out(n, len(n)))
+}
+
+func indexedAfterFilter(users []User) []string {
+	return users.filter(u => u.Age > 0).map((u, i) => strings.Repeat(u.Name, i))
+}
+
+func impureArgument(users []User, pick func() func(User) string) []string {
+	return users.filter(u => u.Age > 0).map(pick())
+}

@@ -374,8 +374,15 @@ func (transpiler *transpiler) callbackContext(typeInfo *types.Info, call *ast.Ca
 //
 //	func() []R { xs, f := recv, callback; ...loop...; return out }()
 func (lowerer *lowerer) lowerArrays() {
+	groups, isFusedInner := lowerer.findFusedChains()
 	for marker, arrayCall := range lowerer.file.arrayCalls {
-		lowerer.lowerArrayCall(marker, arrayCall)
+		switch {
+		case isFusedInner[marker]:
+		case groups[marker] != nil:
+			lowerer.lowerFusedChain(groups[marker])
+		default:
+			lowerer.lowerArrayCall(marker, arrayCall)
+		}
 	}
 }
 

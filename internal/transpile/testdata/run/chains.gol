@@ -1,0 +1,37 @@
+package main
+
+import "fmt"
+
+func main() {
+	let nums = []int{1, 2, 3, 4, 5, 6}
+	let calls: []string
+	let squares = nums.filter(n => {
+		calls = append(calls, t`filter ${n}`)
+		return n%2 == 0
+	}).map(n => {
+		calls = append(calls, t`map ${n}`)
+		return n * n
+	})
+	fmt.Println(squares)
+	fmt.Println(calls)
+
+	calls = nil
+	let found = nums.map(n => {
+		calls = append(calls, t`map ${n}`)
+		return n * 10
+	}).some(n => n > 20)
+	fmt.Println(found, calls)
+
+	fmt.Println(nums.filter(n => n > 2).map((n, i) => n * i))
+	fmt.Println(nums.map((n, i) => n - i).indexOf(1), nums.map(n => n * 2).findIndex(n => n == 8))
+	fmt.Println(nums.map(n => t`${n}`).includes("4"), nums.filter(n => n > 1).every(n => n > 0))
+	fmt.Println(nums.filter(n => n%2 == 1).reduce((acc, n) => acc + n, 0))
+	let ptr = nums.filter(n => n > 3).find(n => n%2 == 1)
+	*ptr = 50
+	fmt.Println(*ptr, nums)
+	nums.map(n => n * 3).filter(n => n%2 == 0).forEach((n, i) => fmt.Println(i, n))
+	let fixed = [4]int{1, 2, 3, 4}
+	fmt.Println(fixed.filter(n => n > 1).map(n => n * 10), fixed.filter(n => n%2 == 0).reduce((acc, n) => acc + n))
+	const counts = map[string]int{"a": 2}
+	fmt.Println(counts.keys().map(k => k + "!"))
+}

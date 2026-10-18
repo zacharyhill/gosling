@@ -11,19 +11,13 @@ type User struct {
 
 func evensSquared(nums []int) []int {
 	return func() []int {
-		xs, f := func() []int {
-			xs, f := nums, func(n int) bool { return n%2 == 0 }
-			var out []int
-			for _, x := range xs {
-				if f(x) {
-					out = append(out, x)
-				}
-			}
-			return out
-		}(), func(n int) int { return n * n }
-		out := make([]int, 0, len(xs))
+		xs, f1, f2 := nums, func(n int) bool { return n%2 == 0 }, func(n int) int { return n * n }
+		var out []int
 		for _, x := range xs {
-			out = append(out, f(x))
+			if !f1(x) {
+				continue
+			}
+			out = append(out, f2(x))
 		}
 		return out
 	}()
