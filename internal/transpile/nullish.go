@@ -285,8 +285,8 @@ func (lowerer *lowerer) coalesceGuard(chain coalesceChain, leftOperand ast.Expr,
 // dereferences the operand if ?? unwraps a pointer to the result type.
 func (lowerer *lowerer) coalescedValue(chain coalesceChain, leftOperand ast.Expr, isOperandNilable bool) (string, bool) {
 	operandType := lowerer.typeInfo.Types[leftOperand].Type
-	pointerType, isPointer := operandType.Underlying().(*types.Pointer)
-	if isOperandNilable && isPointer && !types.Identical(operandType, chain.resultType) && types.AssignableTo(pointerType.Elem(), chain.resultType) {
+	elemType, isPointer := pointerElem(operandType)
+	if isOperandNilable && isPointer && !types.Identical(operandType, chain.resultType) && types.AssignableTo(elemType, chain.resultType) {
 		return "*" + chain.tempVar, true
 	}
 	if !types.AssignableTo(operandType, chain.resultType) {

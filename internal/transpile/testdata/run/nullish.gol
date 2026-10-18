@@ -30,6 +30,16 @@ func firstSet[P ~*int](values ...P) P {
 	return values[0] ?? values[1]
 }
 
+type IntPointer *int
+
+func orOne[P ~*int](v P) int {
+	return v ?? 1
+}
+
+func firstOrTwo[P *int | IntPointer](a, b P) int {
+	return a ?? b ?? 2
+}
+
 func next() *User {
 	counter++
 	return &User{Profile: &Profile{Name: "ada"}}
@@ -50,6 +60,8 @@ func main() {
 	fmt.Println(profileName(nobody), profileName(half), profileName(full))
 	let one = 1
 	fmt.Println(*firstSet(nil, &one))
+	let seven = 7
+	fmt.Println(orOne[*int](nil), orOne(&seven), firstOrTwo[*int](nil, nil), firstOrTwo(nil, &seven))
 	let sb: *strings.Builder
 	sb?.WriteString("ignored")
 	fmt.Println("done")

@@ -51,6 +51,57 @@ func isComparableToNil(goType types.Type) bool {
 	return nilable(goType)
 }
 
+// pointerElem returns the element type if goType is a pointer, or a type
+// parameter whose types are all pointers to the same type.
+func pointerElem(goType types.Type) (types.Type, bool) {
+	if goType == nil {
+		return nil, false
+	}
+	if typeParam, ok := goType.(*types.TypeParam); ok {
+		return constraintPointerElem(typeParam.Constraint())
+	}
+	pointer, ok := goType.Underlying().(*types.Pointer)
+	if !ok {
+		return nil, false
+	}
+	return pointer.Elem(), true
+}
+
+// constraintPointerElem finds one embedded element of a constraint whose
+// terms are all pointers to the same type. The type set of the constraint is
+// a subset of that element, so it has the same element type.
+func constraintPointerElem(constraint types.Type) (types.Type, bool) {
+	constraintInterface, ok := constraint.Underlying().(*types.Interface)
+	if !ok {
+		return nil, false
+	}
+	for embeddedIndex := range constraintInterface.NumEmbeddeds() {
+		if elemType, ok := embeddedPointerElem(constraintInterface.EmbeddedType(embeddedIndex)); ok {
+			return elemType, true
+		}
+	}
+	return nil, false
+}
+
+func embeddedPointerElem(embedded types.Type) (types.Type, bool) {
+	union, ok := embedded.(*types.Union)
+	if !ok {
+		if _, isInterface := embedded.Underlying().(*types.Interface); isInterface {
+			return constraintPointerElem(embedded)
+		}
+		return pointerElem(embedded)
+	}
+	var elemType types.Type
+	for termIndex := range union.Len() {
+		pointer, ok := union.Term(termIndex).Type().Underlying().(*types.Pointer)
+		if !ok || (elemType != nil && !types.Identical(elemType, pointer.Elem())) {
+			return nil, false
+		}
+		elemType = pointer.Elem()
+	}
+	return elemType, elemType != nil
+}
+
 // typeName prints goType as this file writes it. It reports false if the
 // type belongs to a package that the file does not import.
 func (lowerer *lowerer) typeName(goType types.Type) (string, bool) {
