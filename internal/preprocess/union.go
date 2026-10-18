@@ -1,6 +1,7 @@
 package preprocess
 
 import (
+	"bytes"
 	"fmt"
 	"go/token"
 	"strings"
@@ -14,7 +15,8 @@ import (
 const VariantsPrefix = "__goslingVariants_"
 
 // Union records a union type declaration. Src[MarkerStart:MarkerEnd] holds
-// the marker function and the separator before it.
+// the marker function, the separator before it, and the newlines of the
+// original declaration.
 type Union struct {
 	Name                   string
 	MarkerStart, MarkerEnd int
@@ -69,7 +71,10 @@ func (processor *processor) unionHeader(tokenIndex int) (int, int, bool) {
 // function.
 func (processor *processor) emitUnion(keyword, last lexeme, name string, variants []string) {
 	declarations := unionDeclarations(name, variants)
-	marker := fmt.Sprintf("; func %s%s(%s) {}", VariantsPrefix, name, strings.Join(variants, ", "))
+	// The marker keeps the newlines of a multi-line union, so later lines
+	// keep their numbers.
+	newlines := strings.Repeat("\n", bytes.Count(processor.src[keyword.offset:last.end()], []byte("\n")))
+	marker := fmt.Sprintf("; func %s%s(%s) {}%s", VariantsPrefix, name, strings.Join(variants, ", "), newlines)
 	declarationText := strings.Join(declarations, "; ")
 	start := processor.replace(keyword.offset, last.end(), declarationText+marker)
 
