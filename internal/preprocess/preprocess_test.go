@@ -17,6 +17,7 @@ func TestProcess(test *testing.T) {
 		unions      []Union
 		consts      []int
 		forOfBlanks []int
+		newlines    [][2]int
 	}{
 		{
 			name: "try catch with binding",
@@ -289,6 +290,30 @@ func TestProcess(test *testing.T) {
 			want: "func f() {\n\t{\n\t\ta()\n\t}\n}",
 		},
 		{
+			name: "block of expression statements is not destructuring",
+			src:  "func f() {\n\t{\n\t\ta\n\t\tb()\n\t}\n}",
+			want: "func f() {\n\t{\n\t\ta\n\t\tb()\n\t}\n}",
+		},
+		{
+			name:     "multi-line object pattern with trailing comma",
+			src:      "func f() {\n\tconst {\n\t\tName,\n\t\tPort: port,\n\t} = cfg\n\tg()\n}",
+			want:     "func f() {\n\tName, port := cfg.Name, cfg.Port\n\n\n\n\tg()\n}",
+			consts:   []int{len("func f() {\n\t"), len("func f() {\n\tName, ")},
+			newlines: [][2]int{{len("func f() {\n\tName, port := cfg.Name, cfg.Port"), len("func f() {\n\tName, port := cfg.Name, cfg.Port\n\n\n")}},
+		},
+		{
+			name: "array pattern with trailing comma",
+			src:  "func f() {\n\tlet [a, b,] = xs\n}",
+			want: "func f() {\n\ta, b := xs[0], xs[1]\n}",
+		},
+		{
+			name:     "multi-line array pattern of a call",
+			src:      "func f() {\n\tlet [\n\t\ta,\n\t\t...rest\n\t] = load()\n\tg()\n}",
+			want:     "func f() {\n\ttmp := load(); a, rest := tmp[0], tmp[1:]\n\n\n\n\tg()\n}",
+			splits:   []int{len("func f() {\n\ttmp := load()")},
+			newlines: [][2]int{{len("func f() {\n\ttmp := load(); a, rest := tmp[0], tmp[1:]"), len("func f() {\n\ttmp := load(); a, rest := tmp[0], tmp[1:]\n\n\n")}},
+		},
+		{
 			name:        "for of",
 			src:         "for (const item of items) { use(item) }",
 			want:        "for _, item := range items { use(item) }",
@@ -479,6 +504,9 @@ func TestProcess(test *testing.T) {
 			}
 			if !slices.Equal(result.ForOfBlanks, testCase.forOfBlanks) {
 				test.Errorf("forOfBlanks %v, want %v", result.ForOfBlanks, testCase.forOfBlanks)
+			}
+			if !slices.Equal(result.Newlines, testCase.newlines) {
+				test.Errorf("newlines %v, want %v", result.Newlines, testCase.newlines)
 			}
 			if !slices.Equal(result.Splits, testCase.splits) {
 				test.Errorf("splits %v, want %v", result.Splits, testCase.splits)

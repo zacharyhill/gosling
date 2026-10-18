@@ -96,6 +96,10 @@ func (lowerer *lowerer) lowerFile() {
 	for _, splitOffset := range lowerer.file.preprocessed.Splits {
 		lowerer.replaceOffsets(splitOffset, splitOffset+len("; "), "\n", lowerer.line(lowerer.file.tokenFile.Pos(splitOffset)))
 	}
+	// When gosling removes the added newlines, the next token gets a line directive.
+	for _, newlineRange := range lowerer.file.preprocessed.Newlines {
+		lowerer.replaceOffsets(newlineRange[0], newlineRange[1], "", 0)
+	}
 	for tryOffset := range lowerer.file.tries {
 		lowerer.errorf(lowerer.file, lowerer.file.tokenFile.Pos(tryOffset), "try is only supported as a statement")
 	}

@@ -28,6 +28,9 @@ type Result struct {
 	// Splits holds the offsets of added "; " separators. The statements on
 	// each side belong on separate lines.
 	Splits []int
+	// Newlines holds the [start, end) offsets of added newlines. They keep
+	// the line numbers of a construct that the output writes on one line.
+	Newlines [][2]int
 	// Consts holds the offsets of the names that a const declares in a
 	// for-of loop, a header, or a destructuring pattern.
 	Consts []int

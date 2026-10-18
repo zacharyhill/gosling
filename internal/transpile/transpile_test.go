@@ -1087,6 +1087,53 @@ func typeCheckOutputs(test *testing.T, outputs []Output) {
 	}
 }
 
+// TestLineDirectivesAfterMultilinePattern checks that a destructuring
+// pattern over several lines does not shift the lines after it.
+func TestLineDirectivesAfterMultilinePattern(test *testing.T) {
+	src := `package p
+
+type Config struct {
+	Name string
+	Port int
+}
+
+func load() []int { return nil }
+
+func f(cfg Config) int {
+	const {
+		Name,
+		Port: port,
+	} = cfg
+	let [
+		first,
+		...rest,
+	] = load()
+	return marker(len(Name) + port + first + len(rest))
+}
+
+func marker(n int) int { return n }
+`
+	outputs, err := Transpile(Config{Importer: importer.Default(), LineDirectives: true}, []Input{{Path: "p.gol", Src: []byte(src)}})
+	if err != nil {
+		test.Fatal(err)
+	}
+	fileSet := token.NewFileSet()
+	parsed, err := parser.ParseFile(fileSet, "p.go", outputs[0].Src, 0)
+	if err != nil {
+		test.Fatal(err)
+	}
+	var gotLines []int
+	ast.Inspect(parsed, func(node ast.Node) bool {
+		if ident, ok := node.(*ast.Ident); ok && ident.Name == "marker" {
+			gotLines = append(gotLines, fileSet.PositionFor(ident.Pos(), true).Line)
+		}
+		return true
+	})
+	if want := []int{19, 22}; !slices.Equal(gotLines, want) {
+		test.Errorf("marker lines = %v, want %v\n%s", gotLines, want, outputs[0].Src)
+	}
+}
+
 func writeFile(test *testing.T, path, content string) {
 	test.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {

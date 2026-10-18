@@ -1,6 +1,7 @@
 package preprocess
 
 import (
+	"bytes"
 	"fmt"
 	"go/token"
 	"slices"
@@ -22,6 +23,8 @@ type binding struct {
 type destructure struct {
 	start nesting
 	text  string
+	// newlines are the newlines of a multi-line pattern. They follow text.
+	newlines string
 	// constBindings holds the bindings to record in Result.Consts.
 	constBindings []binding
 }
@@ -58,7 +61,10 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 
 	if end, ok := processor.simpleExpr(operatorIndex + 1); ok {
 		rightSide := string(processor.src[processor.tokenAt(operatorIndex+1).offset:processor.tokenAt(end).end()])
-		namesAt := processor.replace(open.offset, processor.tokenAt(end).end(), formatAssignment(bindings, operatorText, rightSide, isArray))
+		assignText := formatAssignment(bindings, operatorText, rightSide, isArray)
+		newlines := processor.collectNewlines(open.offset, processor.tokenAt(end).end())
+		namesAt := processor.replace(open.offset, processor.tokenAt(end).end(), assignText+newlines)
+		processor.recordNewlines(namesAt+len(assignText), newlines)
 		processor.recordConsts(namesAt, constBindings)
 		return end, true, nil
 	}
@@ -70,6 +76,7 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 	processor.pendingDestructures = append(processor.pendingDestructures, &destructure{
 		start:         processor.nesting(),
 		text:          "; " + formatAssignment(bindings, operatorText, rightSideVar, isArray),
+		newlines:      processor.collectNewlines(open.offset, operator.end()),
 		constBindings: constBindings,
 	})
 	return operatorIndex, true, nil
@@ -89,11 +96,12 @@ func (processor *processor) pattern(tokenIndex int, isArray bool) ([]binding, in
 			if !isArray {
 				return nil, 0, &Error{current.offset, "rest elements are only supported in array destructuring"}
 			}
-			if !processor.tokenAt(tokenIndex+1).is(token.IDENT) || !processor.tokenAt(tokenIndex+2).is(closing) {
+			afterIndex, isClosed := processor.findPatternEnd(tokenIndex+2, closing)
+			if !processor.tokenAt(tokenIndex+1).is(token.IDENT) || !isClosed {
 				return nil, 0, nil
 			}
 			bindings = append(bindings, binding{name: processor.tokenAt(tokenIndex + 1).text, patternIndex: len(bindings), rest: true})
-			return bindings, tokenIndex + 3, nil
+			return bindings, afterIndex, nil
 		}
 		if !current.is(token.IDENT) {
 			return nil, 0, nil
@@ -105,15 +113,27 @@ func (processor *processor) pattern(tokenIndex int, isArray bool) ([]binding, in
 			tokenIndex += 2
 		}
 		bindings = append(bindings, newBinding)
-		switch next := processor.tokenAt(tokenIndex); {
-		case next.is(closing):
-			return bindings, tokenIndex + 1, nil
-		case next.is(token.COMMA):
-			tokenIndex++
-		default:
+		if afterIndex, isClosed := processor.findPatternEnd(tokenIndex, closing); isClosed {
+			return bindings, afterIndex, nil
+		}
+		if !processor.tokenAt(tokenIndex).is(token.COMMA) {
 			return nil, 0, nil
 		}
+		tokenIndex++
 	}
+}
+
+// findPatternEnd reports whether the tokens at tokenIndex close a pattern: an
+// optional trailing comma, the newline before the closing bracket, and the
+// closing bracket. It returns the index after the closing bracket.
+func (processor *processor) findPatternEnd(tokenIndex int, closing token.Token) (int, bool) {
+	if processor.tokenAt(tokenIndex).is(token.COMMA) {
+		tokenIndex++
+	}
+	if processor.tokenAt(tokenIndex).isAutoSemicolon() {
+		tokenIndex++
+	}
+	return tokenIndex + 1, processor.tokenAt(tokenIndex).is(closing)
 }
 
 // simpleExpr reports whether the tokens from tokenIndex are `a` or `a.b.c` at
@@ -179,12 +199,23 @@ func (processor *processor) finishDestructure(tokenIndex int) error {
 	}
 	processor.pendingDestructures = processor.pendingDestructures[:len(processor.pendingDestructures)-1]
 	end := processor.tokenAt(tokenIndex - 1).end()
-	insertedAt := processor.replace(end, end, pending.text)
+	insertedAt := processor.replace(end, end, pending.text+pending.newlines)
+	processor.recordNewlines(insertedAt+len(pending.text), pending.newlines)
 	processor.result.Splits = append(processor.result.Splits, insertedAt)
 	processor.recordConsts(insertedAt+len("; "), pending.constBindings)
 	// A function literal on the right side can contain another destructuring
 	// that isEnd at the same token.
 	return processor.finishDestructure(tokenIndex)
+}
+
+func (processor *processor) collectNewlines(start, end int) string {
+	return strings.Repeat("\n", bytes.Count(processor.src[start:end], []byte("\n")))
+}
+
+func (processor *processor) recordNewlines(offset int, newlines string) {
+	if newlines != "" {
+		processor.result.Newlines = append(processor.result.Newlines, [2]int{offset, offset + len(newlines)})
+	}
 }
 
 // recordConsts adds the offsets of the named bindings in a names(bindings)
