@@ -167,8 +167,27 @@ func (processor *processor) isBeforeCondition(tokenIndex int) bool {
 		return tokenIndex > 0 && isOperandEnd(processor.tokens[tokenIndex-1])
 	case token.ILLEGAL:
 		return processor.isLoneQuestion(tokenIndex)
+	case token.IDENT:
+		return processor.isYieldKeyword(tokenIndex)
+	case token.MUL:
+		// The * of yield*.
+		return tokenIndex > 0 && processor.isYieldKeyword(tokenIndex-1) && processor.touchesNext(tokenIndex-1)
 	}
 	return current.kind >= token.ADD_ASSIGN && current.kind <= token.AND_NOT_ASSIGN
+}
+
+// isYieldKeyword reports whether the token at tokenIndex can start a yield
+// statement. A use of a variable named yield, as in yield := 1, cannot.
+func (processor *processor) isYieldKeyword(tokenIndex int) bool {
+	if !processor.tokens[tokenIndex].isIdent("yield") || !processor.atStmtStart(tokenIndex) {
+		return false
+	}
+	switch next := processor.tokenAt(tokenIndex + 1); next.kind {
+	case token.DEFINE, token.ASSIGN, token.PERIOD, token.COMMA, token.COLON, token.INC, token.DEC, token.SEMICOLON, token.RBRACE, token.EOF:
+		return false
+	default:
+		return next.kind < token.ADD_ASSIGN || next.kind > token.AND_NOT_ASSIGN
+	}
 }
 
 // isHeaderExpr reports whether the ? at token questionIndex is at the top

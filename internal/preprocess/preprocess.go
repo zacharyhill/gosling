@@ -56,7 +56,12 @@ type Result struct {
 	// Optionals holds the offsets of the names of optional struct fields.
 	Optionals []int
 	Defaults  []Default
-	edits     []edit
+	// Generators holds the offsets of the function literals that replace
+	// generator bodies. Yields holds the offsets of the statements that
+	// replace yield statements.
+	Generators []int
+	Yields     []int
+	edits      []edit
 }
 
 // Error is a syntax error at an offset into the original source.
@@ -110,11 +115,13 @@ const (
 	frameCatch
 	framePanic
 	frameStruct
+	frameGenerator
 )
 
 type frame struct {
 	kind     frameKind
-	tryIndex int // index into Result.Tries for frameTry, frameCatch, and framePanic
+	tryIndex int          // index into Result.Tries for frameTry, frameCatch, and framePanic
+	iterator iteratorType // for frameGenerator
 }
 
 // nesting records the bracket depth where a pending rewrite starts. The
@@ -153,6 +160,10 @@ type processor struct {
 	scheduled           map[int]string
 	pendingDestructures []*destructure
 	pendingClosers      []pendingCloser
+	pendingYields       []pendingYield
+	// iteratorByBrace maps the offset of each generator body brace to the
+	// iterator type of the generator.
+	iteratorByBrace map[int]iteratorType
 	// inserts maps a token index to text to add before that token.
 	inserts map[int]string
 	// typedArrows holds the offsets of the ")" that close arrow parameter
@@ -220,6 +231,7 @@ func ProcessReserving(src []byte, reservedNames map[string]bool) (*Result, error
 		arrowStatements:  map[int]paramStatements{},
 		resultArrows:     map[int]int{},
 		removals:         map[int]int{},
+		iteratorByBrace:  map[int]iteratorType{},
 	}
 	processor.spreadBraces = findSpreadBraces(processor.tokens)
 	processor.resetTernaries()
@@ -277,6 +289,7 @@ func (processor *processor) run() error {
 		return err
 	}
 	processor.finishClosers(len(processor.tokens))
+	processor.finishYields(len(processor.tokens))
 	return processor.finishDestructure(len(processor.tokens))
 }
 
@@ -311,14 +324,14 @@ func (processor *processor) startScan(tokens []lexeme) (restore func()) {
 	savedDestructures, savedClosers, savedSpreads := processor.pendingDestructures, processor.pendingClosers, processor.spreadBraces
 	savedBodies, savedStatements, savedRenames := processor.bodyDestructures, processor.bodyStatements, processor.paramRenames
 	savedTernaryEnds, savedTernaryParts, savedTernaryStarts := processor.ternaryEnds, processor.ternaryParts, processor.ternaryStarts
-	savedImpl := processor.currentImpl
+	savedImpl, savedYields := processor.currentImpl, processor.pendingYields
 	processor.tokens, processor.scheduled, processor.inserts, processor.removals = tokens, map[int]string{}, map[int]string{}, map[int]int{}
 	processor.pendingDestructures, processor.pendingClosers, processor.spreadBraces = nil, nil, findSpreadBraces(tokens)
 	processor.bodyDestructures, processor.bodyStatements, processor.paramRenames = map[int]*destructure{}, map[int]paramStatements{}, map[int]paramRename{}
 	processor.resetTernaries()
-	processor.currentImpl = nil
+	processor.currentImpl, processor.pendingYields = nil, nil
 	return func() {
-		processor.currentImpl = savedImpl
+		processor.currentImpl, processor.pendingYields = savedImpl, savedYields
 		processor.tokens, processor.scheduled, processor.inserts, processor.removals = savedTokens, savedScheduled, savedInserts, savedRemovals
 		processor.pendingDestructures, processor.pendingClosers, processor.spreadBraces = savedDestructures, savedClosers, savedSpreads
 		processor.bodyDestructures, processor.bodyStatements, processor.paramRenames = savedBodies, savedStatements, savedRenames
@@ -334,6 +347,7 @@ func (processor *processor) rewriteTokens() error {
 		// Arrows and ternaries end at the token before. So they close before
 		// the text that other rewrites add before this token.
 		processor.finishClosers(tokenIndex)
+		processor.finishYields(tokenIndex)
 		if text, ok := processor.inserts[tokenIndex]; ok {
 			processor.replace(current.offset, current.offset, text)
 			delete(processor.inserts, tokenIndex)
@@ -382,6 +396,10 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 	case current.isIdent("try") && processor.tokenAt(tokenIndex+1).is(token.LBRACE) && processor.atStmtStart(tokenIndex):
 		processor.result.Tries = append(processor.result.Tries, Try{If: processor.replace(current.offset, current.end(), "if true")})
 		*pendingTry = len(processor.result.Tries) - 1
+	case current.is(token.LBRACE) && processor.isGeneratorBody(current):
+		processor.openGeneratorBody(tokenIndex, processor.iteratorByBrace[current.offset])
+	case current.isIdent("yield") && processor.atStmtStart(tokenIndex) && processor.isInGenerator():
+		return processor.yield(tokenIndex)
 	case processor.isThrow(tokenIndex):
 		return tokenIndex, processor.rewriteThrow(tokenIndex)
 	case current.isIdent("try") && !processor.tokenAt(tokenIndex+1).is(token.LBRACE):
@@ -428,19 +446,7 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		}
 		processor.openBracket(current, pendingTry)
 	case current.is(token.FUNC):
-		if processor.currentImpl != nil && processor.currentImpl.funcKeywordIndexes[tokenIndex] {
-			processor.addImplReceiver(current)
-		}
-		isFuncDecl := len(processor.braceStack) == 0 && processor.parens == 0 && processor.atStmtStart(tokenIndex)
-		if isFuncDecl {
-			if err := processor.findDefaults(tokenIndex); err != nil {
-				return 0, err
-			}
-		}
-		if err := processor.signature(tokenIndex); err != nil {
-			return 0, err
-		}
-		return processor.rewriteFuncParams(tokenIndex)
+		return processor.rewriteFuncHeader(tokenIndex)
 	case current.is(token.INTERFACE) && processor.tokenAt(tokenIndex+1).is(token.LBRACE):
 		return tokenIndex, processor.interfaceMethods(tokenIndex)
 	case current.is(token.LPAREN):

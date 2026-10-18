@@ -36,6 +36,37 @@ type paramStatements struct {
 	starts []int
 }
 
+// rewriteFuncHeader rewrites the header of the function whose func keyword
+// is at token tokenIndex. It returns the index of the last token it uses.
+func (processor *processor) rewriteFuncHeader(tokenIndex int) (int, error) {
+	isFuncDecl := len(processor.braceStack) == 0 && processor.parens == 0 && processor.atStmtStart(tokenIndex)
+	headerIndex, lbraceIndex := tokenIndex, -1
+	if processor.isGeneratorKeyword(tokenIndex) {
+		var err error
+		if lbraceIndex, err = processor.generator(tokenIndex); err != nil {
+			return 0, err
+		}
+		// The rest of the header follows the *, as it follows func.
+		headerIndex = tokenIndex + 1
+	}
+	if processor.currentImpl != nil && processor.currentImpl.funcKeywordIndexes[tokenIndex] {
+		processor.addImplReceiver(processor.tokens[headerIndex])
+	}
+	if isFuncDecl {
+		if err := processor.findDefaults(headerIndex); err != nil {
+			return 0, err
+		}
+	}
+	if err := processor.signature(headerIndex); err != nil {
+		return 0, err
+	}
+	lastIndex, err := processor.rewriteFuncParams(headerIndex)
+	if lbraceIndex >= 0 {
+		processor.moveParamStatements(lbraceIndex)
+	}
+	return lastIndex, err
+}
+
 // rewriteFuncParams rewrites the destructured parameters of the function whose
 // func keyword is at token tokenIndex. It returns the index of the last
 // token it uses.

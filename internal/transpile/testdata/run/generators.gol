@@ -1,0 +1,90 @@
+package main
+
+import (
+	"fmt"
+	"iter"
+	"slices"
+)
+
+type Tree struct {
+	Left, Right *Tree
+	Value       int
+}
+
+func* walk(tree *Tree) iter.Seq[int] {
+	if tree == nil {
+		return
+	}
+	yield* walk(tree.Left)
+	yield tree.Value
+	yield* walk(tree.Right)
+}
+
+func* labels(tree *Tree) iter.Seq2[int, string] {
+	let index = 0
+	for (const value of walk(tree)) {
+		yield index, t`node ${value}`
+		index++
+	}
+}
+
+func* numbered(tree *Tree) iter.Seq2[int, string] {
+	yield* labels(tree)
+	yield -1, "end"
+}
+
+func* countdown(from int) iter.Seq[int] {
+	try {
+		for (let n = from; n > 0; n--) {
+			yield n
+		}
+	} finally {
+		fmt.Println("countdown cleanup")
+	}
+}
+
+type Span struct{ From, To int }
+
+func* steps({From, To}: Span, by: int = 1): iter.Seq[int] {
+	for (let n = From; n < To; n += by) {
+		yield n % 2 == 0 ? n : -n
+	}
+}
+
+type Bag struct{ Items []string }
+
+impl Bag {
+	func* All(): iter.Seq2[int, string] {
+		for (let index = 0; index < this.Items.length; index++) {
+			yield index, this.Items[index]
+		}
+	}
+}
+
+func main() {
+	fmt.Println(slices.Collect(steps(Span{1, 6})), slices.Collect(steps(Span{0, 6}, 2)))
+	for const index, item = range (&Bag{Items: []string{"a", "b"}}).All() {
+		fmt.Println(index, item)
+	}
+	const tree = &Tree{Left: &Tree{Value: 1}, Value: 2, Right: &Tree{Value: 3, Right: &Tree{Value: 4}}}
+	for (const value of walk(tree)) {
+		fmt.Println("value", value)
+	}
+	for const index, label = range numbered(tree) {
+		fmt.Println(index, label)
+	}
+	for (const n of countdown(5)) {
+		if n == 3 {
+			break
+		}
+		fmt.Println("n", n)
+	}
+	const squares = func*() iter.Seq[int] {
+		for (let i = 1; i <= 3; i++) {
+			yield i * i
+		}
+	}
+	for (const square of squares()) {
+		fmt.Println("square", square)
+	}
+}

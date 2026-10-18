@@ -63,6 +63,8 @@ func (processor *processor) closeBrace(tokenIndex int) (int, error) {
 		}
 		processor.braceStack = append(processor.braceStack, frame{kind: frameCatch, tryIndex: closedFrame.tryIndex})
 		return next, nil
+	case frameGenerator:
+		processor.replace(processor.tokens[tokenIndex].offset, processor.tokens[tokenIndex].end(), "}}")
 	case frameCatch:
 		tryStatement := &processor.result.Tries[closedFrame.tryIndex]
 		if processor.isPanicCatch(tokenIndex + 1) {

@@ -322,6 +322,7 @@ func (transpiler *transpiler) buildFile(input Input, reservedNames map[string]bo
 	golFile.recordConstNames()
 	golFile.recordForOfBlanks()
 	golFile.recordOptionalFields()
+	transpiler.reportNestedYields(golFile)
 	for _, preprocessedTry := range preprocessed.Tries {
 		golFile.tries[preprocessedTry.If] = preprocessedTry
 	}

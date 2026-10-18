@@ -16,6 +16,12 @@
       "include": "#exception-keywords"
     },
     {
+      "include": "#generator"
+    },
+    {
+      "include": "#yield"
+    },
+    {
       "include": "#for-of-in"
     },
     {
@@ -176,6 +182,28 @@
     "exception-keywords": {
       "match": "\\b(?:try|catch|finally|throw)\\b",
       "name": "keyword.control.exception.gol"
+    },
+    "generator": {
+      "match": "\\b(func)(\\*)",
+      "captures": {
+        "1": {
+          "name": "keyword.function.go"
+        },
+        "2": {
+          "name": "keyword.generator.asterisk.gol"
+        }
+      }
+    },
+    "yield": {
+      "match": "^\\s*(yield)(\\*)?(?=\\s)",
+      "captures": {
+        "1": {
+          "name": "keyword.control.flow.yield.gol"
+        },
+        "2": {
+          "name": "keyword.generator.asterisk.gol"
+        }
+      }
     },
     "for-of-in": {
       "match": "\\b(for)\\s*(\\()\\s*(?:(let)|(const))\\s+((?:\\w+\\s*,\\s*)*\\w+)\\s+(?:(of)|(in))\\b",
