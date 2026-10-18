@@ -223,7 +223,8 @@ func (server *server) respondError(id json.RawMessage, code int, cause error) er
 
 // forwardPositionRequest sends a request on a .gol document to gopls, with
 // the URI and position of the generated file. A position in text that
-// gosling generates gets an empty result.
+// gosling generates gets an empty result, or a hover that describes the
+// generated code.
 func (server *server) forwardPositionRequest(message *rpcMessage) error {
 	params, err := decodeJSON(message.Params)
 	if err != nil {
@@ -245,6 +246,9 @@ func (server *server) forwardPositionRequest(message *rpcMessage) error {
 		return server.respondClient(message.ID, nil)
 	}
 	if !server.mapParamsPosition(paramsObject, file) {
+		if golPosition, ok := convertJSON[position](paramsObject["position"]); ok && message.Method == "textDocument/hover" {
+			return server.respondClient(message.ID, server.buildGeneratedHover(file, golPosition))
+		}
 		return server.respondClient(message.ID, nil)
 	}
 	textDocument["uri"] = pathToURI(file.goPath)
