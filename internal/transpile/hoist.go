@@ -93,7 +93,8 @@ func (transpiler *transpiler) singleValueUse(typeInfo *types.Info, parentOf map[
 	case *ast.ExprStmt:
 		return false
 	case *ast.AssignStmt:
-		return len(parentNode.Rhs) != 1
+		isPlainAssign := parentNode.Tok == token.ASSIGN || parentNode.Tok == token.DEFINE
+		return len(parentNode.Rhs) != 1 || !isPlainAssign // x += f() needs one value
 	case *ast.GoStmt, *ast.DeferStmt:
 		return false
 	case *ast.ValueSpec:

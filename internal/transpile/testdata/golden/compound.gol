@@ -1,0 +1,25 @@
+package compound
+
+import "strconv"
+
+func sum(xs []string) int {
+	let total = 0
+	try {
+		for (const s of xs) {
+			total += strconv.Atoi(s)
+		}
+	} catch {
+		return -1
+	}
+	return total
+}
+
+func shift(s string) uint64 {
+	let bits: uint64 = 1
+	try {
+		bits <<= strconv.ParseUint(s, 10, 64)
+	} catch {
+		return 0
+	}
+	return bits
+}
