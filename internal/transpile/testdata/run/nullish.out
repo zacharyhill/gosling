@@ -11,4 +11,12 @@ generic unnamed grace
 9000 true
 here default 1 default 2 3
 grace
+36 -1 -2
+grace ?
+b ? ? ?
+a 1
+8 -1
+8 0
+say hi
+handled none
 done

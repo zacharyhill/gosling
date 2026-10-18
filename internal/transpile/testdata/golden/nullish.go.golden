@@ -262,3 +262,88 @@ func literalMap(key string) map[string]*int {
 	}
 	return nil
 }
+
+func lookupIndex(users map[string]*User, id string) string {
+	return func() string {
+		if v, ok := users[id]; ok {
+			if v := v; v != nil {
+				if v := v.Profile; v != nil {
+					return v.Name
+				}
+			}
+		}
+		return id
+	}()
+}
+
+func first(xs []string) string {
+	return func() string {
+		if v, i := xs, 0; 0 <= i && i < len(v) {
+			return v[i]
+		}
+		return "none"
+	}()
+}
+
+func at(grid *[3]int, i int) int {
+	return func() int {
+		if v, i2 := grid, i; v != nil && 0 <= i2 && i2 < len(v) {
+			return v[i2]
+		}
+		return -1
+	}()
+}
+
+func nth(xs []int, n uint8) int {
+	return func() int {
+		if v, i := xs, int(n); 0 <= i && i < len(v) {
+			return v[i]
+		}
+		return 0
+	}()
+}
+
+func count(counts map[string]int, key string) int {
+	n := func() int {
+		if v, ok := counts[key]; ok {
+			return v
+		}
+		return 0
+	}()
+	return n
+}
+
+func apply(f func(int) int, x int) int {
+	return func() int {
+		if v := f; v != nil {
+			return v(x)
+		}
+		return x
+	}()
+}
+
+func notify(callback func(string)) {
+	if v := callback; v != nil {
+		v("done")
+	}
+}
+
+func handle(handlers map[string]func() error, name string) error {
+	return func() error {
+		if v, ok := handlers[name]; ok {
+			if v := v; v != nil {
+				return v()
+			}
+		}
+		return nil
+	}()
+}
+
+func shadowIndex(xs []int, i, ok int) int {
+	return func() int {
+		if v, i2 := xs, i+ok; 0 <= i2 && i2 < len(v) {
+			return v[i2]
+		}
+		return i
+	}()
+}

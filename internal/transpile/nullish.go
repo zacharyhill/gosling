@@ -26,6 +26,11 @@ import (
 //		return "anon"
 //	}()
 //
+// A map index binds the comma-ok result, and a slice index binds the index:
+//
+//	if v, ok := m[k]; ok {
+//	if v, i := xs, n; 0 <= i && i < len(v) {
+//
 // Each piece of source text appears once, in its original order. So only
 // the text between pieces changes, and edits inside the pieces survive.
 
@@ -35,8 +40,8 @@ import (
 func (lowerer *lowerer) findChains() {
 	lowerer.parents = parents(lowerer.file.ast)
 	lowerer.optionalRoots = map[ast.Expr]bool{}
-	for selector := range lowerer.file.optional {
-		var root ast.Expr = selector
+	for link := range lowerer.file.optional {
+		root := link
 		for {
 			parent, ok := lowerer.parents[root].(ast.Expr)
 			if !ok || spineChild(parent) != root {
@@ -67,44 +72,82 @@ func spineChild(node ast.Node) ast.Expr {
 	return nil
 }
 
-// links returns the optional selectors of the chain that ends at root, in
-// source order. It reports an error if the left side of a link cannot be nil.
-func (lowerer *lowerer) links(root ast.Expr) ([]*ast.SelectorExpr, bool) {
+// links returns the optional links of the chain that ends at root, in
+// source order. A link is a selector, an index expression, or a call. It
+// reports an error if the left side of a link has a type that ?. cannot guard.
+func (lowerer *lowerer) links(root ast.Expr) ([]ast.Expr, bool) {
 	links := lowerer.collectOptionalLinks(root)
 	link := lowerer.findNonNilableLink(links)
 	if link == nil {
 		return links, true
 	}
-	leftType := lowerer.typeInfo.Types[link.X].Type
-	if _, isTypeParam := leftType.(*types.TypeParam); isTypeParam {
-		lowerer.errorf(lowerer.file, link.X.End(), "?. needs a pointer or interface on its left, but type parameter %s allows types that cannot be nil", displayName(leftType))
-	} else {
-		lowerer.errorf(lowerer.file, link.X.End(), "?. needs a pointer or interface on its left, not %s", displayName(leftType))
+	left := spineChild(link)
+	leftType := lowerer.typeInfo.Types[left].Type
+	_, isIndex := link.(*ast.IndexExpr)
+	_, isTypeParam := leftType.(*types.TypeParam)
+	switch {
+	case isIndex && !isTypeParam:
+		lowerer.errorf(lowerer.file, left.End(), "?.[ needs a map, a slice, or a pointer to an array on its left, not %s", displayName(leftType))
+	case isTypeParam:
+		lowerer.errorf(lowerer.file, left.End(), "?. needs a pointer or interface on its left, but type parameter %s allows types that cannot be nil", displayName(leftType))
+	default:
+		lowerer.errorf(lowerer.file, left.End(), "?. needs a pointer or interface on its left, not %s", displayName(leftType))
 	}
 	return nil, false
 }
 
-// collectOptionalLinks returns the optional selectors of the chain that ends at
+// collectOptionalLinks returns the optional links of the chain that ends at
 // root, in source order.
-func (lowerer *lowerer) collectOptionalLinks(root ast.Expr) []*ast.SelectorExpr {
-	var links []*ast.SelectorExpr
+func (lowerer *lowerer) collectOptionalLinks(root ast.Expr) []ast.Expr {
+	var links []ast.Expr
 	for expr := root; expr != nil; expr = spineChild(expr) {
-		if selector, ok := expr.(*ast.SelectorExpr); ok && lowerer.file.optional[selector] {
-			links = append(links, selector)
+		if lowerer.file.optional[expr] {
+			links = append(links, expr)
 		}
 	}
 	slices.Reverse(links)
 	return links
 }
 
-// findNonNilableLink returns the first link whose left side cannot be nil, or nil.
-func (lowerer *lowerer) findNonNilableLink(links []*ast.SelectorExpr) *ast.SelectorExpr {
+// findNonNilableLink returns the first link whose left side ?. cannot guard, or nil.
+func (lowerer *lowerer) findNonNilableLink(links []ast.Expr) ast.Expr {
 	for _, link := range links {
-		if !isComparableToNil(lowerer.typeInfo.Types[link.X].Type) {
+		left := spineChild(link)
+		leftType := lowerer.typeInfo.Types[left].Type
+		if _, isIndex := link.(*ast.IndexExpr); isIndex && getIndexKind(leftType) == notIndexable {
+			return link
+		}
+		if !isComparableToNil(leftType) {
 			return link
 		}
 	}
 	return nil
+}
+
+type indexKind int
+
+const (
+	notIndexable indexKind = iota
+	mapIndex
+	sliceIndex
+	arrayPointerIndex
+)
+
+func getIndexKind(goType types.Type) indexKind {
+	if _, isTypeParam := goType.(*types.TypeParam); isTypeParam || goType == nil {
+		return notIndexable
+	}
+	switch underlying := goType.Underlying().(type) {
+	case *types.Map:
+		return mapIndex
+	case *types.Slice:
+		return sliceIndex
+	case *types.Pointer:
+		if _, isArray := underlying.Elem().Underlying().(*types.Array); isArray {
+			return arrayPointerIndex
+		}
+	}
+	return notIndexable
 }
 
 // hasBareCompositeLit reports whether expr has a composite literal outside
@@ -276,27 +319,97 @@ func (lowerer *lowerer) operands(call *ast.CallExpr) []ast.Expr {
 // guards emits the opening nested ifs for the chain from expr through its
 // optional links. The last link gets lastPrefix instead of a guard. It
 // returns the closing braces.
-func (lowerer *lowerer) guards(expr ast.Expr, open string, links []*ast.SelectorExpr, tempVar, lastPrefix string) string {
+func (lowerer *lowerer) guards(expr ast.Expr, open string, links []ast.Expr, tempVar, lastPrefix string) string {
 	start, line := expr.Pos(), lowerer.line(expr.Pos())
-	base := expr
+	names := guardNames{
+		value: tempVar,
+		ok:    lowerer.pickName("ok", expr.Pos(), expr.End()),
+		index: lowerer.pickName("i", expr.Pos(), expr.End()),
+	}
+	base, header := expr, names.formatHeader(notIndexable)
 	if len(links) > 0 {
-		base = links[0].X
+		base, header = spineChild(links[0]), names.formatHeader(lowerer.getLinkIndexKind(links[0]))
 	}
 	if hasBareCompositeLit(base) {
 		// A composite literal in an if header needs parentheses.
-		lowerer.insertOrdered(start, open+"if "+tempVar+" := (", line, lowerer.depth(expr))
+		lowerer.insertOrdered(start, open+header+"(", line, lowerer.depth(expr))
 		lowerer.insertOrdered(base.End(), ")", line, -lowerer.depth(expr))
 	} else {
-		lowerer.insertOrdered(start, open+"if "+tempVar+" := ", line, lowerer.depth(expr))
+		lowerer.insertOrdered(start, open+header, line, lowerer.depth(expr))
 	}
 	for linkIndex, link := range links {
-		text := fmt.Sprintf("; %s != nil {\nif %s := %s.", tempVar, tempVar, tempVar)
-		if linkIndex == len(links)-1 {
-			text = fmt.Sprintf("; %s != nil {\n%s%s.", tempVar, lastPrefix, tempVar)
+		next := lastPrefix
+		if linkIndex < len(links)-1 {
+			next = names.formatHeader(lowerer.getLinkIndexKind(links[linkIndex+1]))
 		}
-		lowerer.replace(link.X.End(), link.Sel.Pos(), text, line)
+		lowerer.guardLink(link, names, next+tempVar, line)
 	}
 	return strings.Repeat("\n}", len(links))
+}
+
+// guardNames holds the temporaries of one chain: the value of each link, the
+// comma-ok result of a map index, and the index of a slice index.
+type guardNames struct {
+	value, ok, index string
+}
+
+// formatHeader starts the if statement that binds the left side of a link.
+func (names guardNames) formatHeader(kind indexKind) string {
+	switch kind {
+	case mapIndex:
+		return fmt.Sprintf("if %s, %s := ", names.value, names.ok)
+	case sliceIndex, arrayPointerIndex:
+		return fmt.Sprintf("if %s, %s := ", names.value, names.index)
+	}
+	return fmt.Sprintf("if %s := ", names.value)
+}
+
+func (lowerer *lowerer) getLinkIndexKind(link ast.Expr) indexKind {
+	if indexExpr, ok := link.(*ast.IndexExpr); ok {
+		return getIndexKind(lowerer.typeInfo.Types[indexExpr.X].Type)
+	}
+	return notIndexable
+}
+
+// guardLink ends the if header for link and starts its body with next,
+// which is the start of the next header or of the last expression.
+func (lowerer *lowerer) guardLink(link ast.Expr, names guardNames, next string, line int) {
+	value := names.value
+	switch link := link.(type) {
+	case *ast.SelectorExpr:
+		lowerer.replace(link.X.End(), link.Sel.Pos(), fmt.Sprintf("; %s != nil {\n%s.", value, next), line)
+	case *ast.CallExpr:
+		lowerer.replace(link.Fun.End(), link.Lparen, fmt.Sprintf("; %s != nil {\n%s", value, next), line)
+	case *ast.IndexExpr:
+		lowerer.guardIndexLink(link, names, next, line)
+	}
+}
+
+// guardIndexLink ends the if header for an index link. A map index checks
+// the comma-ok result. Other indexes bind the index once and check it
+// against the length.
+func (lowerer *lowerer) guardIndexLink(link *ast.IndexExpr, names guardNames, next string, line int) {
+	kind := lowerer.getLinkIndexKind(link)
+	if kind == mapIndex {
+		lowerer.replace(link.X.End(), link.Lbrack, "", line)
+		lowerer.replace(link.Rbrack, link.Rbrack+1, fmt.Sprintf("]; %s {\n%s", names.ok, next), line)
+		return
+	}
+	open, closing := ", ", ""
+	if indexType := lowerer.typeInfo.Types[link.Index].Type; !types.Identical(indexType, types.Typ[types.Int]) && !isUntyped(indexType) {
+		open, closing = ", int(", ")"
+	}
+	condition := fmt.Sprintf("0 <= %s && %s < len(%s)", names.index, names.index, names.value)
+	if kind == arrayPointerIndex {
+		condition = fmt.Sprintf("%s != nil && %s", names.value, condition)
+	}
+	lowerer.replace(link.X.End(), link.Lbrack+1, open, line)
+	lowerer.replace(link.Rbrack, link.Rbrack+1, fmt.Sprintf("%s; %s {\n%s[%s]", closing, condition, next, names.index), line)
+}
+
+func isUntyped(goType types.Type) bool {
+	basic, ok := goType.(*types.Basic)
+	return ok && basic.Info()&types.IsUntyped != 0
 }
 
 // lowerCoalesce lowers a ?? chain to one guard for each left operand:
@@ -365,7 +478,7 @@ type coalesceChain struct {
 // coalesceGuard emits the guards for one left operand of ?? and returns
 // the closing braces.
 func (lowerer *lowerer) coalesceGuard(chain coalesceChain, leftOperand ast.Expr, open string) (string, bool) {
-	var links []*ast.SelectorExpr
+	var links []ast.Expr
 	if lowerer.optionalRoots[leftOperand] {
 		var ok bool
 		if links, ok = lowerer.links(leftOperand); !ok {

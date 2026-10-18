@@ -125,3 +125,40 @@ func literalMap(key string) map[string]*int {
 	map[string]*int{}[key] ??= new(1)
 	return nil
 }
+
+func lookupIndex(users map[string]*User, id string) string {
+	return users?.[id]?.Profile?.Name ?? id
+}
+
+func first(xs []string) string {
+	return xs?.[0] ?? "none"
+}
+
+func at(grid *[3]int, i int) int {
+	return grid?.[i] ?? -1
+}
+
+func nth(xs []int, n uint8) int {
+	return xs?.[n] ?? 0
+}
+
+func count(counts map[string]int, key string) int {
+	let n = counts?.[key]
+	return n
+}
+
+func apply(f func(int) int, x int) int {
+	return f?.(x) ?? x
+}
+
+func notify(callback func(string)) {
+	callback?.("done")
+}
+
+func handle(handlers map[string]func() error, name string) error {
+	return handlers?.[name]?.()
+}
+
+func shadowIndex(xs []int, i, ok int) int {
+	return xs?.[i+ok] ?? i
+}

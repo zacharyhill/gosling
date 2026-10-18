@@ -394,6 +394,21 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:5:13: this call can fail but only runs conditionally here",
 		},
 		{
+			name: "optional index on a string",
+			src:  "package p\nfunc f(s string) byte {\n\treturn s?.[0]\n}",
+			want: "x.gol:3:10: ?.[ needs a map, a slice, or a pointer to an array on its left, not string",
+		},
+		{
+			name: "optional index on an array value",
+			src:  "package p\nfunc f(a [2]int) int {\n\treturn a?.[0] ?? 1\n}",
+			want: "x.gol:3:10: ?.[ needs a map, a slice, or a pointer to an array on its left, not [2]int",
+		},
+		{
+			name: "optional slice expression",
+			src:  "package p\nfunc f(s []int) []int {\n\treturn s?.[1:]\n}",
+			want: "x.gol:3:10: ?.[ cannot be used with a slice expression",
+		},
+		{
 			name: "nullish coalescing mixed with ||",
 			src:  "package p\nfunc f(a *bool, b bool) bool {\n\treturn a ?? b || true\n}",
 			want: "x.gol:3:9: ?? cannot be mixed with || or && without parentheses",

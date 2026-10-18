@@ -92,8 +92,9 @@ type file struct {
 	// augmented maps each assignment with an added blank identifier to its
 	// original LHS length.
 	augmented map[*ast.AssignStmt]int
-	// optional holds selectors written with ?. instead of a plain dot.
-	optional map[*ast.SelectorExpr]bool
+	// optional holds the selectors, index expressions, and calls written
+	// with ?. instead of a plain dot.
+	optional map[ast.Expr]bool
 	// coalesce maps each ?? marker call to the expression it replaced.
 	coalesce map[*ast.CallExpr]*ast.BinaryExpr
 	// nullishAssigns holds the assignments written with ??= instead of =.
@@ -285,7 +286,9 @@ func (transpiler *transpiler) buildFile(input Input, reservedNames map[string]bo
 	}
 	golFile.prepareFinally()
 	golFile.prepareFilters()
-	golFile.stripMarkers()
+	for _, position := range golFile.stripMarkers() {
+		transpiler.errorf(golFile, position, "?.[ cannot be used with a slice expression")
+	}
 	golFile.findArrows()
 	return golFile, nil
 }
@@ -325,7 +328,7 @@ func newFile(input Input, preprocessed *preprocess.Result) *file {
 		preprocessed:   preprocessed,
 		tries:          map[int]preprocess.Try{},
 		augmented:      map[*ast.AssignStmt]int{},
-		optional:       map[*ast.SelectorExpr]bool{},
+		optional:       map[ast.Expr]bool{},
 		coalesce:       map[*ast.CallExpr]*ast.BinaryExpr{},
 		nullishAssigns: map[*ast.AssignStmt]bool{},
 		arrayCalls:     map[*ast.CallExpr]*arrayCall{},
@@ -366,10 +369,12 @@ func (transpiler *transpiler) addParseErrors(file *file, err error) {
 	}
 }
 
-// stripMarkers changes optional selectors and ?? operators back into plain
-// Go so the AST type-checks. It records the changed nodes, and the
-// assignments that ??= became.
-func (file *file) stripMarkers() {
+// stripMarkers changes optional links and ?? operators back into plain Go
+// so the AST type-checks. It records the changed nodes, and the assignments
+// that ??= became. It returns the positions of optional slice expressions,
+// which are not supported.
+func (file *file) stripMarkers() []token.Pos {
+	var sliceMarkers []token.Pos
 	coalesceAt, nullishAssignAt := map[int]bool{}, map[int]bool{}
 	for _, offset := range file.preprocessed.Coalesce {
 		coalesceAt[offset] = true
@@ -380,8 +385,8 @@ func (file *file) stripMarkers() {
 	astutil.Apply(file.ast, nil, func(cursor *astutil.Cursor) bool {
 		switch node := cursor.Node().(type) {
 		case *ast.SelectorExpr:
-			if node.Sel.Name == preprocess.OMarker {
-				file.stripOptionalMarker(cursor, node)
+			if node.Sel.Name == preprocess.OMarker && !file.stripOptionalMarker(cursor, node) {
+				sliceMarkers = append(sliceMarkers, node.Sel.Pos())
 			}
 		case *ast.BinaryExpr:
 			if node.Op == token.LOR && coalesceAt[file.tokenFile.Offset(node.OpPos)] {
@@ -394,14 +399,20 @@ func (file *file) stripMarkers() {
 		}
 		return true
 	})
+	return sliceMarkers
 }
 
-func (file *file) stripOptionalMarker(cursor *astutil.Cursor, marker *ast.SelectorExpr) {
-	// The marker is always between X and the real selector.
-	if parent, ok := cursor.Parent().(*ast.SelectorExpr); ok {
+// stripOptionalMarker reports false if the marker starts a slice expression.
+func (file *file) stripOptionalMarker(cursor *astutil.Cursor, marker *ast.SelectorExpr) bool {
+	cursor.Replace(marker.X)
+	// The marker is always between X and the selector, index, or call.
+	switch parent := cursor.Parent().(type) {
+	case *ast.SliceExpr:
+		return false
+	case ast.Expr:
 		file.optional[parent] = true
 	}
-	cursor.Replace(marker.X)
+	return true
 }
 
 func (file *file) stripCoalesceMarker(cursor *astutil.Cursor, operation *ast.BinaryExpr) {
