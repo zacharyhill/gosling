@@ -228,6 +228,9 @@ func (lowerer *lowerer) lowerCoalesce(call *ast.CallExpr) {
 	if lowerer.reportHiddenType(resultType, typeText, allOperands[0].Pos()) {
 		return
 	}
+	if !lowerer.checkBuiltins(allOperands[0].Pos(), "??", "nil") {
+		return
+	}
 	chain := coalesceChain{
 		resultType: resultType,
 		typeText:   typeText,
@@ -329,7 +332,7 @@ func (lowerer *lowerer) lowerChain(root ast.Expr) {
 		return
 	}
 	links, ok := lowerer.links(root)
-	if !ok {
+	if !ok || !lowerer.checkBuiltins(root.Pos(), "optional chain", "nil") {
 		return
 	}
 	tempVar := lowerer.pickTempVar(root.Pos(), root.End())
@@ -351,8 +354,12 @@ func (lowerer *lowerer) lowerChain(root ast.Expr) {
 	if lowerer.reportHiddenType(resultType, typeText, root.Pos()) {
 		return
 	}
+	zeroText := zeroValue(resultType, typeText)
+	if !lowerer.checkBuiltins(root.Pos(), "optional chain", zeroValueBuiltins(zeroText)...) {
+		return
+	}
 	closing := lowerer.guards(root, "func() "+typeText+" {\n", links, tempVar, "return ")
-	lowerer.insertOrdered(root.End(), closing+"\nreturn "+zeroValue(resultType, typeText)+"\n}()", lowerer.line(root.Pos()), -lowerer.depth(root))
+	lowerer.insertOrdered(root.End(), closing+"\nreturn "+zeroText+"\n}()", lowerer.line(root.Pos()), -lowerer.depth(root))
 }
 
 func isAddressOf(node ast.Node) bool {

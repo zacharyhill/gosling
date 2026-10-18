@@ -192,6 +192,7 @@ func (lowerer *lowerer) emitTry(parts *tryStatement) {
 	head := "{\n{"
 	if try.needsDecl {
 		head = fmt.Sprintf("{\nvar %s error\n{", try.catchVar)
+		lowerer.checkBuiltins(stmt.Pos(), "try", "error")
 	}
 	lowerer.replace(stmt.Pos(), stmt.Body.Lbrace+1, head, lowerer.line(stmt.Pos()))
 
@@ -274,7 +275,7 @@ func (lowerer *lowerer) lowerTryStmt(stmt ast.Stmt, try *tryContext) bool {
 		return false
 	}
 	site, resultCount, ok := lowerer.checkableCall(stmt)
-	if !ok {
+	if !ok || !lowerer.checkBuiltins(stmt.Pos(), "try", "nil") {
 		return false
 	}
 	target.jumps++

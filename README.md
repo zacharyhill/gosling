@@ -533,6 +533,8 @@ Some output must write a type, such as the result of `filter` or `??`. If a loca
 
 Error variables are `err`, `err2`, and so on. Labels are `catch_N`, `end_N`, and `finally_N`. gosling does not use a name that the file already uses. Variables also do not use a name that the package declares at package level.
 
+The output uses builtins such as `len`, `append`, `make`, and `nil`. If a declaration shadows a builtin where gosling needs it, gosling reports an error.
+
 ## Errors and line numbers
 
 gosling type-checks each package. Errors show the line and column in the `.gol` file. With `-lines` (the default), the output has `/*line file.gol:N*/` comments. So compiler errors, `go vet`, and stack traces also show `.gol` lines.

@@ -115,3 +115,19 @@ func (lowerer *lowerer) pickTempVar(from, to token.Pos) string {
 		}
 	}
 }
+
+// checkBuiltins reports an error and returns false if a declaration at position
+// shadows one of names. The code that gosling generates there uses these builtins.
+func (lowerer *lowerer) checkBuiltins(position token.Pos, construct string, names ...string) bool {
+	scope := lowerer.scopeAt(position)
+	if scope == nil {
+		return true
+	}
+	for _, name := range names {
+		if _, object := scope.LookupParent(name, position); object != nil && object.Parent() != types.Universe {
+			lowerer.errorf(lowerer.file, position, "%s needs the builtin %s, but a declaration shadows it here; rename that declaration", construct, name)
+			return false
+		}
+	}
+	return true
+}

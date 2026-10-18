@@ -182,6 +182,8 @@ func (lowerer *lowerer) hoistInto(site *hoistSite, try *tryContext, exprs ...ast
 			lowerer.errorf(lowerer.file, call.Pos(), errUncheckableCall)
 		case lowerer.isConditional(marker, site.bound):
 			lowerer.errorf(lowerer.file, call.Pos(), errConditionalCall)
+		case !lowerer.checkBuiltins(call.Pos(), "try", "nil"):
+			// checkBuiltins reported the error.
 		default:
 			lowerer.addToScope(root, marker, site.bound)
 		}
