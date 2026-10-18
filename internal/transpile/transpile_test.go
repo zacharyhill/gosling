@@ -464,6 +464,21 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:10: forEach can only be used as a statement",
 		},
 		{
+			name: "map delete used as a value",
+			src:  "package p\nfunc f(m map[string]int) {\n\tlet y = m.delete(\"a\")\n\t_ = y\n}",
+			want: "x.gol:3:10: delete can only be used as a statement",
+		},
+		{
+			name: "map has without a key",
+			src:  "package p\nfunc f(m map[string]int) bool {\n\treturn m.has()\n}",
+			want: "x.gol:3:15: not enough arguments in call to has",
+		},
+		{
+			name: "map key of the wrong type",
+			src:  "package p\nfunc f(m map[string]int) bool {\n\treturn m.has(1)\n}",
+			want: "x.gol:3:15: cannot use 1 (untyped int constant) as string value in argument to has",
+		},
+		{
 			name: "switch missing union variants",
 			src:  "package p\ntype A struct{}\ntype B struct{}\ntype C struct{}\ntype U = A | B | C\nfunc f(u U) {\n\tswitch u.(type) {\n\tcase A:\n\t}\n}",
 			want: "x.gol:7:2: switch on U is missing cases: B, C",

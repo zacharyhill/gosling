@@ -571,8 +571,8 @@ func fallible(typeInfo *types.Info, expr ast.Expr) (int, bool) {
 	if !ok {
 		return 0, false
 	}
-	if ident, ok := call.Fun.(*ast.Ident); ok && strings.HasPrefix(ident.Name, arrayMarkerPrefix) {
-		return 0, false // a find over errors returns an element, not a failure
+	if ident, ok := call.Fun.(*ast.Ident); ok && isMethodMarker(ident.Name) {
+		return 0, false // a find or get over errors returns an element, not a failure
 	}
 	switch resultType := typeInfo.Types[expr].Type.(type) {
 	case *types.Tuple:

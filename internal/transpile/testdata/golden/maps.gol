@@ -1,0 +1,42 @@
+package maps
+
+type User struct {
+	Name string
+}
+
+func lookups(ages map[string]int, users map[int]*User) (bool, int, *User, string) {
+	return ages.has("ada"), ages.get("bob") ?? -1, users.get(1), users.get(2)?.Name ?? "none"
+}
+
+func ptr(ages map[string]int) *int {
+	return ages.get("ada")
+}
+
+func listings(ages map[string]int) ([]string, []int) {
+	return ages.keys(), ages.values()
+}
+
+func pairs(ages map[string]int) int {
+	let total = 0
+	for (const entry of ages.entries()) {
+		total += len(entry.Key) + entry.Value
+	}
+	return total
+}
+
+func remove(ages map[string]int, name string) {
+	ages.delete(name)
+}
+
+func visit(ages map[string]int, out func(string, int)) {
+	ages.forEach((age, name) => out(name, age))
+	ages.forEach(age => out("", age))
+}
+
+type Registry map[string]int
+
+func (r Registry) get(name string) int { return 7 }
+
+func realMethodWins(r Registry) int {
+	return r.get("x")
+}

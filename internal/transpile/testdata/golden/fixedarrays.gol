@@ -1,0 +1,29 @@
+package fixedarrays
+
+type Grid struct {
+	Cells [3]int
+}
+
+func evens(nums [4]int) []int {
+	return nums.filter(n => n%2 == 0)
+}
+
+func doubled(grid *Grid) []int {
+	return grid.Cells.map(c => c * 2)
+}
+
+func first(nums [4]int) *int {
+	return nums.find(n => n > 1)
+}
+
+func checks(nums [4]int) (bool, int) {
+	return nums.includes(3), nums.reduce((acc, n) => acc + n, 0)
+}
+
+func corners() [2]int {
+	return [2]int{1, 2}
+}
+
+func temporary() bool {
+	return corners().some(n => n > 1)
+}

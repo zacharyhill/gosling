@@ -12,15 +12,18 @@ import (
 	"github.com/zacharyhill/gosling/internal/preprocess"
 )
 
-// arrayMethod describes a TypeScript-style method on slices.
+// arrayMethod describes a TypeScript-style method on slices, arrays, or maps.
 type arrayMethod struct {
 	hasCallback    bool   // the first argument is a callback that takes the element
 	extraParams    string // parameters of the marker after xs and the callback
 	callbackParams string // callback parameters, before the optional index
 	callbackResult string
 	result         string
-	typeParams     string
-	loopBuiltins   []string
+	// pointerResult is the result of the variant for elements that cannot be
+	// nil. This variant returns a pointer, or nil.
+	pointerResult string
+	typeParams    string
+	loopBuiltins  []string
 }
 
 func (method arrayMethod) argCount() int {
@@ -36,7 +39,7 @@ var arrayMethods = map[string]arrayMethod{
 	"filter":    {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "S", typeParams: "S ~[]T, T any", loopBuiltins: []string{"append"}},
 	"reduce":    {hasCallback: true, extraParams: ", init R", callbackParams: "R, T", callbackResult: "R", result: "R", typeParams: "S ~[]T, T, R any"},
 	"forEach":   {hasCallback: true, callbackParams: "T", typeParams: "S ~[]T, T any"},
-	"find":      {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "T", typeParams: "S ~[]T, T any", loopBuiltins: []string{"nil"}},
+	"find":      {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "T", pointerResult: "*T", typeParams: "S ~[]T, T any", loopBuiltins: []string{"nil"}},
 	"findIndex": {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "int", typeParams: "S ~[]T, T any"},
 	"some":      {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "bool", typeParams: "S ~[]T, T any", loopBuiltins: []string{"true", "false"}},
 	"every":     {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "bool", typeParams: "S ~[]T, T any", loopBuiltins: []string{"true", "false"}},
@@ -44,29 +47,79 @@ var arrayMethods = map[string]arrayMethod{
 	"indexOf":   {extraParams: ", x T", result: "int", typeParams: "S ~[]T, T comparable"},
 }
 
-// arrayCall is an array method call that a marker call replaces for type
-// checking.
-type arrayCall struct {
-	method         string
-	originalCall   *ast.CallExpr
-	receiver       ast.Expr
-	indexed        bool // the callback also takes the index
-	returnsPointer bool // find returns a pointer into the slice
+const mapTypeParams = "M ~map[K]V, K comparable, V any"
+
+var mapMethods = map[string]arrayMethod{
+	"has":     {extraParams: ", k K", result: "bool", typeParams: mapTypeParams},
+	"get":     {extraParams: ", k K", result: "V", pointerResult: "*V", typeParams: mapTypeParams, loopBuiltins: []string{"nil"}},
+	"keys":    {result: "[]K", typeParams: mapTypeParams, loopBuiltins: []string{"make", "len", "append"}},
+	"values":  {result: "[]V", typeParams: mapTypeParams, loopBuiltins: []string{"make", "len", "append"}},
+	"entries": {result: "[]struct{ Key K; Value V }", typeParams: mapTypeParams, loopBuiltins: []string{"make", "len"}},
+	"delete":  {extraParams: ", k K", typeParams: mapTypeParams, loopBuiltins: []string{"delete"}},
+	"forEach": {hasCallback: true, callbackParams: "V", typeParams: mapTypeParams},
 }
 
-const arrayMarkerPrefix = "__goslingArr_"
+// methodSet holds the methods of one kind of receiver.
+type methodSet struct {
+	markerPrefix      string
+	receiverTypeParam string
+	callbackIndexType string
+	methods           map[string]arrayMethod
+}
+
+var (
+	sliceMethodSet = methodSet{markerPrefix: arrayMarkerPrefix, receiverTypeParam: "S", callbackIndexType: "int", methods: arrayMethods}
+	mapMethodSet   = methodSet{markerPrefix: mapMarkerPrefix, receiverTypeParam: "M", callbackIndexType: "K", methods: mapMethods}
+)
+
+// arrayCall is an array or map method call that a marker call replaces for
+// type checking.
+type arrayCall struct {
+	method         string
+	set            *methodSet
+	originalCall   *ast.CallExpr
+	receiver       ast.Expr
+	indexed        bool // the callback also takes the index or key
+	returnsPointer bool // find or get returns a pointer
+	// shouldSliceArray is true for an addressable array. The output slices it,
+	// so the loop does not copy it and find points into it.
+	shouldSliceArray bool
+}
+
+func (call *arrayCall) definition() arrayMethod { return call.set.methods[call.method] }
+
+func (call *arrayCall) isMapCall() bool { return call.set == &mapMethodSet }
+
+const (
+	arrayMarkerPrefix = "__goslingArr_"
+	mapMarkerPrefix   = "__goslingKV_"
+	// arrayRefMarker lets an array receiver type-check as a slice, also if
+	// the array is not addressable.
+	arrayRefMarker = "__goslingArrayRef"
+)
+
+func isMethodMarker(name string) bool {
+	return strings.HasPrefix(name, arrayMarkerPrefix) || strings.HasPrefix(name, mapMarkerPrefix)
+}
 
 // arrayMarkerDecls declares a generic marker for each method and variant, so
 // a rewritten call type-checks with the correct result type.
 func arrayMarkerDecls() string {
-	names := make([]string, 0, len(arrayMethods))
-	for name := range arrayMethods {
+	var builder strings.Builder
+	builder.WriteString("func " + arrayRefMarker + "[A any](a A) *A { return &a }\n")
+	sliceMethodSet.writeMarkerDecls(&builder)
+	mapMethodSet.writeMarkerDecls(&builder)
+	return builder.String()
+}
+
+func (set *methodSet) writeMarkerDecls(builder *strings.Builder) {
+	names := make([]string, 0, len(set.methods))
+	for name := range set.methods {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	var builder strings.Builder
 	for _, name := range names {
-		method := arrayMethods[name]
+		method := set.methods[name]
 		writeDecl := func(suffix, callbackParams, result string) {
 			callbackParam := ""
 			if method.hasCallback {
@@ -76,22 +129,26 @@ func arrayMarkerDecls() string {
 			if result == "" {
 				body = "{}"
 			}
-			fmt.Fprintf(&builder, "func %s%s%s[%s](xs S%s%s) %s %s\n", arrayMarkerPrefix, name, suffix, method.typeParams, callbackParam, method.extraParams, result, body)
+			fmt.Fprintf(builder, "func %s%s%s[%s](xs %s%s%s) %s %s\n", set.markerPrefix, name, suffix, method.typeParams, set.receiverTypeParam, callbackParam, method.extraParams, result, body)
 		}
+		indexedParams := method.callbackParams + ", " + set.callbackIndexType
 		writeDecl("", method.callbackParams, method.result)
 		if method.hasCallback {
-			writeDecl("I", method.callbackParams+", int", method.result)
+			writeDecl("I", indexedParams, method.result)
 		}
-		if name == "find" {
-			writeDecl("P", method.callbackParams, "*T")
-			writeDecl("PI", method.callbackParams+", int", "*T")
+		if method.pointerResult == "" {
+			continue
+		}
+		writeDecl("P", method.callbackParams, method.pointerResult)
+		if method.hasCallback {
+			writeDecl("PI", indexedParams, method.pointerResult)
 		}
 	}
-	return builder.String()
 }
 
 // rewriteArrayCalls replaces calls like xs.filter(f) with marker calls if xs
-// is a slice without such a method. It reports whether anything changed.
+// is a slice, array, or map without such a method. It reports whether
+// anything changed.
 func (transpiler *transpiler) rewriteArrayCalls(file *file, typeInfo *types.Info) bool {
 	changed := false
 	ast.Inspect(file.ast, func(node ast.Node) bool {
@@ -106,7 +163,7 @@ func (transpiler *transpiler) rewriteArrayCalls(file *file, typeInfo *types.Info
 		marker := &ast.CallExpr{
 			Fun:    &ast.Ident{Name: methodCall.markerName(), NamePos: methodCall.receiver.Pos()},
 			Lparen: call.Lparen,
-			Args:   append([]ast.Expr{methodCall.receiver}, call.Args...),
+			Args:   append([]ast.Expr{buildReceiverArg(typeInfo, methodCall.receiver)}, call.Args...),
 			Rparen: call.Rparen,
 		}
 		file.arrayCalls[marker] = methodCall
@@ -117,8 +174,45 @@ func (transpiler *transpiler) rewriteArrayCalls(file *file, typeInfo *types.Info
 	return changed
 }
 
-// asArrayCall recognizes an array method call on a slice that has no real
-// method of that name.
+// buildReceiverArg returns the first marker argument. An array becomes
+// __goslingArrayRef(a)[:], a slice of the same elements.
+func buildReceiverArg(typeInfo *types.Info, receiver ast.Expr) ast.Expr {
+	if _, isArray := typeInfo.Types[receiver].Type.Underlying().(*types.Array); !isArray {
+		return receiver
+	}
+	return &ast.SliceExpr{X: &ast.CallExpr{
+		Fun:    &ast.Ident{Name: arrayRefMarker, NamePos: receiver.Pos()},
+		Args:   []ast.Expr{receiver},
+		Rparen: receiver.End(),
+	}}
+}
+
+// elementTypes returns the element type of a slice, array, or map, and the
+// type of its index or key.
+func elementTypes(goType types.Type) (types.Type, types.Type, bool) {
+	if goType == nil {
+		return nil, nil, false
+	}
+	switch underlying := goType.Underlying().(type) {
+	case *types.Slice:
+		return underlying.Elem(), types.Typ[types.Int], true
+	case *types.Array:
+		return underlying.Elem(), types.Typ[types.Int], true
+	case *types.Map:
+		return underlying.Elem(), underlying.Key(), true
+	}
+	return nil, nil, false
+}
+
+func methodSetFor(goType types.Type) *methodSet {
+	if _, isMap := goType.Underlying().(*types.Map); isMap {
+		return &mapMethodSet
+	}
+	return &sliceMethodSet
+}
+
+// asArrayCall recognizes an array or map method call on a receiver that has
+// no real method of that name.
 func (transpiler *transpiler) asArrayCall(file *file, typeInfo *types.Info, call *ast.CallExpr) (*arrayCall, bool) {
 	selector, ok := call.Fun.(*ast.SelectorExpr)
 	if !ok {
@@ -128,19 +222,24 @@ func (transpiler *transpiler) asArrayCall(file *file, typeInfo *types.Info, call
 	if name == preprocess.MapMarker {
 		name = "map"
 	}
-	method, ok := arrayMethods[name]
+	receiverType := typeInfo.Types[selector.X].Type
+	elementType, _, ok := elementTypes(receiverType)
 	if !ok {
 		return nil, false
 	}
-	receiverType := typeInfo.Types[selector.X].Type
-	slice, ok := underlyingSlice(receiverType)
+	set := methodSetFor(receiverType)
+	method, ok := set.methods[name]
 	if !ok {
 		return nil, false
 	}
 	if object, _, _ := types.LookupFieldOrMethod(receiverType, true, transpiler.checkedPackage, name); object != nil {
 		return nil, false // a real method wins
 	}
-	methodCall := &arrayCall{method: name, originalCall: call, receiver: selector.X}
+	methodCall := &arrayCall{method: name, set: set, originalCall: call, receiver: selector.X}
+	methodCall.returnsPointer = method.pointerResult != "" && !isComparableToNil(elementType)
+	if _, isArray := receiverType.Underlying().(*types.Array); isArray {
+		methodCall.shouldSliceArray = typeInfo.Types[selector.X].Addressable()
+	}
 	if !method.hasCallback {
 		return methodCall, true
 	}
@@ -152,14 +251,13 @@ func (transpiler *transpiler) asArrayCall(file *file, typeInfo *types.Info, call
 		return nil, false
 	}
 	methodCall.indexed = count == strings.Count(method.callbackParams, ",")+2
-	methodCall.returnsPointer = name == "find" && !isComparableToNil(slice.Elem())
 	return methodCall, true
 }
 
-// markerName picks the marker variant. P is for a find that returns a pointer
-// into the slice. I is for a callback that also takes the index.
+// markerName picks the marker variant. P is for a call that returns a
+// pointer. I is for a callback that also takes the index or key.
 func (call *arrayCall) markerName() string {
-	name := arrayMarkerPrefix + call.method
+	name := call.set.markerPrefix + call.method
 	if call.returnsPointer {
 		name += "P"
 	}
@@ -191,11 +289,10 @@ func (transpiler *transpiler) callbackParams(file *file, typeInfo *types.Info, a
 // callbackContext returns the parameter and result types that an array
 // method gives to its callback.
 func (transpiler *transpiler) callbackContext(typeInfo *types.Info, call *ast.CallExpr, arrayCall *arrayCall, callback ast.Expr) (funcContext, bool) {
-	slice, ok := underlyingSlice(typeInfo.Types[call.Args[0]].Type)
+	elementType, indexType, ok := elementTypes(typeInfo.Types[call.Args[0]].Type)
 	if !ok || len(call.Args) < 2 || call.Args[1] != callback {
 		return funcContext{}, false
 	}
-	elementType := slice.Elem()
 	context := funcContext{params: []types.Type{elementType}, resultsKnown: true}
 	switch arrayCall.method {
 	case "map":
@@ -215,7 +312,7 @@ func (transpiler *transpiler) callbackContext(typeInfo *types.Info, call *ast.Ca
 		context.results = []types.Type{types.Typ[types.Bool]}
 	}
 	if arrayCall.indexed {
-		context.params = append(context.params, types.Typ[types.Int])
+		context.params = append(context.params, indexType)
 	}
 	return context, true
 }
@@ -234,26 +331,62 @@ func (lowerer *lowerer) lowerArrayCall(marker *ast.CallExpr, arrayCall *arrayCal
 	// The marker holds the current arguments. The original call can still hold
 	// stand-ins for arrows resolved after it.
 	receiver, arguments := arrayCall.receiver, marker.Args[1:]
-	method := arrayMethods[arrayCall.method]
+	method := arrayCall.definition()
 	typeText, ok := lowerer.checkArrayCall(marker, arrayCall, method)
 	if !ok || !lowerer.checkBuiltins(receiver.Pos(), arrayCall.method, method.loopBuiltins...) {
 		return
 	}
 	names := pickArrayNames(typeText)
+	line, depth := lowerer.line(receiver.Pos()), lowerer.depth(marker)
+	if lowerer.lowerMapAccess(arrayCall, arguments, typeText, names, line, depth) {
+		return
+	}
 	bindNames, separator := lowerer.arrayBindings(arrayCall, method, names)
 	open := "func() " + typeText + " {\n" + bindNames + " := "
 	if method.result == "" {
 		lowerer.dropParens(marker)
 		open = "{\n" + bindNames + " := "
 	}
-	line, depth := lowerer.line(receiver.Pos()), lowerer.depth(marker)
 	lowerer.insertOrdered(receiver.Pos(), open, line, depth)
-	lowerer.replace(receiver.End(), arguments[0].Pos(), separator, line)
+	receiverEnd := ""
+	if arrayCall.shouldSliceArray {
+		receiverEnd = "[:]"
+	}
 	tail := arrayLoop(arrayCall, typeText, names)
+	if len(arguments) == 0 {
+		lowerer.replace(receiver.End(), arrayCall.originalCall.Rparen+1, receiverEnd+tail, line)
+		return
+	}
+	lowerer.replace(receiver.End(), arguments[0].Pos(), receiverEnd+separator, line)
 	if !method.hasCallback {
 		tail = ")" + tail
 	}
 	lowerer.replace(arguments[len(arguments)-1].End(), arrayCall.originalCall.Rparen+1, tail, line)
+}
+
+// lowerMapAccess lowers has, get, and delete on a map to index expressions
+// or the delete builtin. It reports false for other calls.
+func (lowerer *lowerer) lowerMapAccess(arrayCall *arrayCall, arguments []ast.Expr, typeText string, names arrayNames, line, depth int) bool {
+	if !arrayCall.isMapCall() || arrayCall.definition().hasCallback || len(arguments) != 1 {
+		return false
+	}
+	open, separator, closing := "", "[", "]"
+	switch {
+	case arrayCall.method == "has":
+		open, closing = "func() bool {\n_, "+names.found+" := ", "]\nreturn "+names.found+"\n}()"
+	case arrayCall.method == "delete":
+		open, separator, closing = "delete(", ", ", ")"
+	case arrayCall.returnsPointer:
+		open = fmt.Sprintf("func() %s {\nif %s, %s := ", typeText, names.value, names.found)
+		closing = fmt.Sprintf("]; %[2]s {\nreturn &%[1]s\n}\nreturn nil\n}()", names.value, names.found)
+	}
+	receiver := arrayCall.receiver
+	if open != "" {
+		lowerer.insertOrdered(receiver.Pos(), open, line, depth)
+	}
+	lowerer.replace(receiver.End(), arguments[0].Pos(), separator, line)
+	lowerer.replace(arguments[0].End(), arrayCall.originalCall.Rparen+1, closing, line)
+	return true
 }
 
 // checkArrayCall reports misuse of an array method. It returns the result
@@ -280,16 +413,16 @@ func (lowerer *lowerer) checkArrayCall(marker *ast.CallExpr, arrayCall *arrayCal
 	if lowerer.reportHiddenType(resultType, typeText, receiver.Pos()) {
 		return typeText, false
 	}
-	if slice, isSlice := underlyingSlice(lowerer.typeInfo.Types[receiver].Type); isSlice && !method.hasCallback {
-		elementType, _ := lowerer.typeName(slice.Elem())
-		return typeText, !lowerer.reportHiddenType(slice.Elem(), elementType, receiver.Pos())
+	if elementType, _, isCollection := elementTypes(lowerer.typeInfo.Types[receiver].Type); isCollection && !method.hasCallback {
+		elementText, _ := lowerer.typeName(elementType)
+		return typeText, !lowerer.reportHiddenType(elementType, elementText, receiver.Pos())
 	}
 	return typeText, true
 }
 
 // arrayNames holds the names of the locals in a lowered array method call.
 type arrayNames struct {
-	slice, callback, accumulator, value, element, index, out string
+	slice, mapName, callback, accumulator, value, element, index, key, found, out string
 }
 
 // pickArrayNames picks the local names for an array method call. The result
@@ -306,11 +439,14 @@ func pickArrayNames(typeText string) arrayNames {
 	}
 	return arrayNames{
 		slice:       pickName("xs"),
+		mapName:     pickName("m"),
 		callback:    pickName("f"),
 		accumulator: pickName("acc"),
 		value:       pickName("v"),
 		element:     pickName("x"),
 		index:       pickName("i"),
+		key:         pickName("k"),
+		found:       pickName("ok"),
 		out:         pickName("out"),
 	}
 }
@@ -334,18 +470,25 @@ func collectIdentifiers(source string) map[string]bool {
 // text between the receiver and the first argument.
 func (lowerer *lowerer) arrayBindings(arrayCall *arrayCall, method arrayMethod, names arrayNames) (string, string) {
 	switch {
+	case arrayCall.isMapCall() && method.hasCallback:
+		return names.mapName + ", " + names.callback, ", "
+	case arrayCall.isMapCall():
+		return names.mapName, ""
 	case arrayCall.method == "reduce":
 		return names.slice + ", " + names.callback + ", " + names.accumulator, ", "
 	case !method.hasCallback:
-		slice, _ := underlyingSlice(lowerer.typeInfo.Types[arrayCall.receiver].Type)
-		elementType, _ := lowerer.typeName(slice.Elem())
-		return names.slice + ", " + names.value, ", " + elementType + "("
+		elementType, _, _ := elementTypes(lowerer.typeInfo.Types[arrayCall.receiver].Type)
+		elementText, _ := lowerer.typeName(elementType)
+		return names.slice + ", " + names.value, ", " + elementText + "("
 	}
 	return names.slice + ", " + names.callback, ", "
 }
 
 // arrayLoop returns the code after the bindings for each method.
 func arrayLoop(arrayCall *arrayCall, typeText string, names arrayNames) string {
+	if arrayCall.isMapCall() {
+		return mapLoop(arrayCall, typeText, names)
+	}
 	loop := fmt.Sprintf("for _, %s := range %s", names.element, names.slice)
 	call := fmt.Sprintf("%s(%s)", names.callback, names.element)
 	indexedLoop := fmt.Sprintf("for %s, %s := range %s", names.index, names.element, names.slice)
@@ -377,6 +520,27 @@ func arrayLoop(arrayCall *arrayCall, typeText string, names arrayNames) string {
 		return fmt.Sprintf("\nfor _, %[1]s := range %[2]s {\nif %[1]s == %[3]s {\nreturn true\n}\n}\nreturn false\n}()", names.element, names.slice, names.value)
 	case "indexOf":
 		return fmt.Sprintf("\n%s {\nif %s == %s {\nreturn %s\n}\n}\nreturn -1\n}()", indexedLoop, names.element, names.value, names.index)
+	}
+	return ""
+}
+
+// mapLoop returns the code after the bindings for each map method.
+func mapLoop(arrayCall *arrayCall, typeText string, names arrayNames) string {
+	collectTemplate := "\n%[1]s := make(%[2]s, 0, len(%[3]s))\nfor %[4]s := range %[3]s {\n%[1]s = append(%[1]s, %[5]s)\n}\nreturn %[1]s\n}()"
+	switch arrayCall.method {
+	case "keys":
+		return fmt.Sprintf(collectTemplate, names.out, typeText, names.mapName, names.key, names.key)
+	case "values":
+		return fmt.Sprintf(collectTemplate, names.out, typeText, names.mapName, "_, "+names.value, names.value)
+	case "entries":
+		// Index assignment does not repeat the struct type.
+		return fmt.Sprintf("\n%[1]s := make(%[2]s, len(%[3]s))\n%[4]s := 0\nfor %[5]s, %[6]s := range %[3]s {\n%[1]s[%[4]s].Key, %[1]s[%[4]s].Value = %[5]s, %[6]s\n%[4]s++\n}\nreturn %[1]s\n}()",
+			names.out, typeText, names.mapName, names.index, names.key, names.value)
+	case "forEach":
+		if arrayCall.indexed {
+			return fmt.Sprintf("\nfor %[1]s, %[2]s := range %[3]s {\n%[4]s(%[2]s, %[1]s)\n}\n}", names.key, names.value, names.mapName, names.callback)
+		}
+		return fmt.Sprintf("\nfor _, %[1]s := range %[2]s {\n%[3]s(%[1]s)\n}\n}", names.value, names.mapName, names.callback)
 	}
 	return ""
 }
