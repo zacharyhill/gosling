@@ -1,0 +1,86 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"strings"
+)
+
+func three(s string) (int, string, error) {
+	if s == "" {
+		return 0, "", errors.New("empty")
+	}
+	return len(s), strings.ToUpper(s), nil
+}
+
+func pair() (int, int) { return 3, 4 }
+
+func label(n int, text string) string { return fmt.Sprintf("%s:%d", text, n) }
+
+func pattern(s string) string {
+	try {
+		const [n, text] = three(s)
+		return fmt.Sprintf("%d %s", n, text)
+	} catch (e) {
+		return "caught: " + e.Error()
+	}
+}
+
+func argument(s string) string {
+	try {
+		return label(three(s))
+	} catch (e) {
+		return "caught: " + e.Error()
+	}
+}
+
+func forward(s string) (int, string) {
+	try {
+		return three(s)
+	} catch {
+		return -1, "none"
+	}
+}
+
+type codeError struct{ code int }
+
+func (err *codeError) Error() string { return fmt.Sprint("code ", err.code) }
+
+func triple(fail bool) (int, string, *codeError) {
+	if fail {
+		return 0, "", &codeError{code: 7}
+	}
+	return 1, "one", nil
+}
+
+func firstOfThree(s string) string {
+	try {
+		let [first, _] = three(s)
+		return fmt.Sprint(first)
+	} catch {
+		return "none"
+	}
+}
+
+func blanks(fail bool) string {
+	try {
+		const [_, text] = triple(fail)
+		return text + " " + firstOfThree("ab")
+	} catch (e) {
+		return "caught: " + e.Error()
+	}
+}
+
+func main() {
+	fmt.Println(pattern("go"))
+	fmt.Println(pattern(""))
+	fmt.Println(argument("abc"))
+	fmt.Println(argument(""))
+	fmt.Println(forward("xy"))
+	fmt.Println(forward(""))
+	const [a, b] = pair()
+	fmt.Println(a + b)
+	fmt.Println(blanks(false))
+	fmt.Println(blanks(true))
+	const [_, _] = pair()
+}

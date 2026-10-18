@@ -1,0 +1,9 @@
+2 GO
+caught: empty
+ABC:3
+caught: empty
+2 XY
+-1 none
+7
+one 2
+caught: code 7

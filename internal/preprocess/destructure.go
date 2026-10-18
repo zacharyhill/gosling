@@ -8,6 +8,12 @@ import (
 	"strings"
 )
 
+// ArrayTemp is the temporary of a flat array pattern without a rest element.
+type ArrayTemp struct {
+	Offset int      // offset of the temporary name
+	Names  []string // the element names, with "_" for a blank element
+}
+
 // binding is one name in a destructuring pattern. path is the access that
 // reads its value from the right side, like ".Addr.Host" or "[0][1:]".
 // offset is the offset of the name in the source.
@@ -43,6 +49,7 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 	if !operator.is(token.DEFINE) && !operator.is(token.ASSIGN) {
 		return tokenIndex, false, nil
 	}
+	elementNames := listFlatElementNames(bindings)
 	// A blank element reads no index, so it cannot panic.
 	bindings = slices.DeleteFunc(bindings, func(elementBinding binding) bool {
 		return elementBinding.name == "_" && strings.HasSuffix(elementBinding.path, "]")
@@ -67,7 +74,10 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 	// scan then continues into the right side and rewrites its gosling syntax.
 	rightSideVar := processor.fresh("tmp")
 	processor.result.TempNames = append(processor.result.TempNames, rightSideVar)
-	processor.replace(open.offset, operator.end(), rightSideVar+" :=")
+	tempOffset := processor.replace(open.offset, operator.end(), rightSideVar+" :=")
+	if elementNames != nil {
+		processor.result.ArrayTemps = append(processor.result.ArrayTemps, ArrayTemp{Offset: tempOffset, Names: elementNames})
+	}
 	processor.pendingDestructures = append(processor.pendingDestructures, &destructure{
 		start:         processor.nesting(),
 		text:          "; " + formatAssignment(bindings, operatorText, rightSideVar),
@@ -102,6 +112,19 @@ func (processor *processor) assignFromSimpleExpr(patternStart int, bindings []bi
 	pathAt := processor.replace(rightSideEnd, rightSideEnd, lastBinding.path+newlines)
 	processor.recordNewlines(pathAt+len(lastBinding.path), newlines)
 	processor.recordConsts(namesAt, constBindings)
+}
+
+// listFlatElementNames returns the names of an array pattern whose elements
+// are all names, or nil for an object pattern, a nested pattern, or a rest element.
+func listFlatElementNames(bindings []binding) []string {
+	elementNames := make([]string, len(bindings))
+	for bindingIndex, elementBinding := range bindings {
+		if elementBinding.path != fmt.Sprintf("[%d]", bindingIndex) {
+			return nil
+		}
+		elementNames[bindingIndex] = elementBinding.name
+	}
+	return elementNames
 }
 
 // pattern parses the bindings that start at token tokenIndex, after the

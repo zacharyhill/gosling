@@ -1,0 +1,72 @@
+package multiresult
+
+import (
+	"errors"
+	"strings"
+)
+
+func three(s string) (int, string, error) {
+	if s == "" {
+		return 0, "", errors.New("empty")
+	}
+	return len(s), s, nil
+}
+
+func pair() (int, int) { return 1, 2 }
+
+func split(s string) ([]string, error) { return strings.Fields(s), nil }
+
+func label(n int, text string) string { return text + strings.Repeat("!", n) }
+
+func pattern(s string) (int, string) {
+	try {
+		const [n, text] = three(s)
+		return n, text
+	} catch {
+		return 0, ""
+	}
+}
+
+func assignPattern(s string) (n int, text string) {
+	try {
+		[n, text] = three(s)
+	} catch (e) {
+		println(e.Error())
+	}
+	return n, text
+}
+
+func withoutError() int {
+	const [a, b] = pair()
+	return a + b
+}
+
+func keepError(s string) error {
+	const [_, _, err] = three(s)
+	return err
+}
+
+func slicePattern(s string) string {
+	try {
+		const [first, second] = split(s)
+		return first + second
+	} catch {
+		return ""
+	}
+}
+
+func argument(s string) string {
+	try {
+		return strings.ToUpper(label(three(s)))
+	} catch {
+		return ""
+	}
+}
+
+func forward(s string) (int, string) {
+	try {
+		return three(s)
+	} catch {
+		return 0, ""
+	}
+}

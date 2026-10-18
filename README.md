@@ -252,6 +252,8 @@ if err != nil { ... }
 n := val * 2
 ```
 
+A call that returns `(A, B, error)` moves if it is the only argument of a call or the only result of a `return`. For example, `g(f())` becomes `val, val2, err := f()`, a check, and `g(val, val2)`.
+
 The moved call runs before other calls to its left. Moved calls run in the order of the original expression. In an `if` or `switch` with an init statement, such as `if let x = g(); x > f(x) {`, a call from the condition runs after the init statement. The output then puts the init statement, the moved call, and the statement in a new block.
 
 A call that runs only on some paths moves into a new `if` statement. So short-circuit evaluation does not change:
@@ -452,6 +454,14 @@ Patterns can be nested. Put an object or array pattern where a name can go. A re
 
 Field names must match exactly. gosling evaluates a complex right side one time, into a temporary. An index past the end of a slice panics, as in Go. gosling does not read the index of a `_` element, so `const [a, _] = xs` does not panic if `xs` has one element.
 
+An array pattern can also take the results of a call. This applies if the call has two or more results, not counting a last `error`:
+
+```go
+const [n, name] = parse(s) // n, name := parse(s), with parse returning (int, string, error)
+```
+
+In a try block, gosling checks the error. A `_` element skips a result. A pattern with a rest element or a nested pattern cannot take results.
+
 ### let and const
 
 In `.gol` files, declare variables with `let` and `const`. `:=` is an error. `var` in a function is an error. Package-level `var` is allowed, because `let` has no grouped form.
@@ -646,7 +656,6 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 
 ## Limitations
 
-- gosling checks calls that return `(A, B, error)` only as statements.
 - Without `catch panic`, a panic does not run `finally` blocks. A panic in a catch block or in a catch panic block also does not run them.
 - `catch panic` cannot follow a typed catch clause.
 - Object patterns have no rest element.

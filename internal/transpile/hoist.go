@@ -1,10 +1,13 @@
 package transpile
 
 import (
+	"fmt"
 	"go/ast"
 	"go/token"
 	"go/types"
 	"slices"
+	"strconv"
+	"strings"
 )
 
 // A try block can use a call that returns (T, error) as a value, as in
@@ -15,7 +18,45 @@ import (
 //	g(val)
 //
 // For type checking, gosling wraps the call as __goslingV(f()), which gives the T.
+// A call that returns (A, B, error) uses __goslingV3, which gives (A, B). It
+// can be the only argument of a call or the only result of a return.
 const hoistMarker = "__goslingV"
+
+// maxHoistResults is the most results of a call that gosling can move.
+const maxHoistResults = 8
+
+func getHoistMarker(resultCount int) string {
+	if resultCount == 2 {
+		return hoistMarker
+	}
+	return hoistMarker + strconv.Itoa(resultCount)
+}
+
+// isHoistMarker reports whether name is the hoist marker for some result count.
+func isHoistMarker(name string) bool {
+	suffix, ok := strings.CutPrefix(name, hoistMarker)
+	if !ok {
+		return false
+	}
+	_, err := strconv.Atoi(suffix)
+	return suffix == "" || err == nil
+}
+
+// hoistMarkerDecls declares a marker for each result count.
+func hoistMarkerDecls() string {
+	var decls strings.Builder
+	for resultCount := 2; resultCount <= maxHoistResults; resultCount++ {
+		var typeParams, params, values []string
+		for valueIndex := 1; valueIndex < resultCount; valueIndex++ {
+			typeParams = append(typeParams, fmt.Sprintf("T%d", valueIndex))
+			params = append(params, fmt.Sprintf("v%d T%d", valueIndex, valueIndex))
+			values = append(values, fmt.Sprintf("v%d", valueIndex))
+		}
+		fmt.Fprintf(&decls, "func %s[%s any](%s, err error) (%s) { return %s }\n",
+			getHoistMarker(resultCount), strings.Join(typeParams, ", "), strings.Join(params, ", "), strings.Join(typeParams, ", "), strings.Join(values, ", "))
+	}
+	return decls.String()
+}
 
 // wrapNested wraps each call in a try block that returns (T, error) and is
 // used as a value. It reports whether anything changed.
@@ -28,7 +69,11 @@ func (transpiler *transpiler) wrapNested(file *file, typeInfo *types.Info) bool 
 	var calls []*ast.CallExpr
 	ast.Inspect(file.ast, func(node ast.Node) bool {
 		call, ok := node.(*ast.CallExpr)
-		if !ok || !isValueTuple(typeInfo, call) || !regions.contain(parentOf, call) || !transpiler.singleValueUse(typeInfo, parentOf, call) {
+		if !ok || !regions.contain(parentOf, call) {
+			return true
+		}
+		resultCount, ok := countHoistableResults(typeInfo, call)
+		if !ok || !transpiler.singleValueUse(typeInfo, parentOf, call, resultCount) {
 			return true
 		}
 		if parentCall, ok := parentOf[call].(*ast.CallExpr); ok && file.hoisted[parentCall] != nil {
@@ -38,7 +83,8 @@ func (transpiler *transpiler) wrapNested(file *file, typeInfo *types.Info) bool 
 		return true
 	})
 	for _, call := range calls {
-		marker := &ast.CallExpr{Fun: &ast.Ident{Name: hoistMarker, NamePos: call.Pos()}, Args: []ast.Expr{call}, Rparen: call.End() - 1}
+		resultCount, _ := countHoistableResults(typeInfo, call)
+		marker := &ast.CallExpr{Fun: &ast.Ident{Name: getHoistMarker(resultCount), NamePos: call.Pos()}, Args: []ast.Expr{call}, Rparen: call.End() - 1}
 		replaceNode(file.ast, call, marker)
 		file.hoisted[marker] = call
 	}
@@ -78,18 +124,30 @@ func (regions tryRegionList) contain(parentOf map[ast.Node]ast.Node, call *ast.C
 	return false
 }
 
-// isValueTuple reports whether call has exactly two results, and the second
-// one is an error result.
-func isValueTuple(typeInfo *types.Info, call *ast.CallExpr) bool {
+// countHoistableResults returns the result count of call if its results are
+// values and a last error result, such as (T, error) or (A, B, error).
+func countHoistableResults(typeInfo *types.Info, call *ast.CallExpr) (int, bool) {
 	tuple, ok := typeInfo.Types[call].Type.(*types.Tuple)
-	return ok && tuple.Len() == 2 && isErrorResult(tuple.At(1).Type())
+	if !ok || tuple.Len() < 2 || tuple.Len() > maxHoistResults {
+		return 0, false
+	}
+	return tuple.Len(), isErrorResult(tuple.At(tuple.Len() - 1).Type())
 }
 
-// singleValueUse reports whether call is where Go needs a single value.
-// Positions that accept both results do not count. The statement-level
-// checks handle them, or they forward both results.
-func (transpiler *transpiler) singleValueUse(typeInfo *types.Info, parentOf map[ast.Node]ast.Node, call *ast.CallExpr) bool {
+// singleValueUse reports whether call is where Go needs its values without
+// the error. Positions that accept all results do not count. The
+// statement-level checks handle them, or they forward all results. A call
+// with more than one value moves only from the only argument of a call or
+// the only result of a return. Other positions cannot take more than one value.
+func (transpiler *transpiler) singleValueUse(typeInfo *types.Info, parentOf map[ast.Node]ast.Node, call *ast.CallExpr, resultCount int) bool {
 	child, parent := outermostParen(parentOf, call)
+	if resultCount > 2 {
+		switch parent.(type) {
+		case *ast.ReturnStmt, *ast.CallExpr:
+		default:
+			return false
+		}
+	}
 	switch parentNode := parent.(type) {
 	case *ast.ExprStmt:
 		return false
@@ -99,19 +157,19 @@ func (transpiler *transpiler) singleValueUse(typeInfo *types.Info, parentOf map[
 	case *ast.GoStmt, *ast.DeferStmt:
 		return false
 	case *ast.ValueSpec:
-		return len(parentNode.Values) != 1 || len(parentNode.Names) != 2 // var a, err = f() takes both
+		return len(parentNode.Values) != 1 || len(parentNode.Names) != resultCount // var a, err = f() takes both
 	case *ast.ReturnStmt:
 		if len(parentNode.Results) != 1 {
 			return true
 		}
 		signature := enclosingSignature(typeInfo, parentOf, parentNode)
-		return signature == nil || signature.Results().Len() != 2
+		return signature == nil || signature.Results().Len() != resultCount
 	case *ast.CallExpr:
 		if len(parentNode.Args) != 1 || parentNode.Args[0] != child {
 			return true
 		}
 		signature, ok := typeInfo.Types[parentNode.Fun].Type.(*types.Signature)
-		return !ok || signature.Params().Len() != 2
+		return !ok || signature.Params().Len() != resultCount
 	}
 	return true
 }
@@ -249,7 +307,7 @@ func (lowerer *lowerer) hoistScopeItems(site *hoistSite, scope *hoistScope, try 
 func (lowerer *lowerer) hoistCall(site *hoistSite, marker *ast.CallExpr, try *tryContext, isNested bool) {
 	call := lowerer.file.hoisted[marker]
 	target := try.target()
-	valueVar := lowerer.fresh("val")
+	valueVars := lowerer.pickValueVars(call)
 	scope, end := site.scope, token.NoPos
 	if isNested || scope == nil {
 		scope, end = nil, site.end
@@ -257,12 +315,12 @@ func (lowerer *lowerer) hoistCall(site *hoistSite, marker *ast.CallExpr, try *tr
 	errVar := lowerer.pickErrorVar(try, scope, site.from, end, lastResultType(lowerer.typeInfo, call))
 	target.jumps++
 	site.add(hoistPiece{
-		before: valueVar + ", " + errVar + " := ",
+		before: valueVars + ", " + errVar + " := ",
 		moved:  call,
 		after:  "\nif " + errVar + " != nil {\n" + lowerer.failTo(try, target, errVar) + "\n}\n",
 		line:   lowerer.line(call.Pos()),
 	})
-	lowerer.replaceHoisted(marker, valueVar)
+	lowerer.replaceHoisted(marker, valueVars)
 }
 
 // hoistSplit evaluates a && or || operation with checked calls on its
@@ -346,6 +404,16 @@ func (lowerer *lowerer) flushSite(site *hoistSite) {
 		}
 		lowerer.edits = append(lowerer.edits, insertion)
 	}
+}
+
+// pickValueVars returns new names for the results of call without its error.
+func (lowerer *lowerer) pickValueVars(call *ast.CallExpr) string {
+	resultCount, _ := countHoistableResults(lowerer.typeInfo, call)
+	names := make([]string, resultCount-1)
+	for valueIndex := range names {
+		names[valueIndex] = lowerer.fresh("val")
+	}
+	return strings.Join(names, ", ")
 }
 
 // withLabels returns the outermost labeled statement that wraps stmt, or
