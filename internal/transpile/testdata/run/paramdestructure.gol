@@ -1,0 +1,64 @@
+package main
+
+import (
+	"fmt"
+	"slices"
+)
+
+type Config struct {
+	Name string
+	Port int
+}
+
+func address({Name, Port: port}: Config) string {
+	return fmt.Sprintf("%s:%d", Name, port)
+}
+
+func sum([a, b, ...rest]: []int, scale int) int {
+	let total = a + b
+	for (const n of rest) {
+		total += n
+	}
+	return total * scale
+}
+
+func main() {
+	const configs = []Config{{"b", 443}, {"a", 80}}
+	fmt.Println(address(configs[0]))
+	fmt.Println(sum([]int{1, 2, 3, 4}, 2))
+
+	const ports = configs.map(({Port}) => Port * 10)
+	fmt.Println(ports)
+
+	configs.forEach(({Name}, i) => fmt.Println(i, Name))
+
+	const sorted = slices.Clone(configs)
+	slices.SortFunc(sorted, ({Name: left}, {Name: right}) => {
+		if left < right {
+			return -1
+		}
+		return 1
+	})
+	fmt.Println(sorted)
+
+	const describe = func({Name}: Config, suffix string) string { return Name + suffix }
+	fmt.Println(describe(configs[1], "!"))
+
+	fmt.Println(scaled(Config{Name: "s", Port: 2}, 3))
+	const add = ({Port}: Config, extra: int) => Port + extra
+	fmt.Println(add(configs[1], 1))
+	const rows = [][]int{{1, 2, 3}}
+	const firstRest = rows.map(([first, ...others]) => first + len(others))
+	fmt.Println(firstRest)
+	fmt.Println(nested(Pair{Left: Config{"l", 1}}))
+}
+
+type Pair struct{ Left, Right Config }
+
+func scaled({Name, Port = 1}: Config, factor: int): string {
+	return fmt.Sprint(Name, Port*factor)
+}
+
+func nested({Left: {Name}, Right: {Port = 99}}: Pair) string {
+	return fmt.Sprint(Name, Port)
+}

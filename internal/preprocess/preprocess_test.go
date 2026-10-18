@@ -20,6 +20,7 @@ func TestProcess(test *testing.T) {
 		forOfBlanks []int
 		newlines    [][2]int
 		arrayTemps  []ArrayTemp
+		params      []int
 	}{
 		{
 			name: "try catch with binding",
@@ -118,6 +119,48 @@ func TestProcess(test *testing.T) {
 			name: "arrow inside interpolation",
 			src:  "s := t`${xs.map(x => x + 1)}`",
 			want: "s := __goslingT(``, xs.__goslingMap(func(x __goslingU) __goslingR { return x + 1 }), ``)",
+		},
+		{
+			name:   "function parameter destructuring",
+			src:    "func handle({Name, Port: port}: Config) {\n\tuse(Name, port)\n}",
+			want:   "func handle(config Config) { Name, port := config.Name, config.Port;\n\tuse(Name, port)\n}",
+			params: []int{len("func handle(config Config) { ")},
+		},
+		{
+			name:   "method parameter destructuring",
+			src:    "func (s *S) f(n int, [a, b]: [2]int, {X}: *geo.HTTPPoint) (struct{}, error) { return use(a, b, X) }",
+			want:   "func (s *S) f(n int, arg [2]int, httpPoint *geo.HTTPPoint) (struct{}, error) { a, b := arg[0], arg[1]; X := httpPoint.X; return use(a, b, X) }",
+			params: []int{len("func (s *S) f(n int, arg [2]int, httpPoint *geo.HTTPPoint) (struct{}, error) { "), len("func (s *S) f(n int, arg [2]int, httpPoint *geo.HTTPPoint) (struct{}, error) { a, b := arg[0], arg[1]; ")},
+		},
+		{
+			name:   "function literal parameter destructuring avoids existing names",
+			src:    "f(func({X}: P, p int) { use(X, p) })",
+			want:   "f(func(p2 P, p int) { X := p2.X; use(X, p) })",
+			params: []int{len("f(func(p2 P, p int) { ")},
+		},
+		{
+			name:   "function literal with result type is not a method",
+			src:    "f := func({X}: P) int { return X }",
+			want:   "f := func(p P) int { X := p.X; return X }",
+			params: []int{len("f := func(p P) int { ")},
+		},
+		{
+			name:   "generic function parameter destructuring",
+			src:    "func f[T any]({V}: Box[T]) T { return V }",
+			want:   "func f[T any](box Box[T]) T { V := box.V; return V }",
+			params: []int{len("func f[T any](box Box[T]) T { ")},
+		},
+		{
+			name:   "untyped arrow parameter destructuring",
+			src:    "xs.forEach((i, {X}) => use(i, X))",
+			want:   "xs.forEach(func(i __goslingU, arg __goslingU) __goslingR { X := arg.X; return use(i, X) })",
+			params: []int{len("xs.forEach(func(i __goslingU, arg __goslingU) __goslingR { ")},
+		},
+		{
+			name:   "typed arrow parameter destructuring with block body",
+			src:    "f := ([a, b]: Pair) => {\n\treturn a + b\n}",
+			want:   "f := func(pair Pair) __goslingR { a, b := pair[0], pair[1];\n\treturn a + b\n}",
+			params: []int{len("f := func(pair Pair) __goslingR { ")},
 		},
 		{
 			name: "try catch finally",
@@ -756,6 +799,9 @@ func TestProcess(test *testing.T) {
 			}) {
 				test.Errorf("array temps %v, want %v", result.ArrayTemps, testCase.arrayTemps)
 			}
+			if !slices.Equal(result.Params, testCase.params) {
+				test.Errorf("params %v, want %v", result.Params, testCase.params)
+			}
 			if !slices.Equal(result.Splits, testCase.splits) {
 				test.Errorf("splits %v, want %v", result.Splits, testCase.splits)
 			}
@@ -786,6 +832,8 @@ func TestProcessErrors(test *testing.T) {
 		{"template default", "func f() {\n\tlet {Name = t`x`} = c\n}", "a destructuring default must be plain Go", len("func f() {\n\tlet {Name = ")},
 		{"nullish default", "func f() {\n\tlet {Name = a ?? b} = c\n}", "a destructuring default must be plain Go", len("func f() {\n\tlet {Name = a ")},
 		{"for in destructuring", "for (const [k, v] in m) { }", "destructuring in a loop needs for...of", len("for (const ")},
+		{"parameter pattern without body", "type F func({X}: P)\n", "a destructured parameter needs a function body", len("type F func(")},
+		{"parameter pattern without type", "func f({X}) {\n}", "a destructured parameter needs a type", len("func f(")},
 		{"optional index", "x := a?.[0]", "?.[ and ?.( are not supported", len("x := a")},
 		{"nullish assignment", "x ??= 1", "??= is not supported", len("x ")},
 		{"union inside function", "func f() {\n\ttype S = A | B\n}", "union types must be declared at package level", len("func f() {\n\t")},

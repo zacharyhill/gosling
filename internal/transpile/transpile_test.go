@@ -254,6 +254,11 @@ func TestErrors(test *testing.T) {
 			want: "only runs conditionally here",
 		},
 		{
+			name: "parameter destructuring unknown field",
+			src:  "package p\ntype P struct{ X int }\nfunc f({Z}: P) int {\n\treturn Z\n}",
+			want: "x.gol:3:21: p2.Z undefined",
+		},
+		{
 			name: "nullish coalescing on a value that is never nil",
 			src:  "package p\nfunc f(n int) int {\n\treturn n ?? 1\n}",
 			want: "x.gol:3:9: left side of ?? is never nil",

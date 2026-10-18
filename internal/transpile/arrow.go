@@ -46,6 +46,10 @@ func (arrow *arrow) paramCount() int { return arrow.funcLit.Type.Params.NumField
 
 // findArrows records the arrows in file and prepares them for the first pass.
 func (file *file) findArrows() {
+	isParamStatement := map[int]bool{}
+	for _, offset := range file.preprocessed.Params {
+		isParamStatement[offset] = true
+	}
 	ast.Inspect(file.ast, func(node ast.Node) bool {
 		funcLit, ok := node.(*ast.FuncLit)
 		if !ok || funcLit.Type.Results == nil || len(funcLit.Type.Results.List) != 1 {
@@ -61,7 +65,7 @@ func (file *file) findArrows() {
 				arrowFunc.untyped = append(arrowFunc.untyped, paramIdent)
 			}
 		}
-		if returnStmt, ok := getSoleStmt(funcLit.Body).(*ast.ReturnStmt); ok && len(returnStmt.Results) > 0 {
+		if returnStmt := file.findBodyReturn(funcLit.Body, isParamStatement); returnStmt != nil && len(returnStmt.Results) > 0 {
 			arrowFunc.bodyReturn = returnStmt
 		}
 		if arrowFunc.bodyReturn == nil && !returnsValue(funcLit.Body) {
@@ -79,11 +83,19 @@ func (file *file) findArrows() {
 	}
 }
 
-func getSoleStmt(body *ast.BlockStmt) ast.Stmt {
-	if len(body.List) != 1 {
+// findBodyReturn returns the return statement of a body that has only a
+// return, after the statements for destructured parameters.
+func (file *file) findBodyReturn(body *ast.BlockStmt, isParamStatement map[int]bool) *ast.ReturnStmt {
+	if len(body.List) == 0 {
 		return nil
 	}
-	return body.List[0]
+	for _, statement := range body.List[:len(body.List)-1] {
+		if !isParamStatement[file.tokenFile.Offset(statement.Pos())] {
+			return nil
+		}
+	}
+	returnStmt, _ := body.List[len(body.List)-1].(*ast.ReturnStmt)
+	return returnStmt
 }
 
 func returnsValue(body *ast.BlockStmt) bool {
@@ -182,7 +194,7 @@ func (transpiler *transpiler) setResults(file *file, arrowFunc *arrow, results [
 	arrowFunc.funcLit.Type.Results = nil
 	if arrowFunc.bodyReturn != nil && len(arrowFunc.bodyReturn.Results) == 1 {
 		arrowFunc.usedAsStmt = true
-		arrowFunc.funcLit.Body.List[0] = &ast.ExprStmt{X: arrowFunc.bodyReturn.Results[0]}
+		arrowFunc.funcLit.Body.List[len(arrowFunc.funcLit.Body.List)-1] = &ast.ExprStmt{X: arrowFunc.bodyReturn.Results[0]}
 	}
 	return true
 }

@@ -22,6 +22,7 @@ func (processor *processor) arrow(tokenIndex int) (int, error) {
 		return 0, &Error{assign.offset, "=> must follow a parameter list"}
 	}
 	previous := processor.tokens[tokenIndex-1]
+	var statements paramStatements
 	switch {
 	case previous.is(token.IDENT):
 		if previous.offset < processor.copiedUpTo {
@@ -30,7 +31,8 @@ func (processor *processor) arrow(tokenIndex int) (int, error) {
 		processor.replace(previous.offset, previous.offset, "func(")
 		processor.replace(previous.end(), previous.end(), " "+UntypedMarker+")")
 	case previous.is(token.RPAREN):
-		if err := processor.arrowParams(tokenIndex - 1); err != nil {
+		var err error
+		if statements, err = processor.arrowParams(tokenIndex - 1); err != nil {
 			return 0, err
 		}
 	default:
@@ -39,17 +41,21 @@ func (processor *processor) arrow(tokenIndex int) (int, error) {
 	greater := processor.tokenAt(tokenIndex + 1)
 	if processor.tokenAt(tokenIndex + 2).is(token.LBRACE) {
 		processor.replace(assign.offset, greater.end(), ResultMarker)
+		if statements.text != "" {
+			processor.bodyStatements[tokenIndex+2] = statements
+		}
 		return tokenIndex + 1, nil
 	}
-	processor.openExpressionBody(assign, greater, processor.tokenAt(tokenIndex+2))
+	processor.openExpressionBody(assign, greater, processor.tokenAt(tokenIndex+2), statements)
 	return tokenIndex + 1, nil
 }
 
 // openExpressionBody replaces the "=>" of an expression-body arrow with the
-// start of a block that returns the body. finishClosers closes the block.
-func (processor *processor) openExpressionBody(assign, greater, bodyStart lexeme) {
+// start of a block that returns the body. statements declare the names of
+// destructured parameters. finishClosers closes the block.
+func (processor *processor) openExpressionBody(assign, greater, bodyStart lexeme, statements paramStatements) {
 	isParenthesized := bytes.IndexByte(processor.src[greater.end():bodyStart.offset], '\n') >= 0
-	returnText := " { return"
+	returnText := " return"
 	switch {
 	case isParenthesized:
 		returnText += " ("
@@ -57,7 +63,13 @@ func (processor *processor) openExpressionBody(assign, greater, bodyStart lexeme
 		// Without a space, "return" joins the first token of the body.
 		returnText += " "
 	}
-	processor.replace(assign.offset, greater.end(), ResultMarker+returnText)
+	if statements.text == "" {
+		processor.replace(assign.offset, greater.end(), ResultMarker+" {"+returnText)
+	} else {
+		processor.replace(assign.offset, greater.end(), ResultMarker+" {")
+		processor.insertParamStatements(greater.end(), statements)
+		processor.replace(greater.end(), greater.end(), returnText)
+	}
 	closer := " }"
 	if isParenthesized {
 		closer = ") }"
@@ -65,10 +77,11 @@ func (processor *processor) openExpressionBody(assign, greater, bodyStart lexeme
 	processor.pendingClosers = append(processor.pendingClosers, pendingCloser{start: processor.nesting(), text: closer})
 }
 
-// arrowParams rewrites the parameter list closed by the ) at token rparenIndex.
-func (processor *processor) arrowParams(rparenIndex int) error {
-	if processor.typedArrows[processor.tokens[rparenIndex].offset] {
-		return nil
+// arrowParams rewrites the parameter list closed by the ) at token
+// rparenIndex. It returns the statements for destructured parameters.
+func (processor *processor) arrowParams(rparenIndex int) (paramStatements, error) {
+	if rparenOffset := processor.tokens[rparenIndex].offset; processor.typedArrows[rparenOffset] {
+		return processor.arrowStatements[rparenOffset], nil
 	}
 	lparenIndex, depth := -1, 0
 	for tokenIndex := rparenIndex; tokenIndex >= 0; tokenIndex-- {
@@ -84,19 +97,19 @@ func (processor *processor) arrowParams(rparenIndex int) error {
 		}
 	}
 	if lparenIndex < 0 || processor.tokens[lparenIndex].offset < processor.copiedUpTo {
-		return &Error{processor.tokens[rparenIndex].offset, "unsupported arrow function"}
+		return paramStatements{}, &Error{processor.tokens[rparenIndex].offset, "unsupported arrow function"}
 	}
 	names, untyped := processor.untypedParams(lparenIndex+1, rparenIndex)
 	lparenOffset := processor.tokens[lparenIndex].offset
 	processor.replace(lparenOffset, lparenOffset, "func")
 	if !untyped {
-		return nil
+		return paramStatements{}, nil
 	}
 	// The names stay source text, so they map to the output.
 	for _, name := range names {
 		processor.replace(name.end(), name.end(), " "+UntypedMarker)
 	}
-	return nil
+	return paramStatements{}, nil
 }
 
 // untypedParams reports whether tokens [from, to) are only names, like
