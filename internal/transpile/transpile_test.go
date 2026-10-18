@@ -234,6 +234,21 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:4:13: p.Z undefined",
 		},
 		{
+			name: "destructuring default on a field that is not comparable",
+			src:  "package p\ntype S struct{ Xs []int }\ntype C struct{ S S }\nfunc f(c C) S {\n\tconst {S = S{}} = c\n\treturn S\n}",
+			want: "x.gol:5:8: a destructuring default needs a type that is comparable or can be nil, not S",
+		},
+		{
+			name: "destructuring default with the wrong type",
+			src:  "package p\ntype C struct{ Name string }\nfunc f(c C) string {\n\tconst {Name = 5} = c\n\treturn Name\n}",
+			want: "x.gol:4:8: cannot use 5 (untyped int constant) as string value in destructuring default",
+		},
+		{
+			name: "destructuring default that can fail in a try",
+			src:  "package p\nimport \"strconv\"\ntype C struct{ Port int }\nfunc f(c C, s string) int {\n\ttry {\n\t\tconst {Port = strconv.Atoi(s)} = c\n\t\treturn Port\n\t} catch {\n\t\treturn 0\n\t}\n}",
+			want: "only runs conditionally here",
+		},
+		{
 			name: "nullish coalescing on a value that is never nil",
 			src:  "package p\nfunc f(n int) int {\n\treturn n ?? 1\n}",
 			want: "x.gol:3:9: left side of ?? is never nil",

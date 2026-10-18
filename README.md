@@ -448,6 +448,18 @@ const {Name: name} = load(path) // tmp := load(path); name := tmp.Name
 {X, Y} = p                      // X, Y = p.X, p.Y
 ```
 
+A name can have a default value:
+
+```go
+const {Port = 8080, Timeout = 30} = cfg
+const [first = "-"] = args
+```
+
+- In an object pattern, the default applies if the field has its zero value, such as `0`, `""`, or `nil`. The field type must be comparable or able to be nil.
+- If a pointer field has a default of its element type, the result is the value that the pointer points to, as with `??`. So `Timeout = 30` with `Timeout *int` gives an `int`.
+- In an array pattern, the default applies if the index is past the end of the slice. An element without a default still panics past the end. A nested element can have a default too, such as `const {Addr: {Port = 80}} = cfg`.
+- gosling evaluates the default only if it applies. The default must be plain Go. Assign gosling syntax, such as a template literal, to a variable first.
+
 `let` and `const` declare new names. Code cannot assign to the names that `const` declares. Without `let` or `const`, the pattern assigns to existing variables. Declare names with a pattern only in functions. A pattern can use more than one line and can have a trailing comma.
 
 Patterns can be nested. Put an object or array pattern where a name can go. A rest element can only be the last element of an array pattern.
@@ -460,7 +472,7 @@ An array pattern can also take the results of a call. This applies if the call h
 const [n, name] = parse(s) // n, name := parse(s), with parse returning (int, string, error)
 ```
 
-In a try block, gosling checks the error. A `_` element skips a result. A pattern with a rest element or a nested pattern cannot take results.
+In a try block, gosling checks the error. A `_` element skips a result. A pattern with a rest element, a nested pattern, or a default cannot take results.
 
 ### let and const
 

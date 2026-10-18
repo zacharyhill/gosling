@@ -425,6 +425,23 @@ func TestProcess(test *testing.T) {
 			splits: []int{len("func f() {\n\ttmp := load()")},
 		},
 		{
+			name: "object destructuring defaults",
+			src:  "func f() {\n\tlet {Port = 8080, Name: name = g(a, b), Host} = cfg\n}",
+			want: "func f() {\n\tPort, name, Host := __goslingDefault(cfg.Port, 8080), __goslingDefault(cfg.Name, g(a, b)), cfg.Host\n}",
+		},
+		{
+			name:   "array destructuring defaults hoist call",
+			src:    "func f() {\n\tconst [a, b = []int{1, 2}] = load()\n}",
+			want:   "func f() {\n\ttmp := load(); a, b := tmp[0], __goslingDefaultAt(len(tmp) > 1, tmp[1], []int{1, 2})\n}",
+			splits: []int{len("func f() {\n\ttmp := load()")},
+			consts: []int{len("func f() {\n\ttmp := load(); "), len("func f() {\n\ttmp := load(); a, ")},
+		},
+		{
+			name: "block with assignment is not destructuring",
+			src:  "func f() {\n\t{x = 1}\n}",
+			want: "func f() {\n\t{x = 1}\n}",
+		},
+		{
 			name: "block statement is not destructuring",
 			src:  "func f() {\n\t{\n\t\ta()\n\t}\n}",
 			want: "func f() {\n\t{\n\t\ta()\n\t}\n}",
@@ -745,6 +762,9 @@ func TestProcessErrors(test *testing.T) {
 		{"empty interpolation", "s := t`a ${}`", "empty ${} in template literal", len("s := t`a ")},
 		{"object rest", "func f() {\n{a, ...rest} := x\n}", "rest elements are only supported in array destructuring", len("func f() {\n{a, ")},
 		{"nested object rest", "func f() {\n\tlet [{a, ...rest}] = x\n}", "rest elements are only supported in array destructuring", len("func f() {\n\tlet [{a, ")},
+		{"rest default", "func f() {\n\tlet [a, ...rest = xs] = ys\n}", "a rest element cannot have a default", len("func f() {\n\tlet [a, ...rest ")},
+		{"template default", "func f() {\n\tlet {Name = t`x`} = c\n}", "a destructuring default must be plain Go", len("func f() {\n\tlet {Name = ")},
+		{"nullish default", "func f() {\n\tlet {Name = a ?? b} = c\n}", "a destructuring default must be plain Go", len("func f() {\n\tlet {Name = a ")},
 		{"optional index", "x := a?.[0]", "?.[ and ?.( are not supported", len("x := a")},
 		{"nullish assignment", "x ??= 1", "??= is not supported", len("x ")},
 		{"union inside function", "func f() {\n\ttype S = A | B\n}", "union types must be declared at package level", len("func f() {\n\t")},

@@ -88,6 +88,7 @@ func (lowerer *lowerer) lowerFile() {
 	lowerer.lowerTuples()
 	lowerer.lowerTemplates()
 	lowerer.lowerNullish()
+	lowerer.lowerDefaults()
 	lowerer.lowerArrows()
 	lowerer.lowerArrays()
 	lowerer.lowerUnions()

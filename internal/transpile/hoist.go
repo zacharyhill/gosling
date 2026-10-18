@@ -452,8 +452,8 @@ func (lowerer *lowerer) markersIn(nodes ...ast.Node) []*ast.CallExpr {
 }
 
 // isConditional reports whether marker runs only on some paths through bound
-// that gosling cannot rewrite: as a ?? default, as a try expression fallback,
-// or after a ?. link.
+// that gosling cannot rewrite: as a ?? or destructuring default, as a try
+// expression fallback, or after a ?. link.
 func (lowerer *lowerer) isConditional(marker ast.Node, bound ast.Node) bool {
 	child := marker
 	for ancestor := lowerer.parents[marker]; ancestor != nil && ancestor != bound; child, ancestor = ancestor, lowerer.parents[ancestor] {
@@ -481,10 +481,13 @@ func (lowerer *lowerer) failTo(try, target *tryContext, errVar string) string {
 	return jumpCode
 }
 
-// isFallbackOf reports whether child is the ?? default or the try expression
-// fallback of call.
+// isFallbackOf reports whether child is the ?? default, the try expression
+// fallback, or a conditional part of a destructuring default of call.
 func (lowerer *lowerer) isFallbackOf(call *ast.CallExpr, child ast.Node) bool {
 	if lowerer.file.coalesce[call] != nil && len(call.Args) == 2 && call.Args[1] == child {
+		return true
+	}
+	if isDefaultMarker(call) && call.Args[0] != child {
 		return true
 	}
 	_, _, fallback, ok := matchTryExpression(call)
