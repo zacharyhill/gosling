@@ -30,8 +30,9 @@ jobs:
       - run: go vet ./...
 
       # The language server tests skip without gopls.
+      # gopls v0.24 needs Go 1.27, so the job uses v0.23.
       - name: Install gopls
-        run: go install golang.org/x/tools/gopls@latest
+        run: go install golang.org/x/tools/gopls@v0.23.0
 
       - run: go test ./...
 
