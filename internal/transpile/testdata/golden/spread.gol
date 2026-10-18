@@ -51,3 +51,7 @@ func updateWithTrailingComma(p Point) Point {
 		X: 1,
 	}
 }
+
+func updatePointer(p *Point) *Point {
+	return &Point{...*p, Y: 2}
+}

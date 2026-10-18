@@ -520,6 +520,7 @@ const p2 = Point{...p, X: 5} // func() Point { v := p; v.X = 5; return v }()
 - Shorthand applies only if a positional literal is not valid. So `Point{y, x}` sets `X` to `y`, as in Go.
 - A slice spread always makes a new slice. It needs Go 1.22.
 - In a struct spread, the spread comes first. Name all fields after it. For a pointer, write `...*p`.
+- `&Point{...p, X: 5}` gives a pointer to the new value.
 
 ### Imports and generated names
 

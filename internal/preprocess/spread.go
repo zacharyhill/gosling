@@ -6,12 +6,13 @@ import (
 )
 
 // Spread markers. [...a, x, ...b] becomes __goslingCat(a, __goslingOne(x), b).
-// T{...p, X: 1} becomes T(__goslingWith(p, T{X: 1})). Both keep the source
-// text in order.
+// T{...p, X: 1} becomes T(__goslingWith(p, T{X: 1})), and &T{...p} becomes
+// __goslingAddr(T(__goslingWith(p, T{}))). All keep the source text in order.
 const (
 	CatMarker  = "__goslingCat"
 	OneMarker  = "__goslingOne"
 	WithMarker = "__goslingWith"
+	AddrMarker = "__goslingAddr"
 )
 
 type element struct {
@@ -128,17 +129,26 @@ func (processor *processor) structSpread(tokenIndex int) (int, error) {
 			return 0, &Error{processor.tokens[field.start].offset, "struct spread must be the first element"}
 		}
 	}
+	addrClosing := ""
+	if typeStart > 0 && processor.tokens[typeStart-1].is(token.AND) {
+		ampersand := processor.tokens[typeStart-1]
+		if ampersand.offset < processor.copiedUpTo {
+			return 0, &Error{ampersand.offset, "cannot take the address of this struct spread"}
+		}
+		processor.replace(ampersand.offset, ampersand.end(), AddrMarker+"(")
+		addrClosing = ")"
+	}
 	processor.replace(lbrace.offset, processor.tokenAt(tokenIndex+1).end(), "("+WithMarker+"(")
 	processor.braceStack = append(processor.braceStack, frame{kind: frameBlock})
 	hasTrailingComma := elements[0].end < closeIndex
 	switch {
 	case len(elements) > 1:
 		processor.scheduled[elements[0].end] = ", " + typeText + "{"
-		processor.scheduled[closeIndex] = "}))"
+		processor.scheduled[closeIndex] = "}))" + addrClosing
 	case hasTrailingComma:
-		processor.scheduled[closeIndex] = typeText + "{}))"
+		processor.scheduled[closeIndex] = typeText + "{}))" + addrClosing
 	default:
-		processor.scheduled[closeIndex] = ", " + typeText + "{}))"
+		processor.scheduled[closeIndex] = ", " + typeText + "{}))" + addrClosing
 	}
 	return tokenIndex + 1, nil
 }

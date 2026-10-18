@@ -18,6 +18,9 @@ func main() {
 	let p = Point{1, 2}
 	let q = Point{...p, Y: 20}
 	fmt.Println(p, q)
+	let r = &Point{...p, X: 7}
+	r.Y = 8
+	fmt.Println(p, *r)
 	let name, age = "ada", 36
 	let u = User{name, age}
 	fmt.Println(u, User{...u, name: "grace"})

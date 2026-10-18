@@ -12,7 +12,8 @@ import (
 // spreadMarkerDecls declares the spread markers for type checking.
 var spreadMarkerDecls = "func " + preprocess.CatMarker + "[S ~[]E, E any](parts ...S) S { return nil }\n" +
 	"func " + preprocess.OneMarker + "[E any](v ...E) []E { return v }\n" +
-	"func " + preprocess.WithMarker + "[V any](base, update V) V { return base }\n"
+	"func " + preprocess.WithMarker + "[V any](base, update V) V { return base }\n" +
+	"func " + preprocess.AddrMarker + "[V any](value V) *V { return &value }\n"
 
 // expandShorthand changes T{name, age} into T{name: name, age: age} if the
 // plain positional literal is not valid. This is the case if the literal
@@ -149,7 +150,12 @@ func (lowerer *lowerer) lowerWith(withCall *ast.CallExpr) {
 	line := lowerer.line(conversion.Pos())
 	typeText := strings.TrimSpace(lowerer.file.text(conversion.Fun))
 	tempVar := lowerer.pickTempVar(conversion.Pos(), conversion.End())
-	lowerer.replace(conversion.Pos(), base.Pos(), "func() "+typeText+" {\n"+tempVar+" := ", line)
+	var replacedExpr ast.Expr = conversion
+	returnText := tempVar
+	if addrCall, isAddressed := lowerer.getAddrMarkerCall(conversion); isAddressed {
+		replacedExpr, typeText, returnText = addrCall, "*"+typeText, "&"+tempVar
+	}
+	lowerer.replace(replacedExpr.Pos(), base.Pos(), "func() "+typeText+" {\n"+tempVar+" := ", line)
 	previousEnd := base.End()
 	for _, element := range compositeLit.Elts {
 		keyValue := element.(*ast.KeyValueExpr)
@@ -161,7 +167,15 @@ func (lowerer *lowerer) lowerWith(withCall *ast.CallExpr) {
 		}
 		previousEnd = keyValue.Value.End()
 	}
-	lowerer.replace(previousEnd, conversion.End(), "\nreturn "+tempVar+"\n}()", line)
+	lowerer.replace(previousEnd, replacedExpr.End(), "\nreturn "+returnText+"\n}()", line)
+}
+
+func (lowerer *lowerer) getAddrMarkerCall(conversion *ast.CallExpr) (*ast.CallExpr, bool) {
+	parentCall, isCall := lowerer.parents[conversion].(*ast.CallExpr)
+	if !isCall {
+		return nil, false
+	}
+	return callTo(parentCall, preprocess.AddrMarker)
 }
 
 func (file *file) inBadSpread(position token.Pos) bool {
