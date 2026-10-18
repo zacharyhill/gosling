@@ -1354,3 +1354,34 @@ func TestTightSpacing(test *testing.T) {
 		}
 	}
 }
+
+// TestTightControlFlow checks that control flow without spaces gives the
+// same output as with spaces.
+func TestTightControlFlow(test *testing.T) {
+	const header = "package p\n\nimport \"os\"\n\nfunc f(xs []int, m map[string]int, ok bool) int {\n\tlet n = 0\n\t_ = os.Args\n"
+	for _, testCase := range []struct {
+		spaced, tight string
+	}{
+		{"for (const x of xs) {\n\t\tn += x\n\t}", "for(const x of xs){\n\t\tn += x\n\t}"},
+		{"for (let k in m) {\n\t\tn += m[k]\n\t}", "for(let k in m){\n\t\tn += m[k]\n\t}"},
+		{"for (let i = 0; i < 3; i++) {\n\t\tn += i\n\t}", "for(let i = 0; i < 3; i++){\n\t\tn += i\n\t}"},
+		{"if (ok) {\n\t\tn++\n\t}", "if(ok){\n\t\tn++\n\t}"},
+		{"switch (n) {\n\tcase 1:\n\t\tn++\n\t}", "switch(n){\n\tcase 1:\n\t\tn++\n\t}"},
+		{"try {\n\t\tos.Remove(\"x\")\n\t} catch (e) {\n\t\tprintln(e)\n\t} finally {\n\t\tn++\n\t}", "try{\n\t\tos.Remove(\"x\")\n\t}catch(e){\n\t\tprintln(e)\n\t}finally{\n\t\tn++\n\t}"},
+		{"try {\n\t\tos.Remove(\"x\")\n\t} catch {\n\t\tn++\n\t}", "try{\n\t\tos.Remove(\"x\")\n\t}catch{\n\t\tn++\n\t}"},
+	} {
+		var outputs [2]string
+		for index, body := range []string{testCase.spaced, testCase.tight} {
+			src := header + "\t" + body + "\n\treturn n\n}\n"
+			transpiled, err := Transpile(Config{Importer: importer.Default()}, []Input{{Path: "p.gol", Src: []byte(src)}})
+			if err != nil {
+				test.Errorf("%q: %v", body, err)
+				continue
+			}
+			outputs[index] = string(transpiled[0].Src)
+		}
+		if outputs[0] != outputs[1] {
+			test.Errorf("%q gives\n%s\nwant\n%s", testCase.tight, outputs[1], outputs[0])
+		}
+	}
+}
