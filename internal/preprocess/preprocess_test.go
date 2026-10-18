@@ -362,6 +362,31 @@ func TestProcess(test *testing.T) {
 			want: "a := [...]int{1, 2}",
 		},
 		{
+			name: "call spread",
+			src:  "f(a, ...xs)",
+			want: "f(a, xs...)",
+		},
+		{
+			name: "call spread with trailing comma",
+			src:  "f(\n\t...xs,\n)",
+			want: "f(\n\txs...,\n)",
+		},
+		{
+			name: "call with several spreads",
+			src:  "ys = append(a, ...b, x, ...c)",
+			want: "ys = append(a, __goslingCat(b, __goslingOne(x), c)...)",
+		},
+		{
+			name: "call spread before a value",
+			src:  "f(...xs, 1)",
+			want: "f(__goslingCat(xs, __goslingOne(1))...)",
+		},
+		{
+			name: "variadic parameter types are not spreads",
+			src:  "type F func(int, ...string)\nfunc g(...int) {}\nfunc (r R) M(int, ...int) {}\ntype I interface {\n\tM(int, ...string)\n}",
+			want: "type F func(int, ...string)\nfunc g(...int) {}\nfunc (r R) M(int, ...int) {}\ntype I interface {\n\tM(int, ...string)\n}",
+		},
+		{
 			name: "struct spread",
 			src:  "p2 := Point{...p, X: 5}",
 			want: "p2 := Point(__goslingWith(p, __goslingKeys(Point{X: 5})))",

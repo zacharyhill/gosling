@@ -95,6 +95,14 @@ func (processor *processor) sliceSpread(tokenIndex int) (int, error) {
 	lbrack := processor.tokens[tokenIndex]
 	processor.replace(lbrack.offset, lbrack.end(), CatMarker+"(")
 	processor.parens++ // openBracket skips this [, but rewrite still counts its ]
+	processor.markRuns(elements, OneMarker+"(", ")")
+	processor.scheduled[closeIndex] = ")"
+	return tokenIndex, nil
+}
+
+// markRuns drops the ... of each spread element and puts each run of other
+// elements between runOpen and runClose.
+func (processor *processor) markRuns(elements []element, runOpen, runClose string) {
 	isInRun := false
 	for elementIndex, current := range elements {
 		if current.spread {
@@ -102,16 +110,97 @@ func (processor *processor) sliceSpread(tokenIndex int) (int, error) {
 			continue
 		}
 		if !isInRun {
-			processor.insertBefore(current.start, OneMarker+"(")
+			processor.insertBefore(current.start, runOpen)
 			isInRun = true
 		}
 		if elementIndex == len(elements)-1 || elements[elementIndex+1].spread {
-			processor.insertBefore(current.end, ")")
+			processor.insertBefore(current.end, runClose)
 			isInRun = false
 		}
 	}
-	processor.scheduled[closeIndex] = ")"
-	return tokenIndex, nil
+}
+
+// callSpread rewrites the spread at token ellipsisIndex if it is an argument
+// of a call. f(a, ...xs) becomes f(a, xs...). Other spreads, as in
+// f(...a, x, ...b), become f(__goslingCat(a, __goslingOne(x), b)...). It
+// does nothing if the spread is not in a call.
+func (processor *processor) callSpread(ellipsisIndex int) error {
+	openIndex, ok := processor.findEnclosingBracket(ellipsisIndex)
+	if !ok || !processor.isCall(openIndex) {
+		return nil
+	}
+	elements, _, err := processor.elements(openIndex, token.RPAREN)
+	if err != nil {
+		return err
+	}
+	for len(elements) > 0 && !elements[0].spread {
+		elements = elements[1:]
+	}
+	if len(elements) == 0 || elements[0].start != ellipsisIndex {
+		return nil // the first spread of the call already rewrote this one
+	}
+	ellipsis := processor.tokens[ellipsisIndex]
+	if len(elements) == 1 {
+		processor.replace(ellipsis.offset, ellipsis.end(), "")
+		processor.insertBefore(elements[0].end, "...")
+		return nil
+	}
+	processor.replace(ellipsis.offset, ellipsis.end(), CatMarker+"(")
+	processor.markRuns(elements[1:], OneMarker+"(", ")")
+	processor.insertBefore(elements[len(elements)-1].end, ")...")
+	return nil
+}
+
+// findEnclosingBracket returns the index of the innermost open bracket before
+// token tokenIndex. It reports false if that bracket is not a (.
+func (processor *processor) findEnclosingBracket(tokenIndex int) (int, bool) {
+	depth := 0
+	for openIndex := tokenIndex - 1; openIndex >= 0; openIndex-- {
+		switch processor.tokens[openIndex].kind {
+		case token.RPAREN, token.RBRACK, token.RBRACE:
+			depth++
+		case token.LPAREN, token.LBRACK, token.LBRACE:
+			if depth == 0 {
+				return openIndex, processor.tokens[openIndex].is(token.LPAREN)
+			}
+			depth--
+		}
+	}
+	return 0, false
+}
+
+// isCall reports whether the ( at token openIndex starts the arguments of a
+// call, and not the parameters of a function or method.
+func (processor *processor) isCall(openIndex int) bool {
+	if openIndex == 0 {
+		return false
+	}
+	switch processor.tokens[openIndex-1].kind {
+	case token.RPAREN, token.RBRACK, token.RBRACE:
+		return true
+	case token.IDENT:
+		return !processor.isFuncDeclName(openIndex - 1)
+	}
+	return false
+}
+
+// isFuncDeclName reports whether the name at token nameIndex is the name of a
+// function, a method, or an interface method.
+func (processor *processor) isFuncDeclName(nameIndex int) bool {
+	if nameIndex == 0 {
+		return false
+	}
+	switch processor.tokens[nameIndex-1].kind {
+	case token.FUNC:
+		return true
+	case token.RPAREN:
+		receiverIndex, ok := processor.findEnclosingBracket(nameIndex - 1)
+		return ok && receiverIndex > 0 && processor.tokens[receiverIndex-1].is(token.FUNC)
+	case token.LBRACE, token.SEMICOLON:
+		braceIndex, _ := processor.findEnclosingBracket(nameIndex)
+		return braceIndex > 0 && processor.tokens[braceIndex].is(token.LBRACE) && processor.tokens[braceIndex-1].is(token.INTERFACE)
+	}
+	return false
 }
 
 // braceSpread rewrites T{...a, k: v, ...b} where the { is token tokenIndex.
@@ -141,21 +230,7 @@ func (processor *processor) braceSpread(tokenIndex int) (int, error) {
 	}
 	processor.replace(lbrace.offset, lbrace.end(), opening)
 	processor.braceStack = append(processor.braceStack, frame{kind: frameBlock})
-	isInRun := false
-	for elementIndex, current := range elements {
-		if current.spread {
-			processor.scheduled[current.start] = ""
-			continue
-		}
-		if !isInRun {
-			processor.insertBefore(current.start, KeysMarker+"("+runType+"{")
-			isInRun = true
-		}
-		if elementIndex == len(elements)-1 || elements[elementIndex+1].spread {
-			processor.insertBefore(current.end, "})")
-			isInRun = false
-		}
-	}
+	processor.markRuns(elements, KeysMarker+"("+runType+"{", "})")
 	processor.scheduled[closeIndex] = closing
 	return tokenIndex, nil
 }

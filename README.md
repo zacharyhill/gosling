@@ -35,7 +35,7 @@ Features:
 - Map methods: `ages.has(name)`, `ages.get(name) ?? 0`, `ages.keys()`
 - `.length`: `xs.length` becomes `len(xs)`
 - Union types with exhaustive switches: `type Shape = Circle | Square`, `type Method = "GET" | "POST"`
-- Struct shorthand and spread: `User{name, age}`, `[...a, ...b]`, `Point{...p, X: 5}`, `{...defaults, ...overrides}`
+- Struct shorthand and spread: `User{name, age}`, `[...a, ...b]`, `Point{...p, X: 5}`, `{...defaults, ...overrides}`, `f(...xs)`
 
 ## Why
 
@@ -861,6 +861,8 @@ m := func() Counts {
 	maps.Copy(v, b)
 	return v
 }()
+sum(1, ...xs)                // sum(1, xs...)
+sum(0, ...xs, 2, ...ys)      // sum(0, slices.Concat(xs, []int{2}, ys)...)
 ```
 
 - Shorthand applies only if a positional literal is not valid. So `Point{y, x}` sets `X` to `y`, as in Go.
@@ -872,6 +874,8 @@ m := func() Counts {
 - The type before `{` can be a name or a map type, such as `map[string]int{...a}`.
 - Without a type, `{...a, "k": 1}` gets the type of its first spread. This also works for structs: `{...p, X: 5}`.
 - For slices, write `[...a]`, not `[]int{...a}`.
+- In a call, a spread fills the variadic parameter. All arguments from the first spread to the end go into it. A spread cannot fill other parameters.
+- One spread at the end of a call passes the slice itself, as `xs...` does in Go. So the function can change its elements. Other call spreads make a new slice.
 
 ### Imports and generated names
 
