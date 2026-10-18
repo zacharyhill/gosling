@@ -29,6 +29,9 @@
     },
     {
       "include": "#nullish"
+    },
+    {
+      "include": "#ternary"
     }
   ],
   "repository": {
@@ -276,6 +279,10 @@
     "nullish": {
       "match": "\\?\\?",
       "name": "keyword.operator.nullish.gol"
+    },
+    "ternary": {
+      "match": "\\?(?![?.])",
+      "name": "keyword.operator.ternary.gol"
     }
   }
 }

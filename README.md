@@ -30,6 +30,7 @@ Features:
 - Parameter types after a colon: `func f(a: int, b: string): bool`
 - `for (const x of xs)`, `for (const k in m)`, and `for (let i = 0; i < n; i++)`
 - Optional chaining, `??`, and `??=`: `user?.Profile?.Name ?? "anon"`, `ports?.[name]`, `onDone?.()`, `cfg.Port ??= new(8080)`
+- Ternary operator: `n < 0 ? "negative" : "positive"`
 - Arrow functions: `x => x * 2`, `(a, b) => a + b`
 - Array methods on slices and arrays: `nums.filter(n => n%2 == 0).map(n => n * n)`
 - Map methods: `ages.has(name)`, `ages.get(name) ?? 0`, `ages.keys()`
@@ -320,7 +321,7 @@ if cond {
 
 These calls are errors:
 
-- a call in a `??` default or after `?.`
+- a call in a `??` default, after `?.`, or in an arm of a ternary that is a value
 - a call in the post statement of a `for` loop
 - a call in a later expression of a `case`, such as `f()` in `case a, f():`
 - a call in a `case` after the `default` case, or in a `case` that the case before it enters with `fallthrough`
@@ -341,7 +342,7 @@ Rules:
 - Some calls never return: `t.Fatal`, `t.FailNow`, `t.Skip`, `os.Exit`, `runtime.Goexit`, `log.Fatal`, and `log.Panic`, with their variants. When a function ends in a try, these calls end it.
 - If no call in the try block can fail, gosling removes the catch block.
 - The catch variable can have the same name as a variable in the try block.
-- There is no `?` operator. Use try / catch.
+- There is no `?` operator for errors, such as `f()?`. Use try / catch.
 
 The output uses labeled blocks and `goto`, not closures. So `return`, `break`, and `continue` work as in Go:
 
@@ -720,6 +721,45 @@ if m, k := headers, key; m[k] == nil {
 - `??=` is a statement. It cannot be in an `if`, `for`, or `switch` header.
 - A call that can fail cannot be on the right side of `??=`, also in a try block. The call runs only if `x` is nil.
 
+### Ternary operator
+
+`c ? a : b` gives `a` if `c` is true. Otherwise it gives `b`. Only the chosen arm runs. A ternary in the else arm makes a chain:
+
+```go
+const label = n < 0 ? "negative" : n == 0 ? "zero" : "positive"
+
+label := func() string {
+	if n < 0 {
+		return "negative"
+	}
+	if n == 0 {
+		return "zero"
+	}
+	return "positive"
+}()
+```
+
+A ternary that is a statement becomes an `if` statement. Then its arms can be calls without a result:
+
+```go
+ok ? save(doc) : log.Println("skipped") // if ok { save(doc) } else { log.Println("skipped") }
+```
+
+The result type comes from the arms:
+
+- An untyped constant gets the type of the other arm.
+- If both arms are untyped constants, the result gets the type that the context expects, such as the type of a `let` or a function result. Without a context, it gets the default type, as in Go. So `c ? 1 : 2.5` is a `float64`.
+- If the arms have different types, the result gets the type that the context expects: `let s: Shape = round ? Circle{} : Square{}`. Without a context, one arm must be assignable to the type of the other arm.
+
+Rules:
+
+- The condition must be a `bool`.
+- A ternary has the lowest precedence. So `a || b ? x : y` tests `a || b`.
+- Nested ternaries group from the right. `a ? b : c ? d : e` is `a ? b : (c ? d : e)`.
+- A line cannot start with the `?` or the `:` of a ternary, because Go ends the statement at the line break. To split a ternary over lines, end each line with `?` or `:`.
+- In a template literal, a colon after the else arm starts a format: `` t`${ok ? a : b:.2f}` ``.
+- In a try block, a call that can fail is an error in an arm of a ternary that is a value. In a ternary that is a statement, gosling checks the call.
+
 ### Arrow functions
 
 ```go
@@ -1007,6 +1047,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - `catch panic` cannot follow a typed catch clause.
 - Object patterns have no rest element.
 - In a try block, an optional call that returns an error must be a statement to be checked.
+- A line cannot start with the `?` or the `:` of a ternary.
 - gosling does not check switches in `.go` files.
 - In a `case` expression, a function type or literal cannot use `):`. Use Go order there.
 - VS Code highlights the name in `name: type` parameters as a type.

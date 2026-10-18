@@ -172,6 +172,13 @@ test("optional chaining and nullish coalescing", () => {
   assertScope(source, "??", "keyword.operator.nullish.gol");
 });
 
+test("ternary operator", () => {
+  const source = inFunctionBody('\tsign := n < 0 ? "neg" : n?.x ?? "pos"');
+  assertScope(source, "?", "keyword.operator.ternary.gol");
+  assertScope(source, "?.", "punctuation.accessor.optional.gol");
+  assertScope(source, "??", "keyword.operator.nullish.gol");
+});
+
 test("union types", () => {
   const source = "package p\n\ntype Shape = Circle | Square | *Polygon";
   assertScope(source, "Shape", "entity.name.type");

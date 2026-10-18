@@ -32,6 +32,7 @@ func cleanMessage(message string) string {
 	message = tryFallbackRE.ReplaceAllString(message, "in try expression fallback")
 	message = typedMarkerRE.ReplaceAllString(message, "in variable declaration$1")
 	message = defaultMarkerRE.ReplaceAllString(message, "in destructuring default")
+	message = cleanTernaryMessage(message)
 	if match := spreadMismatchRE.FindStringSubmatch(message); match != nil {
 		return formatSpreadMismatch(match[1], match[2], match[3])
 	}
@@ -159,6 +160,8 @@ func cleanCall(name, text string) (string, string, bool) {
 		return args[0], after, true
 	case (name == coalesceMarker || name == coalescePtrMarker) && len(args) == 2:
 		return args[0] + " ?? " + args[1], after, true
+	case name == ternaryMarker && len(args) == 3:
+		return args[0] + " ? " + args[1] + " : " + args[2], after, true
 	case name == arrayRefMarker && len(args) == 1:
 		return args[0], strings.TrimPrefix(after, "[:]"), true
 	case isMethodMarker(name) && len(args) > 0:
@@ -255,6 +258,8 @@ func markerDisplayName(name string) string {
 		return "struct spread"
 	case coalesceMarker, coalescePtrMarker:
 		return "??"
+	case ternaryMarker:
+		return "ternary"
 	case preprocess.OMarker:
 		return "?."
 	}
@@ -280,4 +285,20 @@ func arrayMethodName(suffixed string) string {
 		}
 	}
 	return suffixed
+}
+
+var (
+	ternaryMismatchRE = regexp.MustCompile(`in call to ` + ternaryMarker + `, mismatched types (.+) \(cannot infer T\)`)
+	ternaryInferredRE = regexp.MustCompile(`in call to ` + ternaryMarker + `, type (.+) of .+ does not match inferred type (.+) for T`)
+	ternaryUnknownRE  = regexp.MustCompile(`in call to ` + ternaryMarker + `, cannot infer T .*`)
+	ternaryArgumentRE = regexp.MustCompile(`in argument to ` + ternaryMarker + `(\[[^\]]*\])?`)
+)
+
+// cleanTernaryMessage rewrites type checker messages about the ternary
+// marker in terms of the ternary.
+func cleanTernaryMessage(message string) string {
+	message = ternaryMismatchRE.ReplaceAllString(message, "ternary arms have mismatched types $1")
+	message = ternaryInferredRE.ReplaceAllString(message, "ternary arms have mismatched types $2 and $1")
+	message = ternaryUnknownRE.ReplaceAllString(message, "cannot infer the type of this ternary; declare the type, as in let x: T = c ? a : b")
+	return ternaryArgumentRE.ReplaceAllString(message, "in ternary")
 }

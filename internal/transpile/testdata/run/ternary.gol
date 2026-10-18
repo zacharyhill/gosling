@@ -1,0 +1,42 @@
+package main
+
+import "fmt"
+
+var calls []string
+
+func trace(name string, value int) int {
+	calls = append(calls, name)
+	return value
+}
+
+func sign(n int) string {
+	return n < 0 ? "negative" : n == 0 ? "zero" : "positive"
+}
+
+type Animal interface{ Sound() string }
+
+type Dog struct{}
+
+func (Dog) Sound() string { return "woof" }
+
+type Cat struct{}
+
+func (Cat) Sound() string { return "meow" }
+
+func main() {
+	for (const n of []int{-2, 0, 3}) {
+		fmt.Println(n, sign(n))
+	}
+	const picked = true ? trace("then", 1) : trace("else", 2)
+	fmt.Println(picked, calls)
+	let ratio: float64 = len(calls) > 5 ? 1 : 2
+	fmt.Println(ratio / 4)
+	for (const loud of []bool{true, false}) {
+		let pet: Animal = loud ? Dog{} : Cat{}
+		fmt.Println(pet.Sound())
+	}
+	let p: *int
+	fmt.Println(p == nil ? "nil" : "set", t`${len(calls) == 1 ? "one call" : "more"}`)
+	const nested = false ? 1 : true ? 2 : 3
+	fmt.Println(nested)
+}

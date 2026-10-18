@@ -1,0 +1,62 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+)
+
+type Point struct{ X, Y int }
+
+func parse(s string) (int, error) {
+	return strconv.Atoi(s)
+}
+
+func pick(ok: bool, s: string): int {
+	try {
+		const n = parse(s)
+		return ok ? n : -n
+	} catch {
+		return 0
+	}
+}
+
+func save(ok: bool): error {
+	return ok ? nil : errors.New("save failed")
+}
+
+func store(first: bool): string {
+	try {
+		first ? save(false) : save(true)
+		return "stored"
+	} catch (e) {
+		return e.Error()
+	}
+}
+
+func main() {
+	let m = map[string]int{"a": 1}
+	let ms: map[string]int
+	fmt.Println((ms?.["a"] ?? 0) > 0 ? "yes" : "no", (m?.["a"] ?? 0) > 0 ? "yes" : "no")
+	let ptr: *int
+	let seven = 7
+	ptr ??= true ? &seven : nil
+	fmt.Println(*ptr)
+	const total = 3.14159
+	fmt.Println(t`${seven > 5 ? total : 0.0:.2f}|${seven > 5 ? "big" : "small":q}`)
+	const points = []Point{{X: seven > 5 ? 1 : 2}}
+	fmt.Println(points)
+	const {X, Y} = seven > 5 ? Point{1, 2} : Point{3, 4}
+	fmt.Println(X, Y)
+	const [a, b] = seven > 5 ? [2]int{5, 6} : [2]int{7, 8}
+	fmt.Println(a, b)
+	const double = (x: int): int => x > 3 ? x * 2 : x
+	fmt.Println(double(4), double(2), pick(true, "3"), pick(false, "3"))
+	const xs = []int{1, 2, 3, 4}.map(x => x % 2 == 0 ? "even" : "odd")
+	fmt.Println(xs)
+	const merged = Point{...points[0], Y: seven > 5 ? 9 : 0}
+	fmt.Println(merged)
+	const err = errors.New("x")
+	fmt.Println(err != nil ? err.Error() : "")
+	fmt.Println(store(true), store(false))
+}
