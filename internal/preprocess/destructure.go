@@ -3,15 +3,17 @@ package preprocess
 import (
 	"fmt"
 	"go/token"
+	"slices"
 	"strings"
 )
 
 // binding is one name in a destructuring pattern. key is the source field
 // and name is the target variable.
 type binding struct {
-	key  string // field name, not used for array patterns
-	name string
-	rest bool
+	key          string // field name, not used for array patterns
+	name         string
+	patternIndex int
+	rest         bool
 }
 
 // destructure is a destructuring statement with a right side that the scan
@@ -38,6 +40,10 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 	if !operator.is(token.DEFINE) && !operator.is(token.ASSIGN) {
 		return tokenIndex, false, nil
 	}
+	if isArray {
+		// A blank element reads no index, so it cannot panic.
+		bindings = slices.DeleteFunc(bindings, func(elementBinding binding) bool { return elementBinding.name == "_" })
+	}
 	operatorText := operator.kind.String()
 	var constBindings []binding
 	if keyword != nil {
@@ -52,7 +58,7 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 
 	if end, ok := processor.simpleExpr(operatorIndex + 1); ok {
 		rightSide := string(processor.src[processor.tokenAt(operatorIndex+1).offset:processor.tokenAt(end).end()])
-		namesAt := processor.replace(open.offset, processor.tokenAt(end).end(), names(bindings)+" "+operatorText+" "+values(bindings, rightSide, isArray))
+		namesAt := processor.replace(open.offset, processor.tokenAt(end).end(), formatAssignment(bindings, operatorText, rightSide, isArray))
 		processor.recordConsts(namesAt, constBindings)
 		return end, true, nil
 	}
@@ -62,7 +68,7 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 	processor.replace(open.offset, operator.end(), rightSideVar+" :=")
 	processor.pendingDestructures = append(processor.pendingDestructures, &destructure{
 		start:         processor.nesting(),
-		text:          "; " + names(bindings) + " " + operatorText + " " + values(bindings, rightSideVar, isArray),
+		text:          "; " + formatAssignment(bindings, operatorText, rightSideVar, isArray),
 		constBindings: constBindings,
 	})
 	return operatorIndex, true, nil
@@ -85,13 +91,13 @@ func (processor *processor) pattern(tokenIndex int, isArray bool) ([]binding, in
 			if !processor.tokenAt(tokenIndex+1).is(token.IDENT) || !processor.tokenAt(tokenIndex+2).is(closing) {
 				return nil, 0, nil
 			}
-			bindings = append(bindings, binding{name: processor.tokenAt(tokenIndex + 1).text, rest: true})
+			bindings = append(bindings, binding{name: processor.tokenAt(tokenIndex + 1).text, patternIndex: len(bindings), rest: true})
 			return bindings, tokenIndex + 3, nil
 		}
 		if !current.is(token.IDENT) {
 			return nil, 0, nil
 		}
-		newBinding := binding{key: current.text, name: current.text}
+		newBinding := binding{key: current.text, name: current.text, patternIndex: len(bindings)}
 		tokenIndex++
 		if !isArray && processor.tokenAt(tokenIndex).is(token.COLON) && processor.tokenAt(tokenIndex+1).is(token.IDENT) {
 			newBinding.name = processor.tokenAt(tokenIndex + 1).text
@@ -126,6 +132,15 @@ func (processor *processor) simpleExpr(tokenIndex int) (int, bool) {
 	return 0, false
 }
 
+// formatAssignment returns the statement that assigns the bindings from rightSide.
+// Without bindings, it only evaluates rightSide.
+func formatAssignment(bindings []binding, operatorText, rightSide string, isArray bool) string {
+	if len(bindings) == 0 {
+		return "_ = " + rightSide
+	}
+	return names(bindings) + " " + operatorText + " " + values(bindings, rightSide, isArray)
+}
+
 func names(bindings []binding) string {
 	targets := make([]string, len(bindings))
 	for bindingIndex, binding := range bindings {
@@ -139,9 +154,9 @@ func values(bindings []binding, rightSide string, isArray bool) string {
 	for bindingIndex, binding := range bindings {
 		switch {
 		case binding.rest:
-			sources[bindingIndex] = fmt.Sprintf("%s[%d:]", rightSide, bindingIndex)
+			sources[bindingIndex] = fmt.Sprintf("%s[%d:]", rightSide, binding.patternIndex)
 		case isArray:
-			sources[bindingIndex] = fmt.Sprintf("%s[%d]", rightSide, bindingIndex)
+			sources[bindingIndex] = fmt.Sprintf("%s[%d]", rightSide, binding.patternIndex)
 		default:
 			sources[bindingIndex] = rightSide + "." + binding.key
 		}
