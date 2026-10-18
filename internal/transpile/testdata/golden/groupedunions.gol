@@ -1,0 +1,37 @@
+package groupedunions
+
+type (
+	Circle struct{ R float64 }
+	Square struct{ Side float64 }
+
+	// Shape is any drawable shape.
+	Shape = Circle | *Square
+
+	ID string
+
+	Event = Click | Key
+)
+
+type Click struct{}
+
+type Key struct{ Code int }
+
+func area(s Shape) float64 {
+	switch let s = s.(type) {
+	case Circle:
+		return 3 * s.R * s.R
+	case *Square:
+		return s.Side * s.Side
+	}
+	return 0
+}
+
+func code(e Event) int {
+	switch let e = e.(type) {
+	case Key:
+		return e.Code
+	case Click:
+		return 0
+	}
+	return -1
+}

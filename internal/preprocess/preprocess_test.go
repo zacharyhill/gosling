@@ -434,6 +434,26 @@ func TestProcess(test *testing.T) {
 			}},
 		},
 		{
+			name: "unions in a type group",
+			src:  "type (\n\tID int\n\tShape = Circle | *Square\n\tName string\n\tSize = Small | Large\n)\n",
+			want: "type (\n\tID int\n\tShape interface{ isShape() }\n\tName string\n\tSize interface{ isSize() }\n); func (Circle) isShape() {}; func (*Square) isShape() {}; func __goslingVariants_Shape(Circle, *Square) {}; func (Small) isSize() {}; func (Large) isSize() {}; func __goslingVariants_Size(Small, Large) {}\n",
+			splits: []int{
+				len("type (\n\tID int\n\tShape interface{ isShape() }\n\tName string\n\tSize interface{ isSize() }\n)"),
+				len("type (\n\tID int\n\tShape interface{ isShape() }\n\tName string\n\tSize interface{ isSize() }\n); func (Circle) isShape() {}"),
+				len("type (\n\tID int\n\tShape interface{ isShape() }\n\tName string\n\tSize interface{ isSize() }\n); func (Circle) isShape() {}; func (*Square) isShape() {}; func __goslingVariants_Shape(Circle, *Square) {}"),
+				len("type (\n\tID int\n\tShape interface{ isShape() }\n\tName string\n\tSize interface{ isSize() }\n); func (Circle) isShape() {}; func (*Square) isShape() {}; func __goslingVariants_Shape(Circle, *Square) {}; func (Small) isSize() {}"),
+			},
+			unions: []Union{
+				{Name: "Shape", Start: len("type (\n\tID int\n\t"), MarkerStart: len("type (\n\tID int\n\tShape interface{ isShape() }\n\tName string\n\tSize interface{ isSize() }\n); func (Circle) isShape() {}; func (*Square) isShape() {}"), MarkerEnd: len("type (\n\tID int\n\tShape interface{ isShape() }\n\tName string\n\tSize interface{ isSize() }\n); func (Circle) isShape() {}; func (*Square) isShape() {}; func __goslingVariants_Shape(Circle, *Square) {}")},
+				{Name: "Size", Start: len("type (\n\tID int\n\tShape interface{ isShape() }\n\tName string\n\t"), MarkerStart: len("type (\n\tID int\n\tShape interface{ isShape() }\n\tName string\n\tSize interface{ isSize() }\n); func (Circle) isShape() {}; func (*Square) isShape() {}; func __goslingVariants_Shape(Circle, *Square) {}; func (Small) isSize() {}; func (Large) isSize() {}"), MarkerEnd: len("type (\n\tID int\n\tShape interface{ isShape() }\n\tName string\n\tSize interface{ isSize() }\n); func (Circle) isShape() {}; func (*Square) isShape() {}; func __goslingVariants_Shape(Circle, *Square) {}; func (Small) isSize() {}; func (Large) isSize() {}; func __goslingVariants_Size(Small, Large) {}")},
+			},
+		},
+		{
+			name: "type group without unions untouched",
+			src:  "type (\n\tID int\n\tPoint struct{ X, Y int }\n\tFn = func(a | b)\n)\n",
+			want: "type (\n\tID int\n\tPoint struct{ X, Y int }\n\tFn = func(a | b)\n)\n",
+		},
+		{
 			name: "plain alias untouched",
 			src:  "type ID = string\n",
 			want: "type ID = string\n",
@@ -934,6 +954,8 @@ func TestProcessErrors(test *testing.T) {
 		{"generic union variant without type arguments", "type R[T any] = Ok[T] | Err\n", "union variant Err must have the type arguments [T]", len("type R[T any] = Ok[T] | ")},
 		{"generic union variant with other type arguments", "type R[K, V any] = Ok[V, K] | Err[K, V]\n", "union variant Ok[V, K] must have the type arguments [K, V]", len("type R[K, V any] = ")},
 		{"type arguments in a plain union", "type R = Ok[int] | Err\n", "union variants must be type names", len("type R = Ok")},
+		{"type group with a union inside function", "func f() {\n\ttype (\n\t\tS = A | B\n\t)\n}", "union types must be declared at package level", len("func f() {\n\ttype (\n\t\t")},
+		{"generic union in a type group without type arguments", "type (\n\tR[T any] = Ok[T] | Err\n)\n", "union variant Err must have the type arguments [T]", len("type (\n\tR[T any] = Ok[T] | ")},
 		{"question mark", "x := f()?", "the ? operator is not supported; use try/catch", len("x := f()")},
 		{"question mark before space", "x := f()? .y", "the ? operator is not supported", len("x := f()")},
 		{"spread not first", "p := Point{X: 1, ...p}", "struct spread must be the first element", len("p := Point{X: 1, ")},
