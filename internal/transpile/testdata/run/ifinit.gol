@@ -1,0 +1,26 @@
+package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+func describe(s string) string {
+	try {
+		if let n = strconv.Atoi(s); n > 0 {
+			return "positive"
+		} else if const m = strconv.Atoi(s + "0"); m < -100 {
+			return "very negative"
+		}
+		return "small"
+	} catch (e) {
+		return "caught: " + e.Error()
+	}
+}
+
+func main() {
+	fmt.Println(describe("5"))
+	fmt.Println(describe("-20"))
+	fmt.Println(describe("-2"))
+	fmt.Println(describe("x"))
+}

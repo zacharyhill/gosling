@@ -1,0 +1,4 @@
+positive
+very negative
+small
+caught: strconv.Atoi: parsing "x": invalid syntax
