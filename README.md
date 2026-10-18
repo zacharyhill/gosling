@@ -44,6 +44,7 @@ Features:
 - Default and optional parameters: `func Dial(addr: string, timeout: time.Duration = 5*time.Second, port?: int)`
 - Method blocks: `impl User { func Greet() string { ... } }`
 - Generators: `func* walk(t: *Tree): iter.Seq[int] { yield t.Value }`
+- `using` declarations: `using file = os.Open(path)` closes `file` when the function returns
 
 ## Why
 
@@ -668,6 +669,34 @@ const add = (a: int, b: int) => a + b             // add := func(a int, b int) i
 - In that order, the result type comes after `):`, as in `func f(): int`.
 - The receiver can use either order.
 - The rules apply to function declarations, function literals, arrow functions, function types, and interface methods.
+
+### using
+
+`using` declares a variable and closes it when the function returns:
+
+```go
+try {
+	using file = os.Open(path)
+	return io.ReadAll(file)
+} catch (e) {
+	return nil, e
+}
+```
+
+becomes:
+
+```go
+file, err := os.Open(path)
+if err != nil { ... }
+defer file.Close()
+```
+
+- The value must have a `Close` method. For a different cleanup, such as `tx.Rollback()`, use `const` and `defer`.
+- If the call can fail, `using` must be in a try block. gosling checks the error before the `defer`.
+- `using` ignores the error from `Close`, as `defer file.Close()` does. If the error is important, such as for a file that you write, call `Close` and check its error yourself.
+- `Close` runs when the function returns, not at the end of the block. So `using` in a loop is an error. Move the loop body into a function.
+- Code cannot assign to the variable, as with `const`.
+- Several `using` declarations close in the opposite order.
 
 ### for...of and for...in
 
@@ -1314,6 +1343,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - Default values are not supported in generic functions, variadic functions, function literals, arrow functions, and interface methods.
 - A default value must be plain Go. It cannot use gosling syntax, such as a template literal.
 - A `yield` statement must be directly in a generator body, not in a function literal in it. Arrow functions cannot be generators.
+- `using` declares one name. It cannot have a type or a destructuring pattern.
 
 ## How it works
 

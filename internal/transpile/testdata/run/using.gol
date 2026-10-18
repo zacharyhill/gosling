@@ -1,0 +1,36 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+type resource struct{ name string }
+
+func (opened *resource) Close() error {
+	fmt.Println("close", opened.name)
+	return nil
+}
+
+func open(name string) (*resource, error) {
+	if name == "" {
+		return nil, errors.New("empty name")
+	}
+	fmt.Println("open", name)
+	return &resource{name}, nil
+}
+
+func use(firstName, secondName string) {
+	try {
+		using first = open(firstName)
+		using second = open(secondName)
+		fmt.Println("use", first.name, second.name)
+	} catch (failure) {
+		fmt.Println("error:", failure)
+	}
+}
+
+func main() {
+	use("a", "b")
+	use("a", "")
+}

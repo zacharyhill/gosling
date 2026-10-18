@@ -61,7 +61,9 @@ type Result struct {
 	// replace yield statements.
 	Generators []int
 	Yields     []int
-	edits      []edit
+	// Usings holds the offsets of the names that using declares.
+	Usings []int
+	edits  []edit
 }
 
 // Error is a syntax error at an offset into the original source.
@@ -400,6 +402,8 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		processor.openGeneratorBody(tokenIndex, processor.iteratorByBrace[current.offset])
 	case current.isIdent("yield") && processor.atStmtStart(tokenIndex) && processor.isInGenerator():
 		return processor.yield(tokenIndex)
+	case processor.isUsing(tokenIndex):
+		return processor.using(tokenIndex)
 	case processor.isThrow(tokenIndex):
 		return tokenIndex, processor.rewriteThrow(tokenIndex)
 	case current.isIdent("try") && !processor.tokenAt(tokenIndex+1).is(token.LBRACE):

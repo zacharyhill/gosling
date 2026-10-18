@@ -194,6 +194,7 @@ func (lowerer *lowerer) walkStmt(stmt ast.Stmt, try *tryContext) {
 		lowerer.walkClauses(stmt.Body, try)
 	default:
 		lowerer.hoist(stmt, try, stmt)
+		lowerer.checkUsing(stmt, try)
 		if !lowerer.lowerThrow(stmt, try) && !lowerer.lowerExit(stmt, try) {
 			lowerer.lowerTryStmt(stmt, try)
 		}

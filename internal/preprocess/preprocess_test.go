@@ -1309,6 +1309,18 @@ func TestProcess(test *testing.T) {
 			src:  "func f() {\n\tyield := 1\n\tyield(2)\n}",
 			want: "func f() {\n\tyield := 1\n\tyield(2)\n}",
 		},
+		{
+			name:   "using",
+			src:    "func f() {\n\tusing file = os.Open(p)\n}",
+			want:   "func f() {\n\tfile := os.Open(p); defer file.Close()\n}",
+			consts: []int{len("func f() {\n\t")},
+			splits: []int{len("func f() {\n\tfile := os.Open(p)")},
+		},
+		{
+			name: "using as identifier",
+			src:  "func f() {\n\tusing := 1\n\tusing = 2\n}",
+			want: "func f() {\n\tusing := 1\n\tusing = 2\n}",
+		},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {
@@ -1477,6 +1489,7 @@ func TestProcessErrors(test *testing.T) {
 		{"generator without an iterator result", "func* g() []int {\n}", "a generator must return iter.Seq[T] or iter.Seq2[K, V]", 0},
 		{"generator without a body", "func* g() iter.Seq[int]\n", "a generator needs a body", 0},
 		{"yield without a value", "func* g() iter.Seq[int] {\n\tyield\n}", "yield needs a value", len("func* g() iter.Seq[int] {\n\t")},
+		{"using at package level", "using f = open()\n", "using is only supported in functions", 0},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {
