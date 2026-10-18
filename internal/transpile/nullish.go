@@ -316,6 +316,10 @@ func (lowerer *lowerer) lowerChain(root ast.Expr) {
 		lowerer.errorf(lowerer.file, root.Pos(), "cannot take the address of an optional chain")
 		return
 	}
+	if lowerer.isAssignTarget(root) {
+		lowerer.errorf(lowerer.file, root.Pos(), "an optional chain cannot be the target of an assignment")
+		return
+	}
 	links, ok := lowerer.links(root)
 	if !ok {
 		return
@@ -343,6 +347,18 @@ func (lowerer *lowerer) lowerChain(root ast.Expr) {
 func isAddressOf(node ast.Node) bool {
 	unaryExpr, ok := node.(*ast.UnaryExpr)
 	return ok && unaryExpr.Op == token.AND
+}
+
+// isAssignTarget reports whether expr, maybe in parentheses, is assigned to
+// or incremented.
+func (lowerer *lowerer) isAssignTarget(expr ast.Expr) bool {
+	outerExpr, parent := outermostParen(lowerer.parents, expr)
+	for _, target := range assignTargets(parent) {
+		if target == outerExpr {
+			return true
+		}
+	}
+	return false
 }
 
 // The ?? operator type-checks as one of these calls. With the pointer form,

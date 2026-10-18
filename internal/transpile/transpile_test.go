@@ -233,6 +233,31 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:4:11: cannot take the address of an optional chain",
 		},
 		{
+			name: "assignment to an optional chain",
+			src:  "package p\ntype P struct{ X int; Xs []int }\nfunc f(v *P) {\n\tv?.X = 1\n}",
+			want: "x.gol:4:2: an optional chain cannot be the target of an assignment",
+		},
+		{
+			name: "compound assignment to an optional chain",
+			src:  "package p\ntype P struct{ X int; Xs []int }\nfunc f(v *P) {\n\tv?.X += 1\n}",
+			want: "x.gol:4:2: an optional chain cannot be the target of an assignment",
+		},
+		{
+			name: "increment of an optional chain",
+			src:  "package p\ntype P struct{ X int; Xs []int }\nfunc f(v *P) {\n\tv?.X++\n}",
+			want: "x.gol:4:2: an optional chain cannot be the target of an assignment",
+		},
+		{
+			name: "assignment to a parenthesized optional chain",
+			src:  "package p\ntype P struct{ X int; Xs []int }\nfunc f(v *P) {\n\t(v?.X) = 1\n}",
+			want: "x.gol:4:3: an optional chain cannot be the target of an assignment",
+		},
+		{
+			name: "assignment to an index of an optional chain",
+			src:  "package p\ntype P struct{ X int; Xs []int }\nfunc f(v *P) {\n\tv?.Xs[0] = 1\n}",
+			want: "x.gol:4:2: an optional chain cannot be the target of an assignment",
+		},
+		{
 			name: "nullish coalescing mixed with ||",
 			src:  "package p\nfunc f(a *bool, b bool) bool {\n\treturn a ?? b || true\n}",
 			want: "x.gol:3:9: ?? cannot be mixed with || or && without parentheses",
