@@ -28,6 +28,15 @@
       "include": "#enum"
     },
     {
+      "include": "#impl"
+    },
+    {
+      "include": "#constructor"
+    },
+    {
+      "include": "#this"
+    },
+    {
       "include": "#arrow"
     },
     {
@@ -312,6 +321,32 @@
           "include": "source.go"
         }
       ]
+    },
+    "impl": {
+      "match": "^\\s*(impl)\\s+(\\w+)(?:\\[[^\\]]*\\])?(?:\\s+(implements)\\b)?",
+      "captures": {
+        "1": {
+          "name": "keyword.other.impl.gol"
+        },
+        "2": {
+          "name": "entity.name.type.gol"
+        },
+        "3": {
+          "name": "keyword.other.implements.gol"
+        }
+      }
+    },
+    "constructor": {
+      "match": "^\\s*(constructor)\\s*(?=\\()",
+      "captures": {
+        "1": {
+          "name": "storage.type.function.constructor.gol"
+        }
+      }
+    },
+    "this": {
+      "match": "\\bthis\\b",
+      "name": "variable.language.this.gol"
     },
     "arrow": {
       "patterns": [

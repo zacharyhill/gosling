@@ -999,6 +999,16 @@ func TestErrors(test *testing.T) {
 			want: "regex literal needs package regexp, but the name regexp is already used in this file",
 		},
 		{
+			name: "impl block that does not implement its interface",
+			src:  "package p\nimport \"io\"\ntype R struct{}\nimpl R implements io.Reader {\n\tfunc Close() error { return nil }\n}",
+			want: "x.gol:4:1: cannot use (*R)(nil) (value of type *R) as io.Reader value in variable declaration: *R does not implement io.Reader (missing method Read)",
+		},
+		{
+			name: "type error in an impl method",
+			src:  "package p\ntype R struct{}\nimpl R {\n\tfunc Size() int { return this.n }\n}",
+			want: "x.gol:4:32: this.n undefined",
+		},
+		{
 			name: "missing catch",
 			src:  "package p\nfunc f() {\n\ttry { }\n}",
 			want: "x.gol:3:8: try block must be followed by catch",

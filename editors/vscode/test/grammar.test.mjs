@@ -234,3 +234,15 @@ test("division is not a regex literal", () => {
   assertNoScope(inFunctionBody("\tn := f(x) / 2 / y"), "2", "string.regexp");
   assertNoScope(inFunctionBody("\tn := 1 /* c */ + 2"), "/*", "string.regexp");
 });
+
+test("impl blocks", () => {
+  const source =
+    "package p\n\nimpl User implements fmt.Stringer {\n\tconstructor(name string) {\n\t\tthis.Name = name\n\t}\n\n\tfunc String() string { return this.Name }\n}";
+  assertScope(source, "impl", "keyword.other.impl.gol");
+  assertScope(source, "User", "entity.name.type.gol");
+  assertScope(source, "implements", "keyword.other.implements.gol");
+  assertScope(source, "constructor", "storage.type.function.constructor.gol");
+  assertScope(source, "this", "variable.language.this.gol");
+  assertScope("package p\n\nimpl Stack[T] {\n}", "Stack", "entity.name.type.gol");
+  assertNoScope(inFunctionBody("\tthisOne := 1"), "thisOne", "variable.language");
+});

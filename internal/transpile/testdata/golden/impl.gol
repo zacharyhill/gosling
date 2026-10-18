@@ -1,0 +1,44 @@
+package impl
+
+import (
+	"errors"
+	"fmt"
+)
+
+type User struct {
+	Name  string
+	Email string
+}
+
+// User methods.
+impl User implements fmt.Stringer {
+	constructor(name, email string) {
+		this.Name = name
+		this.Email = email
+	}
+
+	// String shows the user.
+	func String() string {
+		return t`${this.Name} <${this.Email}>`
+	}
+
+	func Rename(name string) { this.Name = name }
+}
+
+type config struct{ path string }
+
+impl config {
+	constructor(path string) (*config, error) {
+		if path == "" {
+			return nil, errors.New("empty path")
+		}
+		return &config{path}, nil
+	}
+}
+
+type Stack[T any] struct{ items []T }
+
+impl Stack[T] {
+	func Push(v T) { this.items = append(this.items, v) }
+	func Len() int { return len(this.items) }
+}
