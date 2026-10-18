@@ -1,0 +1,61 @@
+package conditional
+
+import "strconv"
+
+func and(ok bool, s string) bool {
+	try {
+		return ok && strconv.Atoi(s) > 0
+	} catch {
+		return false
+	}
+}
+
+func or(xs []string) bool {
+	try {
+		if len(xs) == 0 || strconv.Atoi(xs[0]) > 0 {
+			return true
+		}
+		return false
+	} catch {
+		return false
+	}
+}
+
+func loop(xs []string) int {
+	let i = 0
+	try {
+		for i < len(xs) && strconv.Atoi(xs[i]) != 0 {
+			i++
+		}
+	} catch {
+		return -1
+	}
+	return i
+}
+
+func elseIf(s string) string {
+	try {
+		if s == "" {
+			return "empty"
+		} else if strconv.Atoi(s) > 10 {
+			return "big"
+		}
+		return "small"
+	} catch {
+		return "error"
+	}
+}
+
+func tagged(n int, s string) string {
+	try {
+		switch n {
+		case 0:
+			return "zero"
+		case strconv.Atoi(s):
+			return "match"
+		}
+		return "none"
+	} catch {
+		return "error"
+	}
+}

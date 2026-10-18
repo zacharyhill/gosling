@@ -250,7 +250,33 @@ if err != nil { ... }
 n := val * 2
 ```
 
-The moved call runs before other calls to its left. gosling cannot move a call that runs only on some paths. Examples are the right side of `&&`, `||`, or `??`, after `?.`, a loop condition, an `else if` condition, or a `case` expression. These calls are errors.
+The moved call runs before other calls to its left. Moved calls run in the order of the original expression.
+
+A call that runs only on some paths moves into a new `if` statement. So short-circuit evaluation does not change:
+
+```go
+if ok && strconv.Atoi(s) > 0 {
+
+cond := ok
+if cond {
+	val, err := strconv.Atoi(s)
+	if err != nil { ... }
+	cond = val > 0
+}
+if cond {
+```
+
+- For a call on the right side of `&&` or `||`, the whole operation moves before the statement, as above.
+- A loop condition with a checked call moves into the loop body. It runs before each iteration. If it is false, `break` ends the loop.
+- An `else if` with a checked call becomes `else { ...checks...; if ... }`.
+- A `case` expression with a checked call splits the switch. The cases from that case on go into a nested switch in a `default` case. The checks go before the nested switch. gosling puts the switch tag in a variable, so the tag runs one time.
+
+These calls are errors:
+
+- a call in a `??` default or after `?.`
+- a call in the post statement of a `for` loop
+- a call in a later expression of a `case`, such as `f()` in `case a, f():`
+- a call in a `case` after the `default` case, or in a `case` that the case before it enters with `fallthrough`
 
 Rules:
 

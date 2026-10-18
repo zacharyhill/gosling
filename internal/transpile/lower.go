@@ -20,6 +20,9 @@ type lowerer struct {
 	parents        map[ast.Node]ast.Node
 	consumedHoists map[*ast.CallExpr]bool
 	optionalRoots  map[ast.Expr]bool
+	// hoistDrops maps each hoisted expression to the drop that replaces it
+	// with its variable.
+	hoistDrops map[ast.Expr]int
 }
 
 func newLowerer(transpiler *transpiler, file *file, typeInfo *types.Info) *lowerer {
@@ -29,6 +32,7 @@ func newLowerer(transpiler *transpiler, file *file, typeInfo *types.Info) *lower
 		typeInfo:       typeInfo,
 		identPositions: map[string][]token.Pos{},
 		consumedHoists: map[*ast.CallExpr]bool{},
+		hoistDrops:     map[ast.Expr]int{},
 	}
 	ast.Inspect(file.ast, func(node ast.Node) bool {
 		if ident, ok := node.(*ast.Ident); ok && ident.Pos().IsValid() {
@@ -111,7 +115,8 @@ func (lowerer *lowerer) walkStmt(stmt ast.Stmt, try *tryContext) {
 	case *ast.LabeledStmt:
 		lowerer.walkStmt(stmt.Stmt, try)
 	case *ast.ForStmt:
-		lowerer.hoist(stmt, try, stmt.Init) // the condition and post statement run on each iteration
+		lowerer.hoist(stmt, try, stmt.Init)
+		lowerer.hoistLoopCondition(stmt, try)
 		lowerer.walkExprs(stmt.Init, stmt.Cond, stmt.Post)
 		lowerer.walkBlock(stmt.Body.List, try)
 	case *ast.RangeStmt:
@@ -119,7 +124,7 @@ func (lowerer *lowerer) walkStmt(stmt ast.Stmt, try *tryContext) {
 		lowerer.walkExprs(stmt.X)
 		lowerer.walkBlock(stmt.Body.List, try)
 	case *ast.SwitchStmt:
-		lowerer.hoist(stmt, try, stmt.Init, stmt.Tag)
+		lowerer.hoistSwitch(stmt, try)
 		lowerer.walkExprs(stmt.Init, stmt.Tag)
 		lowerer.walkClauses(stmt.Body, try)
 	case *ast.TypeSwitchStmt:
@@ -145,8 +150,10 @@ func (lowerer *lowerer) walkIf(stmt *ast.IfStmt, try *tryContext) {
 		lowerer.lowerTry(stmt, preprocessedTry, try)
 		return
 	}
-	if parent, ok := lowerer.parents[stmt].(*ast.IfStmt); !ok || parent.Else != stmt {
-		lowerer.hoist(stmt, try, stmt.Init, stmt.Cond) // an else-if has no place for them
+	if parent, ok := lowerer.parents[stmt].(*ast.IfStmt); ok && parent.Else == stmt {
+		lowerer.hoistElseIf(stmt, try)
+	} else {
+		lowerer.hoist(stmt, try, stmt.Init, stmt.Cond)
 	}
 	lowerer.walkExprs(stmt.Init, stmt.Cond)
 	lowerer.walkBlock(stmt.Body.List, try)

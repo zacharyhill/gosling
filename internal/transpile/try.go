@@ -12,6 +12,8 @@ import (
 
 const errUncheckableCall = "this call can fail, but its error cannot be checked here; move it into its own statement"
 
+const errConditionalCall = "this call can fail but only runs conditionally here, so its error cannot be checked; move it into its own statement"
+
 type tryContext struct {
 	id         int
 	catchVar   string
