@@ -436,6 +436,16 @@ The variable has the type `any`. It holds the value that `recover` returns. `cat
 const msg = t`hello ${u.Name}, you are ${u.Age}` // fmt.Sprintf("hello %s, you are %d", u.Name, u.Age)
 ```
 
+To select the verb, add a format after a colon:
+
+```go
+t`${price:.2f} ${id:05d} ${mask:#x}` // fmt.Sprintf("%.2f %05d %#x", price, id, mask)
+```
+
+- A format is a printf verb without the `%`. It can have flags, a width, and a precision, such as `-10s` or `+v`.
+- The format starts at the first colon outside brackets and quotes. Go expressions have colons only in brackets, such as `xs[1:3]` and `T{X: 1}`. So these colons do not start a format.
+- gosling does not check that the verb fits the type. `go vet` does.
+
 JavaScript escapes work, such as `\n`, `\t`, `\xHH`, `\uHHHH`, and `\u{H...}`. Write `\${` for a literal `${`, and `` \` `` for a backtick. gosling adds the `fmt` and `strconv` imports if necessary.
 
 ### Destructuring

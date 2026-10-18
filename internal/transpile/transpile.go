@@ -536,6 +536,7 @@ func markerDecls(packageName string) string {
 		"func " + preprocess.AsMarker + "(any) bool { return false }\n" +
 		"func " + preprocess.IsMarker + "(error) bool { return false }\n" +
 		"func " + preprocess.TryMarker + "[T any](v T, err error) func(T) T { return nil }\n" +
+		"func " + preprocess.FormatMarker + "[T any](v T, spec string) T { return v }\n" +
 		"func " + coalesceMarker + "[T any](x any, d T) T { return d }\n" +
 		"func " + coalescePtrMarker + "[T any](x *T, d T) T { return d }\n" +
 		hoistMarkerDecls() +

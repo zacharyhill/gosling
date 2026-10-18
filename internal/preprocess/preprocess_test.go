@@ -509,6 +509,11 @@ func TestProcess(test *testing.T) {
 			want: "s := __goslingT(`a\\\\`); u := `raw\\`",
 		},
 		{
+			name: "template literal with format specs",
+			src:  "s := t`${price:.2f} ${m[a:b]} ${T{X: 1}:+v} ${f(\":\") : 05d}`",
+			want: "s := __goslingT(``, __goslingFormat(price, \".2f\"), ` `, m[a:b], ` `, __goslingFormat(T{X: 1}, \"+v\"), ` `, __goslingFormat(f(\":\") , \"05d\"), ``)",
+		},
+		{
 			name: "template literal with braces in expression",
 			src:  "s := t`${Point{1, 2}}`",
 			want: "s := __goslingT(``, Point{1, 2}, ``)",
@@ -969,6 +974,8 @@ func TestProcessErrors(test *testing.T) {
 		{"catch on next line", "try { g() }\ncatch (e) { }", "catch must be on the same line as the closing brace of try", len("try { g() }\n")},
 		{"unterminated interpolation", "s := t`a ${x`", "unterminated ${ in template literal", len("s := t`a ")},
 		{"empty interpolation", "s := t`a ${}`", "empty ${} in template literal", len("s := t`a ")},
+		{"invalid format spec", "s := t`a ${x:zz}`", "invalid format zz in template literal; use a printf verb such as .2f or 05d", len("s := t`a ${x")},
+		{"format spec without a value", "s := t`a ${:d}`", "empty ${} in template literal", len("s := t`a ")},
 		{"object rest", "func f() {\n{a, ...rest} := x\n}", "rest elements are only supported in array destructuring", len("func f() {\n{a, ")},
 		{"nested object rest", "func f() {\n\tlet [{a, ...rest}] = x\n}", "rest elements are only supported in array destructuring", len("func f() {\n\tlet [{a, ")},
 		{"rest default", "func f() {\n\tlet [a, ...rest = xs] = ys\n}", "a rest element cannot have a default", len("func f() {\n\tlet [a, ...rest ")},

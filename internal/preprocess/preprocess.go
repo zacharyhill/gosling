@@ -19,6 +19,10 @@ const MapMarker = "__goslingMap"
 // first and last arguments are text.
 const TMarker = "__goslingT"
 
+// FormatMarker wraps a value with a format spec in a template literal.
+// t`${x:.2f}` becomes __goslingT(“, __goslingFormat(x, ".2f"), “).
+const FormatMarker = "__goslingFormat"
+
 type Result struct {
 	Src    []byte
 	Tries  []Try

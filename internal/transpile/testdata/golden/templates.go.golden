@@ -50,3 +50,7 @@ func floats(f float64, g float32, h int) string {
 func backticks(name string) string {
 	return fmt.Sprintf("run `go %s` := now", name)
 }
+
+func formats(price float64, n int, id uint, xs []int) string {
+	return fmt.Sprintf("%.2f %05d %#x %v %s", price, n, id, xs[1:], strconv.FormatFloat(price, 'f', -1, 64))
+}
