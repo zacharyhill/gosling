@@ -2,6 +2,7 @@
 
 package spread
 
+import "time"
 import "slices"
 
 type User struct {
@@ -94,4 +95,10 @@ func spreadAfterComment(p Point) Point {
 		v.Y = 1
 		return v
 	}()
+}
+
+type ID int64
+
+func typedConstants(ids []ID, waits []time.Duration) ([]ID, []time.Duration) {
+	return slices.Concat(ids, []ID{1}, ids, []ID{2}), slices.Concat(waits, []time.Duration{5, time.Second})
 }

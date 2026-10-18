@@ -129,7 +129,7 @@ func (lowerer *lowerer) lowerCat(call *ast.CallExpr, callee *ast.Ident) {
 	}
 	lowerer.replace(callee.Pos(), callee.End(), qualify(slicesName)+"Concat", line)
 	for _, arg := range call.Args {
-		if oneCall, ok := callTo(arg, preprocess.OneMarker); ok {
+		if oneCall, ok := matchOneCall(arg); ok {
 			lowerer.replace(oneCall.Pos(), oneCall.Lparen+1, "[]"+elementType+"{", line)
 			lowerer.replace(oneCall.Rparen, oneCall.Rparen+1, "}", line)
 		}
@@ -137,8 +137,83 @@ func (lowerer *lowerer) lowerCat(call *ast.CallExpr, callee *ast.Ident) {
 }
 
 func isOneCall(arg ast.Expr) bool {
-	_, ok := callTo(arg, preprocess.OneMarker)
+	_, ok := matchOneCall(arg)
 	return ok
+}
+
+// typeSpreadConstants gives the constants in a slice spread the element type
+// of the spread slices, so [...int64s, 1] works. Without this, Go gives them
+// their default type. It reports whether anything changed.
+func (transpiler *transpiler) typeSpreadConstants(file *file, typeInfo *types.Info) bool {
+	changed := false
+	ast.Inspect(file.ast, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if calleeIdent, ok := call.Fun.(*ast.Ident); !ok || calleeIdent.Name != preprocess.CatMarker {
+			return true
+		}
+		elementType := findSpreadElementType(call, typeInfo)
+		if elementType == nil {
+			return true
+		}
+		for _, arg := range call.Args {
+			oneCall, ok := callTo(arg, preprocess.OneMarker)
+			if !ok || !shouldAddElementType(oneCall, elementType, typeInfo) {
+				continue
+			}
+			if typeArg, ok := transpiler.typeExpr(file, elementType, oneCall.Pos()); ok {
+				oneCall.Fun = &ast.IndexExpr{X: oneCall.Fun, Index: typeArg}
+				changed = true
+			}
+		}
+		return true
+	})
+	return changed
+}
+
+// findSpreadElementType returns the element type of the first spread slice in
+// a slice spread call, or nil.
+func findSpreadElementType(catCall *ast.CallExpr, typeInfo *types.Info) types.Type {
+	for _, arg := range catCall.Args {
+		if _, isOneCall := matchOneCall(arg); isOneCall {
+			continue
+		}
+		if slice, ok := underlyingSlice(typeInfo.Types[arg].Type); ok {
+			return slice.Elem()
+		}
+	}
+	return nil
+}
+
+// shouldAddElementType reports whether oneCall has a constant and its inferred
+// element type differs from elementType.
+func shouldAddElementType(oneCall *ast.CallExpr, elementType types.Type, typeInfo *types.Info) bool {
+	if slice, ok := underlyingSlice(typeInfo.Types[oneCall].Type); ok && types.Identical(slice.Elem(), elementType) {
+		return false
+	}
+	for _, arg := range oneCall.Args {
+		if typeInfo.Types[arg].Value != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// matchOneCall returns the element run call in arg. typeSpreadConstants can
+// add a type argument to its callee.
+func matchOneCall(arg ast.Expr) (*ast.CallExpr, bool) {
+	call, ok := arg.(*ast.CallExpr)
+	if !ok {
+		return nil, false
+	}
+	callee := call.Fun
+	if indexExpr, ok := callee.(*ast.IndexExpr); ok {
+		callee = indexExpr.X
+	}
+	calleeIdent, ok := callee.(*ast.Ident)
+	return call, ok && calleeIdent.Name == preprocess.OneMarker
 }
 
 // lowerWith writes T(__goslingWith(base, T{X: 1})) as

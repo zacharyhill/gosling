@@ -24,4 +24,7 @@ func main() {
 	let name, age = "ada", 36
 	let u = User{name, age}
 	fmt.Println(u, User{...u, name: "grace"})
+	let big = []int64{1}
+	let halves = [...[]float32{0.5}, 2]
+	fmt.Println([...big, 2, 3], [...big, 4, ...big], halves)
 }
