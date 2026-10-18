@@ -1,0 +1,78 @@
+package instanceof
+
+import (
+	"fmt"
+	"io/fs"
+)
+
+type Circle struct{ R float64 }
+
+type Square struct{ Side float64 }
+
+type Shape = Circle | *Square
+
+func area(shape Shape) float64 {
+	if (shape instanceof Circle) {
+		return 3 * shape.R * shape.R
+	}
+	if (shape instanceof *Square) {
+		return shape.Side * shape.Side
+	} else {
+		fmt.Println("unknown", shape)
+	}
+	return 0
+}
+
+func kind(shape Shape) string {
+	if (shape instanceof Circle) {
+		return "circle"
+	} else if shape instanceof *Square {
+		return "square"
+	}
+	return "none"
+}
+
+func notCircle(shape Shape) bool {
+	if (!(shape instanceof Circle)) {
+		return true
+	}
+	return false
+}
+
+func describe(err error) string {
+	if (err instanceof *fs.PathError) {
+		return err.Path
+	} else {
+		return err.Error()
+	}
+}
+
+func isPathError(err error) bool {
+	if (!(err instanceof *fs.PathError)) {
+		return false
+	}
+	return true
+}
+
+func describeAny(value any) string {
+	if value instanceof error {
+		return value.Error()
+	}
+	return "value"
+}
+
+func timeout(err error) bool {
+	if err instanceof interface{ Timeout() bool } {
+		return err.Timeout()
+	}
+	return false
+}
+
+func first(value any) int {
+	if value instanceof ([]int) {
+		return value[0]
+	} else if (value instanceof (struct{ A int })) {
+		return value.A
+	}
+	return 0
+}

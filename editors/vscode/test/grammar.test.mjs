@@ -232,6 +232,14 @@ test("enums", () => {
   assertScope(source, "low", "comment");
 });
 
+test("instanceof narrowing", () => {
+  const source = inFunctionBody("\tif (s instanceof Circle) {\n\t}");
+  assertScope(source, "instanceof", "keyword.operator.instanceof.gol");
+  assertScope(source, "Circle", "entity.name.type.gol");
+  assertScope(inFunctionBody("\tif !(err instanceof *fs.PathError) {\n\t}"), "instanceof", "keyword.operator.instanceof.gol");
+  assertNoScope(inFunctionBody("\tinstanceofCount := 1"), "instanceofCount", "keyword");
+});
+
 test("switch with let type binding", () => {
   assertScope(inFunctionBody("\tswitch let s = s.(type) {\n\t}"), "let", "keyword.let.gol");
 });

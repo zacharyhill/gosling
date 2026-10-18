@@ -62,8 +62,9 @@ type Result struct {
 	Generators []int
 	Yields     []int
 	// Usings holds the offsets of the names that using declares.
-	Usings []int
-	edits  []edit
+	Usings     []int
+	Narrowings []Narrowing
+	edits      []edit
 }
 
 // Error is a syntax error at an offset into the original source.
@@ -205,6 +206,9 @@ type processor struct {
 	removals map[int]int
 	// currentImpl is the impl block that the scan is in, or nil.
 	currentImpl *implBlock
+	// narrowingNames maps a base name to the fresh name that instanceof
+	// uses for it.
+	narrowingNames map[string]string
 }
 
 // Process rewrites the gosling syntax in src into Go source with marker
@@ -234,6 +238,7 @@ func ProcessReserving(src []byte, reservedNames map[string]bool) (*Result, error
 		resultArrows:     map[int]int{},
 		removals:         map[int]int{},
 		iteratorByBrace:  map[int]iteratorType{},
+		narrowingNames:   map[string]string{},
 	}
 	processor.spreadBraces = findSpreadBraces(processor.tokens)
 	processor.resetTernaries()
@@ -406,6 +411,10 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		return processor.using(tokenIndex)
 	case processor.isAssertion(tokenIndex):
 		return processor.assertion(tokenIndex)
+	case current.is(token.IF):
+		return processor.rewriteInstanceof(tokenIndex)
+	case processor.isInstanceof(tokenIndex):
+		return 0, &Error{current.offset, errInstanceofPlace}
 	case processor.isThrow(tokenIndex):
 		return tokenIndex, processor.rewriteThrow(tokenIndex)
 	case current.isIdent("try") && !processor.tokenAt(tokenIndex+1).is(token.LBRACE):

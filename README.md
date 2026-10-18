@@ -38,6 +38,7 @@ Features:
 - String methods: `name.trim().toLowerCase().startsWith("a")`
 - `.length`: `xs.length` becomes `len(xs)`
 - Union types with exhaustive switches: `type Shape = Circle | Square`, `type Method = "GET" | "POST"`
+- Type narrowing with `instanceof`: `if (err instanceof *fs.PathError) { err.Path }`
 - Enums with exhaustive switches: `enum Color { Red, Green, Blue }`
 - Struct shorthand and spread: `User{name, age}`, `[...a, ...b]`, `Point{...p, X: 5}`, `{...defaults, ...overrides}`, `f(...xs)`
 - Optional struct fields: `Host? string`
@@ -1144,6 +1145,31 @@ case Color.Red:
 ```
 
 gosling does not check a switch if a case is not a constant.
+
+### instanceof
+
+`x instanceof T` checks the dynamic type of `x`. In the condition of an `if`, it also narrows `x` to `T` in the if block:
+
+```go
+if (s instanceof Circle) { // if s, ok := s.(Circle); ok {
+	return math.Pi * s.R * s.R
+}
+```
+
+If `x` is an error and `T` implements `error`, gosling uses `errors.AsType`. So the check also finds wrapped errors, as `errors.As` does:
+
+```go
+if (err instanceof *fs.PathError) { // if err, ok := errors.AsType[*fs.PathError](err); ok {
+	return err.Path
+}
+```
+
+- The condition must be `x instanceof T`, `(x instanceof T)`, or `!(x instanceof T)`. `x` must be a variable name. `instanceof` in other places is an error.
+- `T` can be any type. It can have parentheses or be a type literal: `x instanceof ([]int)`, `x instanceof interface{ Len() int }`.
+- An `else` or `else if` branch sees the original `x`. For this, gosling declares a temporary: `if circle, ok := s.(Circle); ok { s := circle; ... }`.
+- `!(x instanceof T)` does not narrow `x`.
+- The if block gets a copy of `x`, as in a type switch. Code cannot assign to `x` in the block.
+- If the block does not use `x`, the output is `if _, ok := x.(T); ok`.
 
 ### Struct shorthand and spread
 
