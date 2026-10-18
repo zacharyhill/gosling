@@ -306,6 +306,23 @@ func (lowerer *lowerer) insertOrdered(position token.Pos, text string, line, ord
 	lowerer.edits = append(lowerer.edits, edit{start: offset, end: offset, text: text, line: line, order: order})
 }
 
+// isStatement reports whether expr, maybe in parentheses, is the expression
+// of a statement.
+func (lowerer *lowerer) isStatement(expr ast.Expr) bool {
+	_, parent := outermostParen(lowerer.parents, expr)
+	_, ok := parent.(*ast.ExprStmt)
+	return ok
+}
+
+// dropParens removes the parentheses around expr, so statements can replace it.
+func (lowerer *lowerer) dropParens(expr ast.Expr) {
+	for paren, ok := lowerer.parents[expr].(*ast.ParenExpr); ok; paren, ok = lowerer.parents[paren].(*ast.ParenExpr) {
+		line := lowerer.line(paren.Pos())
+		lowerer.replace(paren.Lparen, paren.Lparen+1, "", line)
+		lowerer.replace(paren.Rparen, paren.Rparen+1, "", line)
+	}
+}
+
 func (lowerer *lowerer) depth(node ast.Node) int {
 	depth := 0
 	for ancestor := lowerer.parents[node]; ancestor != nil; ancestor = lowerer.parents[ancestor] {

@@ -25,6 +25,7 @@ func total(nums []int) float64 {
 
 func printAll(names []string, out func(string)) {
 	names.forEach(n => out(n))
+	(names.forEach(n => out(n)))
 }
 
 func lookup(users []User, id int) string {

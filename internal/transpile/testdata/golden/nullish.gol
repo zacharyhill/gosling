@@ -64,6 +64,13 @@ func closeIt(c io.Closer) {
 	c?.Close()
 }
 
+func (p *Profile) Reset() { p.Name = "" }
+
+func resetParenthesized(user *User) {
+	(user?.Profile?.Reset())
+	((user?.Profile?.Reset()))
+}
+
 func reader(r io.Reader, fallback io.Reader) io.Reader {
 	return r ?? fallback
 }

@@ -237,6 +237,7 @@ func (lowerer *lowerer) lowerArrayCall(marker *ast.CallExpr, arrayCall *arrayCal
 	bindNames, separator := lowerer.arrayBindings(arrayCall, method, names)
 	open := "func() " + typeText + " {\n" + bindNames + " := "
 	if method.result == "" {
+		lowerer.dropParens(marker)
 		open = "{\n" + bindNames + " := "
 	}
 	line, depth := lowerer.line(receiver.Pos()), lowerer.depth(marker)
@@ -253,8 +254,7 @@ func (lowerer *lowerer) lowerArrayCall(marker *ast.CallExpr, arrayCall *arrayCal
 // type as the file writes it, or "" for forEach.
 func (lowerer *lowerer) checkArrayCall(marker *ast.CallExpr, arrayCall *arrayCall, method arrayMethod) (string, bool) {
 	receiver := arrayCall.receiver
-	stmt, isStmt := lowerer.parents[marker].(*ast.ExprStmt)
-	if method.result == "" && !(isStmt && stmt.X == marker) {
+	if method.result == "" && !lowerer.isStatement(marker) {
 		lowerer.errorf(lowerer.file, receiver.Pos(), "%s can only be used as a statement", arrayCall.method)
 		return "", false
 	}

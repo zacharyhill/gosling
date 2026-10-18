@@ -336,7 +336,8 @@ func (lowerer *lowerer) lowerChain(root ast.Expr) {
 		return
 	}
 	tempVar := lowerer.pickTempVar(root.Pos(), root.End())
-	if stmt, ok := lowerer.parents[root].(*ast.ExprStmt); ok && stmt.X == root {
+	if lowerer.isStatement(root) {
+		lowerer.dropParens(root)
 		closing := lowerer.guards(root, "", links, tempVar, "")
 		lowerer.insertOrdered(root.End(), closing, lowerer.line(root.Pos()), -lowerer.depth(root))
 		return
