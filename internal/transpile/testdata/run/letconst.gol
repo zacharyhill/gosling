@@ -9,6 +9,13 @@ const base = 10
 
 const label = fmt.Sprint("total")
 
+let (
+	greeting = "hi"
+	count: int
+	scale: float64 = 1.5
+	shout: func(string) string = s => s + "!"
+)
+
 func parse(inputs []string) int {
 	let total = 0
 	for (const s of inputs) {
@@ -44,4 +51,6 @@ func init() {
 	if let ratio: float64 = 1; ratio/3 > 0.3 {
 		fmt.Println("ratio", ratio/3)
 	}
+	count++
+	fmt.Println(shout(greeting), count, scale*2)
 }
