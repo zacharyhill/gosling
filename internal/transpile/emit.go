@@ -86,10 +86,50 @@ func (writer *outputWriter) lineAt(offset int) int {
 	return 1 + bytes.Count(writer.src[:offset], []byte("\n"))
 }
 
+// directive writes a line directive for the next token. gofmt moves a
+// directive that follows a comma on the same line to before the comma.
+// The comma, not the next token, then gets the line. So the directive goes
+// before such a comma.
 func (writer *outputWriter) directive(line int) {
-	if writer.lineDirectives {
-		fmt.Fprintf(&writer.buffer, "/*line %s:%d*/", writer.baseName, line)
+	if !writer.lineDirectives {
+		return
 	}
+	output := writer.buffer.Bytes()
+	insertOffset := len(bytes.TrimRight(output, " \t"))
+	if insertOffset == 0 || output[insertOffset-1] != ',' {
+		fmt.Fprintf(&writer.buffer, "/*line %s:%d*/", writer.baseName, line)
+		return
+	}
+	insertOffset--
+	trailingText := bytes.Clone(output[insertOffset:])
+	writer.buffer.Truncate(insertOffset)
+	fmt.Fprintf(&writer.buffer, "/*line %s:%d*/", writer.baseName, line)
+	writer.shiftCopies(insertOffset, writer.buffer.Len()-insertOffset)
+	writer.buffer.Write(trailingText)
+}
+
+// shiftCopies moves the copied ranges at or after outOffset by shift. A
+// range that contains outOffset splits in two.
+func (writer *outputWriter) shiftCopies(outOffset, shift int) {
+	firstShiftedIndex := len(writer.copies)
+	for firstShiftedIndex > 0 {
+		previous := writer.copies[firstShiftedIndex-1]
+		if previous.outOffset < outOffset && previous.outOffset+previous.length <= outOffset {
+			break
+		}
+		firstShiftedIndex--
+	}
+	var shiftedCopies []copiedRange
+	for _, copied := range writer.copies[firstShiftedIndex:] {
+		if copied.outOffset < outOffset {
+			headLength := outOffset - copied.outOffset
+			shiftedCopies = append(shiftedCopies, copiedRange{srcOffset: copied.srcOffset, outOffset: copied.outOffset, length: headLength})
+			copied = copiedRange{srcOffset: copied.srcOffset + headLength, outOffset: outOffset, length: copied.length - headLength}
+		}
+		copied.outOffset += shift
+		shiftedCopies = append(shiftedCopies, copied)
+	}
+	writer.copies = append(writer.copies[:firstShiftedIndex], shiftedCopies...)
 }
 
 // writeHeader writes the generated-code notice and the source up to the

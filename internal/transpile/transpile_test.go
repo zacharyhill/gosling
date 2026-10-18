@@ -699,6 +699,38 @@ func describe(count int, ratio float64, first, second []int) []int {
 	}
 }
 
+// TestLineDirectiveAfterComma checks the lines of tokens after a comma that
+// generated text puts on an earlier line. gofmt moves a directive between
+// the comma and the token in front of the comma.
+func TestLineDirectiveAfterComma(test *testing.T) {
+	src := "package p\n\nfunc pick(n int) int { return n }\n\nfunc show() []string {\n" +
+		"\treturn []string{t`one ${pick(1)}\ntwo ${pick(2)}`, t`three\n${pick(3)}`,\n\t\tt`${pick(4)}`}\n}\n"
+	outputs, err := Transpile(Config{Importer: importer.Default(), LineDirectives: true}, []Input{{Path: "p.gol", Src: []byte(src)}})
+	if err != nil {
+		test.Fatal(err)
+	}
+	fileSet := token.NewFileSet()
+	parsedFile, err := parser.ParseFile(fileSet, "p.go", outputs[0].Src, parser.ParseComments)
+	if err != nil {
+		test.Fatal(err)
+	}
+	wantLines := map[string]int{"1": 6, "2": 7, "3": 8, "4": 9}
+	ast.Inspect(parsedFile, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok || len(call.Args) != 1 {
+			return true
+		}
+		if ident, ok := call.Fun.(*ast.Ident); !ok || ident.Name != "pick" {
+			return true
+		}
+		argument := call.Args[0].(*ast.BasicLit).Value
+		if got := fileSet.PositionFor(call.Pos(), true).Line; got != wantLines[argument] {
+			test.Errorf("pick(%s) maps to line %d, want %d\n%s", argument, got, wantLines[argument], outputs[0].Src)
+		}
+		return true
+	})
+}
+
 func writeFile(test *testing.T, path, content string) {
 	test.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
