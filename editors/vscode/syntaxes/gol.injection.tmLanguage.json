@@ -106,7 +106,7 @@
       ]
     },
     "catch": {
-      "match": "\\b(catch)\\s*(\\()\\s*(\\w+)\\s*(\\))",
+      "match": "\\b(catch)\\s*(\\()\\s*(\\w+)\\s*(?:(\\))|(:)|(is)\\b)",
       "captures": {
         "1": {
           "name": "keyword.control.exception.gol"
@@ -119,6 +119,12 @@
         },
         "4": {
           "name": "punctuation.definition.end.bracket.round.gol"
+        },
+        "5": {
+          "name": "punctuation.separator.type.gol"
+        },
+        "6": {
+          "name": "keyword.operator.is.gol"
         }
       }
     },

@@ -275,6 +275,7 @@ func (transpiler *transpiler) buildFile(input Input, reservedNames map[string]bo
 		golFile.tries[preprocessedTry.If] = preprocessedTry
 	}
 	golFile.prepareFinally()
+	golFile.prepareFilters()
 	golFile.stripMarkers()
 	golFile.findArrows()
 	return golFile, nil
@@ -519,6 +520,8 @@ func markerDecls(packageName string) string {
 		"type " + preprocess.ResultMarker + " = any\n" +
 		"func " + preprocess.TMarker + "(...any) string { return \"\" }\n" +
 		"func " + preprocess.ThrowMarker + "(error) any { return nil }\n" +
+		"func " + preprocess.AsMarker + "(any) bool { return false }\n" +
+		"func " + preprocess.IsMarker + "(error) bool { return false }\n" +
 		"func " + coalesceMarker + "[T any](x any, d T) T { return d }\n" +
 		"func " + coalescePtrMarker + "[T any](x *T, d T) T { return d }\n" +
 		"func " + hoistMarker + "[T any](v T, err error) T { return v }\n" +

@@ -1,0 +1,71 @@
+package typedcatch
+
+import (
+	"database/sql"
+	"fmt"
+	"io/fs"
+	"os"
+)
+
+type codeError struct{ code int }
+
+func (failure codeError) Error() string { return fmt.Sprint(failure.code) }
+
+func classify(path string) string {
+	try {
+		os.ReadFile(path)
+		return "ok"
+	} catch (e: *fs.PathError) {
+		return "path " + e.Path
+	} catch (e is fs.ErrNotExist) {
+		return "missing"
+	} catch (e) {
+		return e.Error()
+	}
+}
+
+func lookup(db *sql.DB) (string, error) {
+	let name: string
+	try {
+		db.QueryRow("select name").Scan(&name)
+	} catch (e is sql.ErrNoRows) {
+		return "", nil
+	}
+	return name, nil
+}
+
+func nested(path string) string {
+	try {
+		try {
+			os.Remove(path)
+		} catch (failure: codeError) {
+			return fmt.Sprint(failure.code)
+		} finally {
+			fmt.Println("cleanup")
+		}
+	} catch (e) {
+		return e.Error()
+	}
+	return ""
+}
+
+func unusedBinding(path string) {
+	try {
+		os.Remove(path)
+	} catch (e: *fs.PathError) {
+		fmt.Println("path error")
+	} catch {
+		fmt.Println("other")
+	}
+}
+
+func returned(path string) (int, error) {
+	try {
+		os.Remove(path)
+	} catch (e is fs.ErrNotExist) {
+		fmt.Println("missing")
+	} finally {
+		fmt.Println("done")
+	}
+	return 1, nil
+}

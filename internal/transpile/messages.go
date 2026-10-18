@@ -21,7 +21,10 @@ func cleanMessage(message string) string {
 	if strings.Contains(message, arrayMarkerPrefix+"forEach") && strings.Contains(message, "used as value") {
 		return "forEach can only be used as a statement"
 	}
-	message = strings.ReplaceAll(message, "in argument to "+preprocess.ThrowMarker, "in throw")
+	message = strings.NewReplacer(
+		"in argument to "+preprocess.ThrowMarker, "in throw",
+		"in argument to "+preprocess.IsMarker, "in catch",
+	).Replace(message)
 	if match := spreadMismatchRE.FindStringSubmatch(message); match != nil {
 		return formatSpreadMismatch(match[1], match[2], match[3])
 	}

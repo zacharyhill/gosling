@@ -1,6 +1,7 @@
 package preprocess
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -127,6 +128,43 @@ func TestProcess(test *testing.T) {
 				CatchEnd: len("if true { a() } else { var e error; _ = e;"),
 				Binding:  "e",
 				Finally:  len("if true { a() } else { var e error; _ = e; b() } ; "),
+			}},
+		},
+		{
+			name: "typed catch clauses",
+			src:  "try { a() } catch (e: *fs.PathError) { b(e) } catch (e is ErrX) { c(e) } catch (e) { d(e) }",
+			want: "if true { a() } else if __goslingAs(new(*fs.PathError)) { var e *fs.PathError; _ = e; b(e) } else if __goslingIs(ErrX) { var e error; _ = e; c(e) } else { var e error; _ = e; d(e) }",
+			tries: []Try{{
+				If:       0,
+				HasCatch: true,
+				CatchEnd: len("if true { a() } else if __goslingAs(new(*fs.PathError)) { var e *fs.PathError; _ = e; b(e) } else if __goslingIs(ErrX) { var e error; _ = e; c(e) } else { var e error; _ = e;"),
+				Binding:  "e",
+				Filters: []Filter{
+					{Binding: "e", CatchEnd: len("if true { a() } else if __goslingAs(new(*fs.PathError)) { var e *fs.PathError; _ = e;")},
+					{Binding: "e", CatchEnd: len("if true { a() } else if __goslingAs(new(*fs.PathError)) { var e *fs.PathError; _ = e; b(e) } else if __goslingIs(ErrX) { var e error; _ = e;")},
+				},
+			}},
+		},
+		{
+			name: "typed catch with interface type, bare catch, and finally",
+			src:  "try { a() } catch (t: interface{ Timeout() bool }) { b() } catch { c() } finally { d() }",
+			want: "if true { a() } else if __goslingAs(new(interface{ Timeout() bool })) { var t interface{ Timeout() bool }; _ = t; b() } else { c() } ; { d() }",
+			tries: []Try{{
+				If:       0,
+				HasCatch: true,
+				CatchEnd: len("if true { a() } else if __goslingAs(new(interface{ Timeout() bool })) { var t interface{ Timeout() bool }; _ = t; b() } else {"),
+				Filters:  []Filter{{Binding: "t", CatchEnd: len("if true { a() } else if __goslingAs(new(interface{ Timeout() bool })) { var t interface{ Timeout() bool }; _ = t;")}},
+				Finally:  len("if true { a() } else if __goslingAs(new(interface{ Timeout() bool })) { var t interface{ Timeout() bool }; _ = t; b() } else { c() } ; "),
+			}},
+		},
+		{
+			name: "only typed catch clauses",
+			src:  "try { a() } catch (e is sql.ErrNoRows) { b() }",
+			want: "if true { a() } else if __goslingIs(sql.ErrNoRows) { var e error; _ = e; b() }",
+			tries: []Try{{
+				If:       0,
+				HasCatch: true,
+				Filters:  []Filter{{Binding: "e", CatchEnd: len("if true { a() } else if __goslingIs(sql.ErrNoRows) { var e error; _ = e;")}},
 			}},
 		},
 		{
@@ -574,7 +612,7 @@ func TestProcess(test *testing.T) {
 				test.Errorf("splits %v, want %v", result.Splits, testCase.splits)
 			}
 			for tryIndex := range testCase.tries {
-				if result.Tries[tryIndex] != testCase.tries[tryIndex] {
+				if !reflect.DeepEqual(result.Tries[tryIndex], testCase.tries[tryIndex]) {
 					test.Errorf("try %d: got %+v, want %+v", tryIndex, result.Tries[tryIndex], testCase.tries[tryIndex])
 				}
 			}
@@ -608,7 +646,6 @@ func TestProcessErrors(test *testing.T) {
 		{"let destructuring at package level", "let {a} = p\n", "destructuring with let or const is only supported in functions", 0},
 		{"const destructuring with define", "func f() {\n\tconst {a} := p\n}", "use const {...} = value, not :=", len("func f() {\n\t")},
 		{"let with type in header", "if let x: int = 1; x > 0 { }", "let in an if, for, switch, or case header cannot have a type", len("if ")},
-		{"bad binding", "try { g() } catch (e error) { }", "expected catch (name) or catch", len("try { g() } ")},
 		{"mixed parameter orders", "func f(a: int, b string) {}", "write name: type for every parameter", len("func f(a: int, ")},
 		{"grouped annotated parameters", "func f(a, b: int) {}", "write name: type for every parameter", len("func f(")},
 		{"go parameters with annotated result", "func f(a int): bool {}", "write name: type for every parameter", len("func f(")},
@@ -617,6 +654,10 @@ func TestProcessErrors(test *testing.T) {
 		{"mixed result list", "func f(): (n: int, error) {}", "write name: type for every parameter", len("func f(): (n: int, ")},
 		{"mixed arrow parameters", "f := (a, b: int) => a", "write name: type for every parameter", len("f := (")},
 		{"throw without value", "func f() error {\n\tthrow\n}", "throw needs an error value", len("func f() error {\n\t")},
+		{"bad binding", "try { g() } catch (e error) { }", "expected catch, catch (name), catch (name: Type), or catch (name is value)", len("try { g() } ")},
+		{"catch after catch all", "try { g() } catch (e) { } catch (e is X) { }", "only the last catch can catch all errors", len("try { g() } catch (e) { } ")},
+		{"catch on next line after catch", "try { g() } catch (e is X) { }\ncatch (e) { }", "catch must be on the same line as the closing brace before it", len("try { g() } catch (e is X) { }\n")},
+		{"catch type on two lines", "try { g() } catch (e: interface{\n}) { }", "a catch type must be on one line", len("try { g() } catch (e: ")},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {

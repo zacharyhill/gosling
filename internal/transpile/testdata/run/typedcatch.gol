@@ -1,0 +1,90 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+var errNotFound = errors.New("not found")
+
+type codeError struct{ code int }
+
+func (failure codeError) Error() string { return fmt.Sprint("code ", failure.code) }
+
+type tempError struct{}
+
+func (tempError) Error() string   { return "temporary" }
+func (tempError) Temporary() bool { return true }
+
+var steps []string
+
+func fail(kind string) error {
+	switch kind {
+	case "code":
+		return fmt.Errorf("wrapped: %w", codeError{7})
+	case "missing":
+		return fmt.Errorf("wrapped: %w", errNotFound)
+	case "temp":
+		return tempError{}
+	case "other":
+		return errors.New("other")
+	}
+	return nil
+}
+
+func classify(kind string) string {
+	try {
+		fail(kind)
+		return "ok"
+	} catch (e: codeError) {
+		return t`code ${e.code}`
+	} catch (e is errNotFound) {
+		return t`missing: ${e}`
+	} catch (e: interface{ Temporary() bool }) {
+		return t`temporary ${e.Temporary()}`
+	} catch (e) {
+		return t`rest: ${e}`
+	}
+}
+
+func inner(kind string) (string, error) {
+	try {
+		fail(kind)
+	} catch (e is errNotFound) {
+		steps = append(steps, "inner missing")
+		return "missing", nil
+	} finally {
+		steps = append(steps, "inner finally")
+	}
+	return "ok", nil
+}
+
+func outer(kind string) string {
+	try {
+		try {
+			fail(kind)
+		} catch (e: codeError) {
+			steps = append(steps, "inner code")
+		} finally {
+			steps = append(steps, "inner finally")
+		}
+	} catch (e) {
+		steps = append(steps, "outer "+e.Error())
+	}
+	return "done"
+}
+
+func main() {
+	for (const kind of []string{"", "code", "missing", "temp", "other"}) {
+		fmt.Println(classify(kind))
+	}
+	for (const kind of []string{"", "missing", "other"}) {
+		let result, err = inner(kind)
+		fmt.Println(result, err, steps)
+		steps = nil
+	}
+	for (const kind of []string{"code", "other"}) {
+		fmt.Println(outer(kind), steps)
+		steps = nil
+	}
+}

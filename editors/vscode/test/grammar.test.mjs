@@ -50,6 +50,15 @@ test("throw is a keyword", () => {
   assertNoScope(inFunctionBody("\tthrows(err)"), "throws", "keyword");
 });
 
+test("typed catch clauses", () => {
+  const source = inFunctionBody("\t} catch (pathError: *fs.PathError) {\n\t} catch (missing is sql.ErrNoRows) {");
+  assertScope(source, "pathError", "variable.parameter.gol");
+  assertScope(source, ":", "punctuation.separator.type.gol");
+  assertScope(source, "missing", "variable.parameter.gol");
+  assertScope(source, "is", "keyword.operator.is.gol");
+  assertScope(source, "catch", "keyword.control.exception.gol", 1);
+});
+
 test("catch without a variable", () => {
   assertScope(inFunctionBody("\t} catch {"), "catch", "keyword.control.exception.gol");
 });
