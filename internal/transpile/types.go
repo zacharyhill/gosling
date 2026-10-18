@@ -68,14 +68,54 @@ func paramType(signature *types.Signature, paramIndex int) types.Type {
 }
 
 // typeExpr parses goType, as file writes it, into an expression that the
-// type checker can resolve.
-func (transpiler *transpiler) typeExpr(file *file, goType types.Type) (ast.Expr, bool) {
+// type checker can resolve. It sets each position in the expression to position.
+func (transpiler *transpiler) typeExpr(file *file, goType types.Type, position token.Pos) (ast.Expr, bool) {
 	typeText, ok := transpiler.typeNameIn(file, goType, true)
 	if !ok {
 		return nil, false
 	}
 	expr, err := parser.ParseExpr(typeText)
-	return expr, err == nil
+	if err != nil {
+		return nil, false
+	}
+	placeAt(expr, position)
+	return expr, true
+}
+
+// placeAt moves the positions in a parsed type expression to position. The
+// parser gives them positions in no file, so errors show a wrong place.
+func placeAt(typeExpr ast.Expr, position token.Pos) {
+	ast.Inspect(typeExpr, func(node ast.Node) bool {
+		switch node := node.(type) {
+		case *ast.Ident:
+			node.NamePos = position
+		case *ast.StarExpr:
+			node.Star = position
+		case *ast.ArrayType:
+			node.Lbrack = position
+		case *ast.MapType:
+			node.Map = position
+		case *ast.ChanType:
+			node.Begin, node.Arrow = position, token.NoPos
+		case *ast.IndexExpr:
+			node.Lbrack, node.Rbrack = position, position
+		case *ast.IndexListExpr:
+			node.Lbrack, node.Rbrack = position, position
+		case *ast.FuncType:
+			node.Func = position
+		case *ast.FieldList:
+			node.Opening, node.Closing = position, position
+		case *ast.StructType:
+			node.Struct = position
+		case *ast.InterfaceType:
+			node.Interface = position
+		case *ast.Ellipsis:
+			node.Ellipsis = position
+		case *ast.BasicLit:
+			node.ValuePos = position
+		}
+		return true
+	})
 }
 
 // typeNameIn prints goType as file writes it. It imports the packages that
