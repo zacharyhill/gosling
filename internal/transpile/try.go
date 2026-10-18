@@ -160,7 +160,7 @@ func (lowerer *lowerer) walkTryStatement(parts *tryStatement, binding string, ou
 
 func (lowerer *lowerer) catchPrologue(parts *tryStatement) string {
 	try := parts.context
-	isBindingUsed := parts.catch != nil && lowerer.usesObject(parts.catchBody, lowerer.bindingObject(parts.catch))
+	isBindingUsed := lowerer.usesObject(parts.catchBody, lowerer.findBindingObject(parts))
 	switch {
 	case try.rebind != "" && isBindingUsed:
 		return "\n" + try.rebind + " := " + try.catchVar
@@ -209,15 +209,24 @@ func (lowerer *lowerer) emitTry(parts *tryStatement) {
 	lowerer.replace(parts.catch.Rbrace, parts.catch.Rbrace+1, tail, lowerer.line(parts.catch.Rbrace))
 }
 
-func (lowerer *lowerer) bindingObject(catch *ast.BlockStmt) types.Object {
-	if len(catch.List) == 0 {
+// findBindingObject returns the catch variable from the declaration that the
+// preprocessor puts first in a catch block with a binding.
+func (lowerer *lowerer) findBindingObject(parts *tryStatement) types.Object {
+	if parts.catch == nil || !parts.context.hasBinding || len(parts.catch.List) == 0 {
 		return nil
 	}
-	decl, ok := catch.List[0].(*ast.DeclStmt)
+	decl, ok := parts.catch.List[0].(*ast.DeclStmt)
 	if !ok {
 		return nil
 	}
-	spec := decl.Decl.(*ast.GenDecl).Specs[0].(*ast.ValueSpec)
+	genDecl, ok := decl.Decl.(*ast.GenDecl)
+	if !ok || len(genDecl.Specs) == 0 {
+		return nil
+	}
+	spec, ok := genDecl.Specs[0].(*ast.ValueSpec)
+	if !ok || len(spec.Names) == 0 {
+		return nil
+	}
 	return lowerer.typeInfo.Defs[spec.Names[0]]
 }
 
