@@ -494,6 +494,21 @@ func TestProcess(test *testing.T) {
 			want: "s := __goslingT(`a\\${x}\n`, m[\"}\"], `\nb`)",
 		},
 		{
+			name: "template literal with escaped backticks",
+			src:  "s := t`a \\` b ${x} \\``",
+			want: "s := __goslingT(`a \\x60 b `, x, ` \\x60`)",
+		},
+		{
+			name: "backtick rune before a template literal",
+			src:  "r := '`'; s := t`\\``",
+			want: "r := '`'; s := __goslingT(`\\x60`)",
+		},
+		{
+			name: "escaped backslash before the closing backtick",
+			src:  "s := t`a\\\\`; u := `raw\\`",
+			want: "s := __goslingT(`a\\\\`); u := `raw\\`",
+		},
+		{
 			name: "template literal with braces in expression",
 			src:  "s := t`${Point{1, 2}}`",
 			want: "s := __goslingT(``, Point{1, 2}, ``)",

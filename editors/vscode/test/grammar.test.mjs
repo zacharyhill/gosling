@@ -131,6 +131,12 @@ test("template literal escapes", () => {
   assertScope(inFunctionBody("\ts := t`a\\tb \\${x}`"), "\\$", "constant.character.escape.gol");
 });
 
+test("escaped backtick in a template literal", () => {
+  const source = inFunctionBody("\ts := t`a\\`b`");
+  assertScope(source, "\\`", "constant.character.escape.gol");
+  assertScope(source, "b", "string.template.gol");
+});
+
 test("multiline template literal", () => {
   const source = inFunctionBody("\tlet msg = t`Dear ${name},\nthanks!`");
   assertScope(source, "thanks!", "string.template.gol");

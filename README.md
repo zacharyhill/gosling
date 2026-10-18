@@ -436,7 +436,7 @@ The variable has the type `any`. It holds the value that `recover` returns. `cat
 const msg = t`hello ${u.Name}, you are ${u.Age}` // fmt.Sprintf("hello %s, you are %d", u.Name, u.Age)
 ```
 
-JavaScript escapes work, such as `\n`, `\t`, `\xHH`, `\uHHHH`, and `\u{H...}`. Write `\${` for a literal `${`. A template cannot contain a backtick. gosling adds the `fmt` and `strconv` imports if necessary.
+JavaScript escapes work, such as `\n`, `\t`, `\xHH`, `\uHHHH`, and `\u{H...}`. Write `\${` for a literal `${`, and `` \` `` for a backtick. gosling adds the `fmt` and `strconv` imports if necessary.
 
 ### Destructuring
 
