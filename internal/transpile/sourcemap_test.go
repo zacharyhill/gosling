@@ -110,6 +110,26 @@ func TestSourceMapLookups(test *testing.T) {
 	}
 }
 
+func TestSourceMapArrowParams(test *testing.T) {
+	const excerptLength = 10
+	src := "package p\n\nimport \"sort\"\n\ntype User struct{ Age int }\n\nfunc ages(users []User) []int {\n\tsort.Slice(users, (i, j) => users[i].Age < users[j].Age)\n\treturn users.map(u => u.Age)\n}\n"
+	for _, lineDirectives := range []bool{true, false} {
+		output := transpileWithMap(test, "x.gol", []byte(src), lineDirectives)
+		generated := string(output.Src)
+		for _, paramText := range []string{"(i", ", j", "u =>"} {
+			golOffset := strings.Index(src, paramText) + strings.IndexAny(paramText, "iju")
+			goOffset, ok := output.SourceMap.GoOffset(golOffset)
+			if !ok {
+				test.Errorf("parameter in %q does not map to the output\n%s", paramText, generated)
+				continue
+			}
+			if want := src[golOffset : golOffset+1]; !strings.HasPrefix(generated[goOffset:], want+" ") {
+				test.Errorf("parameter in %q maps to %q", paramText, generated[goOffset:min(goOffset+excerptLength, len(generated))])
+			}
+		}
+	}
+}
+
 func TestSourceMapGeneratedTextHasNoSource(test *testing.T) {
 	src := "package p\n\nimport \"os\"\n\nfunc remove(path string) {\n\ttry {\n\t\tos.Remove(path)\n\t} catch (e) {\n\t\tprintln(e)\n\t}\n}\n"
 	output := transpileWithMap(test, "x.gol", []byte(src), false)

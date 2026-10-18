@@ -3,7 +3,6 @@ package preprocess
 import (
 	"bytes"
 	"go/token"
-	"strings"
 )
 
 // Arrow functions become function literals with placeholder types. The
@@ -37,7 +36,8 @@ func (processor *processor) arrow(tokenIndex int) (int, error) {
 		if previous.offset < processor.copiedUpTo {
 			return 0, &Error{previous.offset, "unsupported arrow function"}
 		}
-		processor.replace(previous.offset, previous.end(), "func("+previous.text+" "+UntypedMarker+")")
+		processor.replace(previous.offset, previous.offset, "func(")
+		processor.replace(previous.end(), previous.end(), " "+UntypedMarker+")")
 	case previous.is(token.RPAREN):
 		if err := processor.arrowParams(tokenIndex - 1); err != nil {
 			return 0, err
@@ -91,33 +91,33 @@ func (processor *processor) arrowParams(rparenIndex int) error {
 	if lparenIndex < 0 || processor.tokens[lparenIndex].offset < processor.copiedUpTo {
 		return &Error{processor.tokens[rparenIndex].offset, "unsupported arrow function"}
 	}
-	lparen, rparen := processor.tokens[lparenIndex], processor.tokens[rparenIndex]
 	names, untyped := processor.untypedParams(lparenIndex+1, rparenIndex)
+	lparenOffset := processor.tokens[lparenIndex].offset
+	processor.replace(lparenOffset, lparenOffset, "func")
 	if !untyped {
-		processor.replace(lparen.offset, lparen.offset, "func")
 		return nil
 	}
-	for nameIndex, name := range names {
-		names[nameIndex] = name + " " + UntypedMarker
+	// The names stay source text, so they map to the output.
+	for _, name := range names {
+		processor.replace(name.end(), name.end(), " "+UntypedMarker)
 	}
-	processor.replace(lparen.offset, rparen.end(), "func("+strings.Join(names, ", ")+")")
 	return nil
 }
 
 // untypedParams reports whether tokens [from, to) are only names, like
 // "a, b", with no types. It also returns the names.
-func (processor *processor) untypedParams(from, to int) ([]string, bool) {
+func (processor *processor) untypedParams(from, to int) ([]lexeme, bool) {
 	if from == to {
 		return nil, false // () needs no placeholder types
 	}
-	var names []string
+	var names []lexeme
 	for tokenIndex := from; tokenIndex < to; tokenIndex++ {
 		current := processor.tokens[tokenIndex]
 		if (tokenIndex-from)%2 == 0 {
 			if !current.is(token.IDENT) {
 				return nil, false
 			}
-			names = append(names, current.text)
+			names = append(names, current)
 		} else if !current.is(token.COMMA) {
 			return nil, false
 		}
