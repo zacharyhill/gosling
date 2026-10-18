@@ -138,7 +138,9 @@ func (processor *processor) structSpread(tokenIndex int) (int, error) {
 		processor.replace(ampersand.offset, ampersand.end(), AddrMarker+"(")
 		addrClosing = ")"
 	}
-	processor.replace(lbrace.offset, processor.tokenAt(tokenIndex+1).end(), "("+WithMarker+"(")
+	ellipsis := processor.tokenAt(tokenIndex + 1)
+	processor.replace(lbrace.offset, lbrace.end(), "("+WithMarker+"(")
+	processor.replace(ellipsis.offset, ellipsis.end(), "")
 	processor.braceStack = append(processor.braceStack, frame{kind: frameBlock})
 	hasTrailingComma := elements[0].end < closeIndex
 	switch {

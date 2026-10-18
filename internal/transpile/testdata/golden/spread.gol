@@ -55,3 +55,19 @@ func updateWithTrailingComma(p Point) Point {
 func updatePointer(p *Point) *Point {
 	return &Point{...*p, Y: 2}
 }
+
+func updateWithComments(u User, age int) User {
+	return User{...u, // keep the base
+		// the new age
+		age, /* inline */ name: "x", // trailing name
+		tags: nil, // last
+		// before close
+	}
+}
+
+func spreadAfterComment(p Point) Point {
+	return Point{ // copy p
+		...p,
+		Y: 1,
+	}
+}
