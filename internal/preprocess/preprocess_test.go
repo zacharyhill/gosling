@@ -152,6 +152,11 @@ func TestProcess(test *testing.T) {
 			want: "p2 := geo.Point(__goslingWith(p, geo.Point{}))",
 		},
 		{
+			name: "struct spread alone with trailing comma",
+			src:  "p2 := Point{...p,\n}",
+			want: "p2 := Point(__goslingWith(p,\nPoint{}))",
+		},
+		{
 			name: "generic struct spread",
 			src:  "b := Box[int]{...b0, V: f(x)}",
 			want: "b := Box[int](__goslingWith(b0, Box[int]{ V: f(x)}))",

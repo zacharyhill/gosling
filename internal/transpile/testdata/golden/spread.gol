@@ -39,3 +39,15 @@ func updateShorthand(u User, age int) User {
 func leadingElements(a []int, x int) [][]int {
 	return [][]int{[x, ...a], [x, 1, ...a, ...a, 2]}
 }
+
+func copyWithTrailingComma(p Point) Point {
+	return Point{...p,
+	}
+}
+
+func updateWithTrailingComma(p Point) Point {
+	return Point{
+		...p,
+		X: 1,
+	}
+}
