@@ -440,11 +440,15 @@ JavaScript escapes work, such as `\n`, `\t`, `\xHH`, `\uHHHH`, and `\u{H...}`. W
 const {X, Y: y} = p             // X, y := p.X, p.Y
 const [a, b] = pair             // a, b := pair[0], pair[1]
 let [first, _, ...rest] = xs    // first, rest := xs[0], xs[2:]
+const {Addr: {Host}} = cfg      // Host := cfg.Addr.Host
+const [[a, b], c] = rows        // a, b, c := rows[0][0], rows[0][1], rows[1]
 const {Name: name} = load(path) // tmp := load(path); name := tmp.Name
 {X, Y} = p                      // X, Y = p.X, p.Y
 ```
 
 `let` and `const` declare new names. Code cannot assign to the names that `const` declares. Without `let` or `const`, the pattern assigns to existing variables. Declare names with a pattern only in functions. A pattern can use more than one line and can have a trailing comma.
+
+Patterns can be nested. Put an object or array pattern where a name can go. A rest element can only be the last element of an array pattern.
 
 Field names must match exactly. gosling evaluates a complex right side one time, into a temporary. An index past the end of a slice panics, as in Go. gosling does not read the index of a `_` element, so `const [a, _] = xs` does not panic if `xs` has one element.
 
@@ -645,7 +649,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - gosling checks calls that return `(A, B, error)` only as statements.
 - Without `catch panic`, a panic does not run `finally` blocks. A panic in a catch block or in a catch panic block also does not run them.
 - `catch panic` cannot follow a typed catch clause.
-- Destructuring patterns cannot be nested. Object patterns have no rest element.
+- Object patterns have no rest element.
 - `?.[index]`, `?.(call)`, and `??=` are not supported.
 - In a try block, an optional call that returns an error is an error.
 - Unions cannot be generic or be in a `type ( ... )` group.

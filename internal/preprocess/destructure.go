@@ -8,13 +8,13 @@ import (
 	"strings"
 )
 
-// binding is one name in a destructuring pattern. key is the source field
-// and name is the target variable.
+// binding is one name in a destructuring pattern. path is the access that
+// reads its value from the right side, like ".Addr.Host" or "[0][1:]".
+// offset is the offset of the name in the source.
 type binding struct {
-	key          string // field name, not used for array patterns
-	name         string
-	patternIndex int
-	rest         bool
+	name   string
+	path   string
+	offset int
 }
 
 // destructure is a destructuring statement with a right side that the scan
@@ -35,7 +35,7 @@ type destructure struct {
 func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, bool, error) {
 	open := processor.tokens[tokenIndex]
 	isArray := open.is(token.LBRACK)
-	bindings, operatorIndex, err := processor.pattern(tokenIndex+1, isArray)
+	bindings, operatorIndex, err := processor.pattern(tokenIndex+1, isArray, "")
 	if err != nil || bindings == nil {
 		return tokenIndex, false, err
 	}
@@ -43,10 +43,10 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 	if !operator.is(token.DEFINE) && !operator.is(token.ASSIGN) {
 		return tokenIndex, false, nil
 	}
-	if isArray {
-		// A blank element reads no index, so it cannot panic.
-		bindings = slices.DeleteFunc(bindings, func(elementBinding binding) bool { return elementBinding.name == "_" })
-	}
+	// A blank element reads no index, so it cannot panic.
+	bindings = slices.DeleteFunc(bindings, func(elementBinding binding) bool {
+		return elementBinding.name == "_" && strings.HasSuffix(elementBinding.path, "]")
+	})
 	operatorText := operator.kind.String()
 	var constBindings []binding
 	if keyword != nil {
@@ -60,12 +60,7 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 	}
 
 	if end, ok := processor.simpleExpr(operatorIndex + 1); ok {
-		rightSide := string(processor.src[processor.tokenAt(operatorIndex+1).offset:processor.tokenAt(end).end()])
-		assignText := formatAssignment(bindings, operatorText, rightSide, isArray)
-		newlines := processor.collectNewlines(open.offset, processor.tokenAt(end).end())
-		namesAt := processor.replace(open.offset, processor.tokenAt(end).end(), assignText+newlines)
-		processor.recordNewlines(namesAt+len(assignText), newlines)
-		processor.recordConsts(namesAt, constBindings)
+		processor.assignFromSimpleExpr(open.offset, bindings, operatorText, operatorIndex+1, end, constBindings)
 		return end, true, nil
 	}
 	// Other right sides go into a temporary variable, so they run once. The
@@ -75,22 +70,51 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 	processor.replace(open.offset, operator.end(), rightSideVar+" :=")
 	processor.pendingDestructures = append(processor.pendingDestructures, &destructure{
 		start:         processor.nesting(),
-		text:          "; " + formatAssignment(bindings, operatorText, rightSideVar, isArray),
+		text:          "; " + formatAssignment(bindings, operatorText, rightSideVar),
 		newlines:      processor.collectNewlines(open.offset, operator.end()),
 		constBindings: constBindings,
 	})
 	return operatorIndex, true, nil
 }
 
+// assignFromSimpleExpr rewrites a pattern whose right side is the simple
+// expression from token rightSideStartIndex to token rightSideEndIndex. The
+// names and the last copy of the right side stay source text, so the editor
+// can map them.
+func (processor *processor) assignFromSimpleExpr(patternStart int, bindings []binding, operatorText string, rightSideStartIndex, rightSideEndIndex int, constBindings []binding) {
+	rightSideStart, rightSideEnd := processor.tokenAt(rightSideStartIndex).offset, processor.tokenAt(rightSideEndIndex).end()
+	rightSide := string(processor.src[rightSideStart:rightSideEnd])
+	// The output keeps the line count of a multi-line pattern.
+	newlines := processor.collectNewlines(patternStart, rightSideEnd)
+	if len(bindings) == 0 {
+		assignText := formatAssignment(bindings, operatorText, rightSide)
+		namesAt := processor.replace(patternStart, rightSideEnd, assignText+newlines)
+		processor.recordNewlines(namesAt+len(assignText), newlines)
+		return
+	}
+	namesAt := processor.copyNames(patternStart, bindings)
+	lastBinding := bindings[len(bindings)-1]
+	assignText := " " + operatorText + " "
+	if leadingValues := values(bindings[:len(bindings)-1], rightSide); leadingValues != "" {
+		assignText += leadingValues + ", "
+	}
+	processor.replace(lastBinding.offset+len(lastBinding.name), rightSideStart, assignText)
+	pathAt := processor.replace(rightSideEnd, rightSideEnd, lastBinding.path+newlines)
+	processor.recordNewlines(pathAt+len(lastBinding.path), newlines)
+	processor.recordConsts(namesAt, constBindings)
+}
+
 // pattern parses the bindings that start at token tokenIndex, after the
-// opening bracket. It returns nil bindings if the tokens are not a pattern.
-func (processor *processor) pattern(tokenIndex int, isArray bool) ([]binding, int, error) {
+// opening bracket. prefix is the access path of the pattern. It returns the
+// index after the closing bracket, or nil bindings if the tokens are not a
+// pattern.
+func (processor *processor) pattern(tokenIndex int, isArray bool, prefix string) ([]binding, int, error) {
 	closing := token.RBRACE
 	if isArray {
 		closing = token.RBRACK
 	}
 	var bindings []binding
-	for {
+	for elementIndex := 0; ; elementIndex++ {
 		current := processor.tokenAt(tokenIndex)
 		if current.is(token.ELLIPSIS) {
 			if !isArray {
@@ -100,19 +124,26 @@ func (processor *processor) pattern(tokenIndex int, isArray bool) ([]binding, in
 			if !processor.tokenAt(tokenIndex+1).is(token.IDENT) || !isClosed {
 				return nil, 0, nil
 			}
-			bindings = append(bindings, binding{name: processor.tokenAt(tokenIndex + 1).text, patternIndex: len(bindings), rest: true})
+			name := processor.tokenAt(tokenIndex + 1)
+			bindings = append(bindings, binding{name: name.text, path: fmt.Sprintf("%s[%d:]", prefix, elementIndex), offset: name.offset})
 			return bindings, afterIndex, nil
 		}
-		if !current.is(token.IDENT) {
-			return nil, 0, nil
+		path := fmt.Sprintf("%s[%d]", prefix, elementIndex)
+		if !isArray {
+			if !current.is(token.IDENT) {
+				return nil, 0, nil
+			}
+			path = prefix + "." + current.text
+			if processor.tokenAt(tokenIndex + 1).is(token.COLON) {
+				tokenIndex += 2
+			}
 		}
-		newBinding := binding{key: current.text, name: current.text, patternIndex: len(bindings)}
-		tokenIndex++
-		if !isArray && processor.tokenAt(tokenIndex).is(token.COLON) && processor.tokenAt(tokenIndex+1).is(token.IDENT) {
-			newBinding.name = processor.tokenAt(tokenIndex + 1).text
-			tokenIndex += 2
+		elementBindings, nextIndex, err := processor.parseElement(tokenIndex, path)
+		if err != nil || elementBindings == nil {
+			return nil, 0, err
 		}
-		bindings = append(bindings, newBinding)
+		bindings = append(bindings, elementBindings...)
+		tokenIndex = nextIndex
 		if afterIndex, isClosed := processor.findPatternEnd(tokenIndex, closing); isClosed {
 			return bindings, afterIndex, nil
 		}
@@ -121,6 +152,19 @@ func (processor *processor) pattern(tokenIndex int, isArray bool) ([]binding, in
 		}
 		tokenIndex++
 	}
+}
+
+// parseElement parses one target at token tokenIndex: a name or a nested
+// pattern. It returns the index after the target.
+func (processor *processor) parseElement(tokenIndex int, path string) ([]binding, int, error) {
+	current := processor.tokenAt(tokenIndex)
+	switch {
+	case current.is(token.IDENT):
+		return []binding{{name: current.text, path: path, offset: current.offset}}, tokenIndex + 1, nil
+	case current.is(token.LBRACE) || current.is(token.LBRACK):
+		return processor.pattern(tokenIndex+1, current.is(token.LBRACK), path)
+	}
+	return nil, 0, nil
 }
 
 // findPatternEnd reports whether the tokens at tokenIndex close a pattern: an
@@ -155,11 +199,11 @@ func (processor *processor) simpleExpr(tokenIndex int) (int, bool) {
 
 // formatAssignment returns the statement that assigns the bindings from rightSide.
 // Without bindings, it only evaluates rightSide.
-func formatAssignment(bindings []binding, operatorText, rightSide string, isArray bool) string {
+func formatAssignment(bindings []binding, operatorText, rightSide string) string {
 	if len(bindings) == 0 {
 		return "_ = " + rightSide
 	}
-	return names(bindings) + " " + operatorText + " " + values(bindings, rightSide, isArray)
+	return names(bindings) + " " + operatorText + " " + values(bindings, rightSide)
 }
 
 func names(bindings []binding) string {
@@ -170,17 +214,22 @@ func names(bindings []binding) string {
 	return strings.Join(targets, ", ")
 }
 
-func values(bindings []binding, rightSide string, isArray bool) string {
+// copyNames replaces the pattern text from start up to the last name with
+// the names, separated by commas. It returns the output offset of the first
+// name.
+func (processor *processor) copyNames(start int, bindings []binding) int {
+	namesAt := processor.replace(start, bindings[0].offset, "")
+	for bindingIndex := 1; bindingIndex < len(bindings); bindingIndex++ {
+		previous := bindings[bindingIndex-1]
+		processor.replace(previous.offset+len(previous.name), bindings[bindingIndex].offset, ", ")
+	}
+	return namesAt
+}
+
+func values(bindings []binding, rightSide string) string {
 	sources := make([]string, len(bindings))
 	for bindingIndex, binding := range bindings {
-		switch {
-		case binding.rest:
-			sources[bindingIndex] = fmt.Sprintf("%s[%d:]", rightSide, binding.patternIndex)
-		case isArray:
-			sources[bindingIndex] = fmt.Sprintf("%s[%d]", rightSide, binding.patternIndex)
-		default:
-			sources[bindingIndex] = rightSide + "." + binding.key
-		}
+		sources[bindingIndex] = rightSide + binding.path
 	}
 	return strings.Join(sources, ", ")
 }

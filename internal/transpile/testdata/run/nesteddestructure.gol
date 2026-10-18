@@ -1,0 +1,38 @@
+package main
+
+import "fmt"
+
+type Addr struct {
+	Host string
+	Port int
+}
+
+type Config struct {
+	Name  string
+	Addr  *Addr
+	Tags  []string
+	Pairs [][2]int
+}
+
+func configs() []Config {
+	return []Config{
+		{Name: "a", Addr: &Addr{"localhost", 80}, Tags: []string{"x", "y", "z"}, Pairs: [][2]int{{1, 2}, {3, 4}}},
+		{Name: "b", Addr: &Addr{"example.com", 443}},
+	}
+}
+
+func main() {
+	const cfg = configs()[0]
+	const {Name, Addr: {Host, Port: port}, Tags: [first, ...rest]} = cfg
+	fmt.Println(Name, Host, port, first, rest)
+
+	const [[a, b], [c, d]] = cfg.Pairs
+	fmt.Println(a, b, c, d)
+
+	const [_, {Name: second, Addr: {Host: secondHost}}] = configs()
+	fmt.Println(second, secondHost)
+
+	let x, y: int
+	[[x, _], [_, y]] = cfg.Pairs
+	fmt.Println(x, y)
+}
