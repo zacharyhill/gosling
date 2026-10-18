@@ -101,3 +101,15 @@ func blockWithoutReturnInCall(run func(func(int) error)) {
 		}
 	})
 }
+
+func bodyOnNextLine(xs []int) []int {
+	return xs.map(x =>
+		x * 3,
+	)
+}
+
+func statementOnNextLine(names []string) {
+	names.forEach(n =>
+		fmt.Println(n),
+	)
+}
