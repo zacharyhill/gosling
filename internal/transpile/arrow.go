@@ -20,8 +20,11 @@ type arrow struct {
 	// untyped holds the placeholder type of each parameter without a written
 	// type. While any are unknown, nilStandIn replaces the literal in the AST.
 	// So the literal does not affect inference of the surrounding call.
-	untyped           []*ast.Ident
-	nilStandIn        *ast.Ident
+	untyped    []*ast.Ident
+	nilStandIn *ast.Ident
+	// declaredIdent is the variable that the arrow initializes in a function, or
+	// nil. Its first use can give the parameter types.
+	declaredIdent     *ast.Ident
 	params            []types.Type
 	resultPlaceholder *ast.Ident
 	bodyReturn        *ast.ReturnStmt // the return of an expression body
@@ -75,8 +78,10 @@ func (file *file) findArrows() {
 		file.arrows = append(file.arrows, arrowFunc)
 		return true
 	})
+	parentOf := parents(file.ast)
 	for _, arrowFunc := range file.arrows {
 		if len(arrowFunc.untyped) > 0 {
+			arrowFunc.declaredIdent = findDeclaredIdent(parentOf, arrowFunc.funcLit)
 			arrowFunc.nilStandIn = &ast.Ident{Name: "nil", NamePos: arrowFunc.funcLit.Pos()}
 			replaceNode(file.ast, arrowFunc.funcLit, arrowFunc.nilStandIn)
 		}
@@ -130,7 +135,10 @@ func (transpiler *transpiler) fixArrows(file *file, typeInfo *types.Info) bool {
 		if (arrowFunc.nilStandIn == nil && arrowFunc.resolved) || arrowFunc.hasHiddenType {
 			continue
 		}
-		context, ok := transpiler.arrowContext(file, typeInfo, parentOf, arrowFunc)
+		context, ok := transpiler.exprContext(file, typeInfo, parentOf, arrowFunc.node())
+		if !ok && arrowFunc.nilStandIn != nil {
+			context, ok = transpiler.firstUseContext(file, typeInfo, parentOf, arrowFunc)
+		}
 		ok = ok && !slices.ContainsFunc(context.params, hasPlaceholder) && !slices.ContainsFunc(context.results, hasPlaceholder)
 		if arrowFunc.nilStandIn != nil {
 			if !ok || len(context.params) != arrowFunc.paramCount() {
@@ -289,51 +297,51 @@ func hasPlaceholder(goType types.Type) bool {
 	return strings.Contains(typeText, preprocess.ResultMarker) || strings.Contains(typeText, preprocess.UntypedMarker)
 }
 
-// arrowContext finds the function type expected where the arrow appears.
-func (transpiler *transpiler) arrowContext(file *file, typeInfo *types.Info, parentOf map[ast.Node]ast.Node, arrowFunc *arrow) (funcContext, bool) {
-	arrowExpr, parent := outermostParen(parentOf, arrowFunc.node())
+// exprContext finds the function type expected where funcExpr appears.
+func (transpiler *transpiler) exprContext(file *file, typeInfo *types.Info, parentOf map[ast.Node]ast.Node, funcExpr ast.Expr) (funcContext, bool) {
+	outerExpr, parent := outermostParen(parentOf, funcExpr)
 	switch parentNode := parent.(type) {
 	case *ast.CallExpr:
 		if arrayCall, ok := file.arrayCalls[parentNode]; ok {
-			return transpiler.callbackContext(typeInfo, parentNode, arrayCall, arrowFunc)
+			return transpiler.callbackContext(typeInfo, parentNode, arrayCall, funcExpr)
 		}
 		signature, ok := typeInfo.Types[parentNode.Fun].Type.(*types.Signature)
 		if !ok || signature.TypeParams().Len() > 0 {
 			return funcContext{}, false
 		}
 		for argIndex, arg := range parentNode.Args {
-			if arg == arrowExpr {
+			if arg == outerExpr {
 				return expectFunc(paramType(signature, argIndex))
 			}
 		}
 	case *ast.ValueSpec:
 		for valueIndex, value := range parentNode.Values {
-			if value == arrowExpr && parentNode.Type != nil && valueIndex < len(parentNode.Names) {
+			if value == outerExpr && parentNode.Type != nil && valueIndex < len(parentNode.Names) {
 				return expectFunc(typeInfo.TypeOf(parentNode.Type))
 			}
 		}
 	case *ast.AssignStmt:
 		for rhsIndex, rightSide := range parentNode.Rhs {
-			if rightSide == arrowExpr && parentNode.Tok == token.ASSIGN && len(parentNode.Lhs) == len(parentNode.Rhs) {
+			if rightSide == outerExpr && parentNode.Tok == token.ASSIGN && len(parentNode.Lhs) == len(parentNode.Rhs) {
 				return expectFunc(typeInfo.TypeOf(parentNode.Lhs[rhsIndex]))
 			}
 		}
 	case *ast.ReturnStmt:
 		signature := enclosingSignature(typeInfo, parentOf, parentNode)
 		for resultIndex, result := range parentNode.Results {
-			if result == arrowExpr && signature != nil && signature.Results().Len() == len(parentNode.Results) {
+			if result == outerExpr && signature != nil && signature.Results().Len() == len(parentNode.Results) {
 				return expectFunc(signature.Results().At(resultIndex).Type())
 			}
 		}
 	case *ast.CompositeLit:
 		for elementIndex, element := range parentNode.Elts {
-			if element == arrowExpr {
+			if element == outerExpr {
 				return expectFunc(getElementType(typeInfo.TypeOf(parentNode), elementIndex, nil))
 			}
 		}
 	case *ast.KeyValueExpr:
 		compositeLit, ok := parentOf[parentNode].(*ast.CompositeLit)
-		if ok && parentNode.Value == arrowExpr {
+		if ok && parentNode.Value == outerExpr {
 			return expectFunc(getElementType(typeInfo.TypeOf(compositeLit), -1, parentNode.Key))
 		}
 	}
@@ -368,6 +376,90 @@ func getElementType(literalType types.Type, position int, key ast.Expr) types.Ty
 		}
 	}
 	return nil
+}
+
+// firstUseContext finds the types of an arrow that declares a variable in
+// a function. They come from the first use of the variable. A call gives
+// the default types of its arguments. Another use gives its context.
+func (transpiler *transpiler) firstUseContext(file *file, typeInfo *types.Info, parentOf map[ast.Node]ast.Node, arrowFunc *arrow) (funcContext, bool) {
+	variable := arrowFunc.declaredVariable(typeInfo)
+	if variable == nil {
+		return funcContext{}, false
+	}
+	var firstUse *ast.Ident
+	ast.Inspect(file.ast, func(node ast.Node) bool {
+		if ident, ok := node.(*ast.Ident); ok && typeInfo.Uses[ident] == variable {
+			firstUse = ident
+		}
+		return firstUse == nil
+	})
+	if firstUse == nil {
+		return funcContext{}, false
+	}
+	useExpr, parent := outermostParen(parentOf, firstUse)
+	if call, ok := parent.(*ast.CallExpr); ok && call.Fun == useExpr {
+		return argumentContext(typeInfo, call)
+	}
+	return transpiler.exprContext(file, typeInfo, parentOf, firstUse)
+}
+
+func (arrow *arrow) declaredVariable(typeInfo *types.Info) types.Object {
+	if arrow.declaredIdent == nil {
+		return nil
+	}
+	return typeInfo.Defs[arrow.declaredIdent]
+}
+
+// findDeclaredIdent returns the variable that a function-level declaration of
+// funcExpr declares, or nil.
+func findDeclaredIdent(parentOf map[ast.Node]ast.Node, funcExpr ast.Expr) *ast.Ident {
+	valueExpr, parent := outermostParen(parentOf, funcExpr)
+	var names, values []ast.Expr
+	switch parentNode := parent.(type) {
+	case *ast.AssignStmt:
+		if parentNode.Tok != token.DEFINE {
+			return nil
+		}
+		names, values = parentNode.Lhs, parentNode.Rhs
+	case *ast.ValueSpec:
+		if _, inFunction := parentOf[parentOf[parentNode]].(*ast.DeclStmt); !inFunction || parentNode.Type != nil {
+			return nil
+		}
+		for _, name := range parentNode.Names {
+			names = append(names, name)
+		}
+		values = parentNode.Values
+	}
+	if len(names) != len(values) {
+		return nil
+	}
+	for valueIndex, value := range values {
+		if value == valueExpr {
+			name, _ := names[valueIndex].(*ast.Ident)
+			return name
+		}
+	}
+	return nil
+}
+
+// argumentContext gives the default types of the arguments of call as the
+// parameter types. The results come from the body.
+func argumentContext(typeInfo *types.Info, call *ast.CallExpr) (funcContext, bool) {
+	if call.Ellipsis.IsValid() {
+		return funcContext{}, false
+	}
+	var context funcContext
+	for _, arg := range call.Args {
+		argType := typeInfo.Types[arg].Type
+		if argType == nil || argType == types.Typ[types.Invalid] || isUntypedNil(argType) {
+			return funcContext{}, false
+		}
+		if _, isTuple := argType.(*types.Tuple); isTuple {
+			return funcContext{}, false
+		}
+		context.params = append(context.params, types.Default(argType))
+	}
+	return context, true
 }
 
 func expectFunc(goType types.Type) (funcContext, bool) {

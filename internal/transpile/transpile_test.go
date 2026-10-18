@@ -424,6 +424,26 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:9:2: the inferred type item cannot be written here, because a local declaration hides the name; rename the local declaration",
 		},
 		{
+			name: "arrow whose first use gives no types",
+			src:  "package p\nimport \"fmt\"\nfunc f() {\n\tconst g = x => x\n\tfmt.Println(g)\n\t_ = g(1)\n}",
+			want: "x.gol:4:12: cannot infer the parameter types of this arrow function",
+		},
+		{
+			name: "arrow at package level without context",
+			src:  "package p\nlet g = x => x\nfunc f() int {\n\treturn g(1)\n}",
+			want: "x.gol:2:9: cannot infer the parameter types of this arrow function",
+		},
+		{
+			name: "later call with another type than the first call",
+			src:  "package p\nfunc f() {\n\tconst id = x => x\n\t_ = id(1)\n\t_ = id(\"a\")\n}",
+			want: "x.gol:5:9: cannot use \"a\" (untyped string constant) as int value in argument to id",
+		},
+		{
+			name: "first call with untyped nil",
+			src:  "package p\nfunc f() {\n\tconst g = x => x\n\t_ = g(nil)\n}",
+			want: "x.gol:3:12: cannot infer the parameter types of this arrow function",
+		},
+		{
 			name: "forEach used as a value",
 			src:  "package p\nfunc f(xs []int) {\n\tlet y = xs.forEach(x => println(x))\n\t_ = y\n}",
 			want: "x.gol:3:10: forEach can only be used as a statement",

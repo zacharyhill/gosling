@@ -597,8 +597,20 @@ A parameter without a type gets it from the context:
 - a variable or assignment with a function type
 - a `return` in a function that returns a function type
 - an element of a composite literal, such as `[]func(string) bool{s => s != ""}`, a map value, or a struct field
+- the first use of the variable that the arrow declares in a function
 
-Without a context, add types. The result type comes from the context or from the body. If the context has no result, an expression body becomes a statement. So `names.forEach(n => fmt.Println(n))` works.
+The first use of the variable is the first one in the source. If it is a call, each parameter gets the type of its argument. An untyped constant gets its default type. Other uses give their context, as above:
+
+```go
+const inc = x => x + 1                // func(x int) int { ... }
+const answer = inc(41)
+const bad = inc(1.5)                  // error: cannot use 1.5 as int value
+
+const shout = s => strings.ToUpper(s) // func(s string) string { ... }
+const loud = names.map(shout)
+```
+
+gosling does not use the body to find parameter types. Without a context, add types. The result type comes from the context or from the body. If the context has no result, an expression body becomes a statement. So `names.forEach(n => fmt.Println(n))` works.
 
 `nil` has no type. If the body returns only `nil` for a result, the type must come from the context, as in `let f: func() error = () => nil`.
 

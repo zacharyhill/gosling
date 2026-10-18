@@ -184,3 +184,30 @@ func fromCompositeLiterals() {
 	nested := [][]func(int) int{{func(n int) int { return n + 1 }}}
 	fmt.Println(len(checks), len(byName), named.check("ok"), positional.format(1), indexed[1](1), nested[0][0](1))
 }
+
+func fromFirstCall() int {
+	inc := func(x int) int { return x + 1 }
+	return inc(41)
+}
+
+func fromFirstCallWithFloat() float64 {
+	half := func(x float64) float64 { return x / 2 }
+	return half(3.0)
+}
+
+func fromFirstUseAsCallback(xs []string) []string {
+	shout := func(s string) string { return strings.ToUpper(s) }
+	return func() []string {
+		xs, f := xs, shout
+		out := make([]string, 0, len(xs))
+		for _, x := range xs {
+			out = append(out, f(x))
+		}
+		return out
+	}()
+}
+
+func fromFirstUseAsArgument(xs []string) {
+	less := func(i int, j int) bool { return xs[i] < xs[j] }
+	sort.Slice(xs, less)
+}
