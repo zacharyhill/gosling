@@ -70,6 +70,23 @@ func spineChild(node ast.Node) ast.Expr {
 // links returns the optional selectors of the chain that ends at root, in
 // source order. It reports an error if the left side of a link cannot be nil.
 func (lowerer *lowerer) links(root ast.Expr) ([]*ast.SelectorExpr, bool) {
+	links := lowerer.collectOptionalLinks(root)
+	link := lowerer.findNonNilableLink(links)
+	if link == nil {
+		return links, true
+	}
+	leftType := lowerer.typeInfo.Types[link.X].Type
+	if _, isTypeParam := leftType.(*types.TypeParam); isTypeParam {
+		lowerer.errorf(lowerer.file, link.X.End(), "?. needs a pointer or interface on its left, but type parameter %s allows types that cannot be nil", displayName(leftType))
+	} else {
+		lowerer.errorf(lowerer.file, link.X.End(), "?. needs a pointer or interface on its left, not %s", displayName(leftType))
+	}
+	return nil, false
+}
+
+// collectOptionalLinks returns the optional selectors of the chain that ends at
+// root, in source order.
+func (lowerer *lowerer) collectOptionalLinks(root ast.Expr) []*ast.SelectorExpr {
 	var links []*ast.SelectorExpr
 	for expr := root; expr != nil; expr = spineChild(expr) {
 		if selector, ok := expr.(*ast.SelectorExpr); ok && lowerer.file.optional[selector] {
@@ -77,19 +94,17 @@ func (lowerer *lowerer) links(root ast.Expr) ([]*ast.SelectorExpr, bool) {
 		}
 	}
 	slices.Reverse(links)
+	return links
+}
+
+// findNonNilableLink returns the first link whose left side cannot be nil, or nil.
+func (lowerer *lowerer) findNonNilableLink(links []*ast.SelectorExpr) *ast.SelectorExpr {
 	for _, link := range links {
-		leftType := lowerer.typeInfo.Types[link.X].Type
-		if isComparableToNil(leftType) {
-			continue
+		if !isComparableToNil(lowerer.typeInfo.Types[link.X].Type) {
+			return link
 		}
-		if _, isTypeParam := leftType.(*types.TypeParam); isTypeParam {
-			lowerer.errorf(lowerer.file, link.X.End(), "?. needs a pointer or interface on its left, but type parameter %s allows types that cannot be nil", displayName(leftType))
-		} else {
-			lowerer.errorf(lowerer.file, link.X.End(), "?. needs a pointer or interface on its left, not %s", displayName(leftType))
-		}
-		return nil, false
 	}
-	return links, true
+	return nil
 }
 
 // hasBareCompositeLit reports whether expr has a composite literal outside

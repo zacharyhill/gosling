@@ -2,11 +2,13 @@ package transpile
 
 import (
 	"bytes"
+	"errors"
 	"flag"
 	"go/ast"
 	"go/format"
 	"go/importer"
 	"go/parser"
+	"go/scanner"
 	"go/token"
 	"go/types"
 	"os"
@@ -334,6 +336,39 @@ func TestErrors(test *testing.T) {
 			}
 			if !strings.Contains(err.Error(), testCase.want) {
 				test.Errorf("error:\n%v\nwant substring:\n%s", err, testCase.want)
+			}
+		})
+	}
+}
+
+// TestErrorsReportedOnce checks that one problem gives one diagnostic.
+func TestErrorsReportedOnce(test *testing.T) {
+	testCases := []struct {
+		name string
+		src  string
+	}{
+		{
+			name: "optional chain on a struct value with a call moved out of try",
+			src:  "package p\nimport \"strconv\"\ntype T struct{}\nfunc (T) Get(n int) int { return n }\nfunc f(v T) int {\n\ttry {\n\t\treturn v?.Get(strconv.Atoi(\"1\"))\n\t} catch {\n\t\treturn 0\n\t}\n}",
+		},
+		{
+			name: "optional chain on a struct value inside try",
+			src:  "package p\nimport \"io\"\ntype T struct{ X int }\nfunc f(v T, c io.Closer) int {\n\ttry {\n\t\tc.Close()\n\t\treturn v?.X\n\t} catch {\n\t\treturn 0\n\t}\n}",
+		},
+		{
+			name: "coalesce on an optional chain on a struct value with a call moved out of try",
+			src:  "package p\nimport \"strconv\"\ntype T struct{}\nfunc (T) Get(n int) *int { return &n }\nfunc f(v T) int {\n\ttry {\n\t\treturn v?.Get(strconv.Atoi(\"1\")) ?? 0\n\t} catch {\n\t\treturn 0\n\t}\n}",
+		},
+	}
+	for _, testCase := range testCases {
+		test.Run(testCase.name, func(test *testing.T) {
+			_, err := Transpile(Config{Importer: importer.Default()}, []Input{{Path: "x.gol", Src: []byte(testCase.src)}})
+			var errorList scanner.ErrorList
+			if !errors.As(err, &errorList) {
+				test.Fatalf("want a scanner.ErrorList, got %v", err)
+			}
+			if len(errorList) != 1 {
+				test.Errorf("got %d errors, want 1:\n%v", len(errorList), err)
 			}
 		})
 	}
