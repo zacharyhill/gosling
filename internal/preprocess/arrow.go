@@ -132,3 +132,82 @@ func (processor *processor) untypedParams(from, to int) ([]lexeme, bool) {
 	}
 	return names, true
 }
+
+// rewriteGenericArrow rewrites a package-level const whose value is a generic
+// arrow into a generic function declaration:
+//
+//	const id = <T>(x T) => x    func id[T any](x T) __goslingR { return x }
+//
+// If the last type parameter has no constraint, it gets any. So <K, V>
+// becomes [K, V any], as in Go. It returns the index of the last token it
+// uses.
+func (processor *processor) rewriteGenericArrow(tokenIndex, lastNameIndex int) (int, error) {
+	keyword, name := processor.tokens[tokenIndex], processor.tokens[tokenIndex+1]
+	if !keyword.is(token.CONST) || len(processor.braceStack) > 0 || lastNameIndex != tokenIndex+1 {
+		return 0, &Error{keyword.offset, "a generic arrow function must be a package-level const with one name"}
+	}
+	lessIndex := lastNameIndex + 2
+	greaterIndex, ok := processor.findTypeParamsEnd(lessIndex)
+	if !ok || !processor.tokenAt(greaterIndex+1).is(token.LPAREN) || !processor.hasArrowAfter(greaterIndex+1) {
+		return 0, &Error{processor.tokens[lessIndex].offset, "expected an arrow function after the type parameters, as in <T>(x T) => x"}
+	}
+	less, greater := processor.tokens[lessIndex], processor.tokens[greaterIndex]
+	closingText := "]"
+	if previous := processor.tokens[greaterIndex-2]; previous.is(token.COMMA) || previous.is(token.LSS) {
+		closingText = " any]"
+	}
+	processor.replace(keyword.offset, name.offset, "func ")
+	processor.replace(name.end(), less.end(), "[")
+	processor.replace(greater.offset, greater.end(), closingText)
+	processor.genericParamOffsets[processor.tokens[greaterIndex+1].offset] = true
+	return greaterIndex, nil
+}
+
+// findTypeParamsEnd returns the index of the > that closes the type parameter
+// list at the < at token lessIndex. The list must not be empty.
+func (processor *processor) findTypeParamsEnd(lessIndex int) (int, bool) {
+	depth := 0
+	for tokenIndex := lessIndex + 1; tokenIndex < len(processor.tokens); tokenIndex++ {
+		current := processor.tokens[tokenIndex]
+		switch {
+		case current.is(token.GTR) && depth == 0:
+			return tokenIndex, tokenIndex > lessIndex+1
+		case isOpener(current):
+			depth++
+		case isCloser(current):
+			depth--
+		case current.is(token.SEMICOLON) && depth == 0:
+			return 0, false
+		}
+		if depth < 0 {
+			return 0, false
+		}
+	}
+	return 0, false
+}
+
+// hasArrowAfter reports whether "=>" follows the parameter list that starts
+// at the ( at token lparenIndex.
+func (processor *processor) hasArrowAfter(lparenIndex int) bool {
+	depth := 0
+	for tokenIndex := lparenIndex; tokenIndex < len(processor.tokens); tokenIndex++ {
+		switch processor.tokens[tokenIndex].kind {
+		case token.LPAREN:
+			depth++
+		case token.RPAREN:
+			depth--
+		}
+		if depth == 0 {
+			return processor.tokenAt(tokenIndex+1).is(token.ASSIGN) && processor.tokenAt(tokenIndex+2).is(token.GTR) && processor.touchesNext(tokenIndex+1)
+		}
+	}
+	return false
+}
+
+func isOpener(current lexeme) bool {
+	return current.is(token.LPAREN) || current.is(token.LBRACK) || current.is(token.LBRACE)
+}
+
+func isCloser(current lexeme) bool {
+	return current.is(token.RPAREN) || current.is(token.RBRACK) || current.is(token.RBRACE)
+}

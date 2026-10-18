@@ -55,6 +55,11 @@ func (file *file) findArrows() {
 	}
 	ast.Inspect(file.ast, func(node ast.Node) bool {
 		funcLit, ok := node.(*ast.FuncLit)
+		if funcDecl, isDecl := node.(*ast.FuncDecl); isDecl && funcDecl.Recv == nil && funcDecl.Body != nil {
+			// A generic arrow is a function declaration. A literal that shares
+			// its type and body lets the code for literals fill in its result.
+			funcLit, ok = &ast.FuncLit{Type: funcDecl.Type, Body: funcDecl.Body}, true
+		}
 		if !ok || funcLit.Type.Results == nil || len(funcLit.Type.Results.List) != 1 {
 			return true
 		}
