@@ -25,7 +25,8 @@ type lowerer struct {
 	optionalRoots  map[ast.Expr]bool
 	// hoistDrops maps each hoisted expression to the drop that replaces it
 	// with its variable.
-	hoistDrops map[ast.Expr]int
+	hoistDrops   map[ast.Expr]int
+	namedResults map[types.Object]bool
 }
 
 func newLowerer(transpiler *transpiler, file *file, typeInfo *types.Info) *lowerer {
@@ -37,15 +38,34 @@ func newLowerer(transpiler *transpiler, file *file, typeInfo *types.Info) *lower
 		consumedHoists: map[*ast.CallExpr]bool{},
 		hoistDrops:     map[ast.Expr]int{},
 		checkedAssigns: map[*ast.AssignStmt]bool{},
+		namedResults:   map[types.Object]bool{},
 	}
 	ast.Inspect(file.ast, func(node ast.Node) bool {
-		if ident, ok := node.(*ast.Ident); ok && ident.Pos().IsValid() {
-			lowerer.identPositions[ident.Name] = append(lowerer.identPositions[ident.Name], ident.Pos())
+		switch node := node.(type) {
+		case *ast.Ident:
+			if node.Pos().IsValid() {
+				lowerer.identPositions[node.Name] = append(lowerer.identPositions[node.Name], node.Pos())
+			}
+		case *ast.FuncType:
+			lowerer.addNamedResults(node)
 		}
 		return true
 	})
 	lowerer.findChains()
 	return lowerer
+}
+
+func (lowerer *lowerer) addNamedResults(funcType *ast.FuncType) {
+	if funcType.Results == nil {
+		return
+	}
+	for _, field := range funcType.Results.List {
+		for _, resultIdent := range field.Names {
+			if object := lowerer.typeInfo.Defs[resultIdent]; object != nil {
+				lowerer.namedResults[object] = true
+			}
+		}
+	}
 }
 
 func (lowerer *lowerer) lowerFile() {
