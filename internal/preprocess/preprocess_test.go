@@ -514,6 +514,35 @@ func TestProcess(test *testing.T) {
 			want: "s := __goslingT(``, __goslingFormat(price, \".2f\"), ` `, m[a:b], ` `, __goslingFormat(T{X: 1}, \"+v\"), ` `, __goslingFormat(f(\":\") , \"05d\"), ``)",
 		},
 		{
+			name: "tagged template",
+			src:  "q := sql`select * from t where id = ${id} and name = ${name}`",
+			want: "q := sql([]string{\"select * from t where id = \", \" and name = \", \"\"}, id, name)",
+		},
+		{
+			name: "tagged template on several lines",
+			src:  "q := db.SQL`a\\t\n\n${x}\nb`",
+			want: "q := db.SQL([]string{\"a\\t\\n\\n\", \"\\nb\"}, \n\nx,\n)",
+			newlines: [][2]int{
+				{len("q := db.SQL([]string{\"a\\t\\n\\n\", \"\\nb\"}, \n"), len("q := db.SQL([]string{\"a\\t\\n\\n\", \"\\nb\"}, \n\n")},
+				{len("q := db.SQL([]string{\"a\\t\\n\\n\", \"\\nb\"}, \n\nx"), len("q := db.SQL([]string{\"a\\t\\n\\n\", \"\\nb\"}, \n\nx,\n")},
+			},
+		},
+		{
+			name: "tagged template without values",
+			src:  "s := html`<b>\\u{1F600}`",
+			want: "s := html([]string{\"<b>😀\"})",
+		},
+		{
+			name: "struct tags are not templates",
+			src:  "type T struct {\n\tName string`json:\"name\"`\n\tX t`x`\n}",
+			want: "type T struct {\n\tName string`json:\"name\"`\n\tX t`x`\n}",
+		},
+		{
+			name: "import with a raw path is not a template",
+			src:  "import f`fmt`\nimport (\n\tg`errors`\n)",
+			want: "import f`fmt`\nimport (\n\tg`errors`\n)",
+		},
+		{
 			name: "template literal with braces in expression",
 			src:  "s := t`${Point{1, 2}}`",
 			want: "s := __goslingT(``, Point{1, 2}, ``)",

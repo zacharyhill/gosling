@@ -39,3 +39,17 @@ func Load(path string) (Config, error) {
 	}
 	/*line lines.gol:22*/ return cfg, nil
 }
+
+func join(parts []string, values ...any) string {
+	return fmt.Sprint(parts, values)
+}
+
+func query(id int) string {
+	text := join([]string{"select *\nfrom t\nwhere id = ", ""},
+		/*line lines.gol:32*/ id)
+	return text
+}
+
+func after() int {
+	return 1
+}

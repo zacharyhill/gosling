@@ -774,6 +774,11 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:5:38: this call can fail but only runs conditionally here",
 		},
 		{
+			name: "tag function with the wrong signature",
+			src:  "package p\nfunc up(s string) string { return s }\nfunc f() string {\n\treturn up`a`\n}",
+			want: "x.gol:4:11: cannot use []string{…} (value of type []string) as string value in argument to up",
+		},
+		{
 			name: "missing catch",
 			src:  "package p\nfunc f() {\n\ttry { }\n}",
 			want: "x.gol:3:8: try block must be followed by catch",

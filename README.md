@@ -24,7 +24,7 @@ Features:
 - `try` / `catch` / `finally` and `throw`, with typed catch clauses: `catch (e: *fs.PathError)`, `catch (e is fs.ErrNotExist)`
 - `catch panic` for panics
 - `try` expressions: `try strconv.Atoi(s) catch 0`
-- Template literals: `` t`hello ${name}` ``
+- Template literals and tags: `` t`hello ${name}` ``, `` sql`select * from users where id = ${id}` ``
 - Destructuring: `const {Name: name, Port} = cfg`, `let [first, ...rest] = xs`
 - `let` and `const` declarations: `let n = 0`, `let names: []string`, `const data = os.ReadFile(path)`
 - Parameter types after a colon: `func f(a: int, b: string): bool`
@@ -447,6 +447,22 @@ t`${price:.2f} ${id:05d} ${mask:#x}` // fmt.Sprintf("%.2f %05d %#x", price, id, 
 - gosling does not check that the verb fits the type. `go vet` does.
 
 JavaScript escapes work, such as `\n`, `\t`, `\xHH`, `\uHHHH`, and `\u{H...}`. Write `\${` for a literal `${`, and `` \` `` for a backtick. gosling adds the `fmt` and `strconv` imports if necessary.
+
+### Tagged templates
+
+Another name before a template literal is a tag. gosling calls the tag function with the text pieces and the values:
+
+```go
+const q = sql`select * from users where id = ${id}` // sql([]string{"select * from users where id = ", ""}, id)
+```
+
+- The first argument holds the text pieces. It always has one more piece than there are values.
+- The values follow as separate arguments. gosling does not format them into the text. So a tag such as `sql` can send them as query parameters.
+- A tag function looks like `func(strings []string, values ...any) R`. The values can have a more specific type, such as `...string`. Go type-checks each call.
+- gosling decodes the escapes in the text pieces. A tag can also be a qualified name, such as `` db.SQL`...` ``.
+- `t` is the built-in tag. A function with the name `t` cannot be a tag.
+- In a struct, a raw string directly after a field type is a field tag, not a template literal. The same applies to an import path.
+- Only a `t` template can contain an escaped backtick. A tagged template cannot have a format, such as `${x:.2f}`.
 
 ### Destructuring
 

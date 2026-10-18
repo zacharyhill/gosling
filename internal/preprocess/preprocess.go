@@ -350,8 +350,10 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		return tokenIndex + 1, nil
 	case current.is(token.ASSIGN) && processor.tokenAt(tokenIndex+1).is(token.GTR) && processor.touchesNext(tokenIndex):
 		return processor.arrow(tokenIndex)
-	case current.isIdent("t") && processor.isRawString(tokenIndex+1) && processor.touchesNext(tokenIndex):
+	case current.isIdent("t") && processor.isTemplate(tokenIndex):
 		return tokenIndex + 1, processor.template(current, processor.tokens[tokenIndex+1])
+	case current.is(token.IDENT) && processor.isTemplate(tokenIndex):
+		return tokenIndex + 1, processor.rewriteTaggedTemplate(processor.tokens[tokenIndex+1])
 	case current.is(token.FOR) && processor.tokenAt(tokenIndex+1).is(token.LPAREN):
 		return processor.forOf(tokenIndex)
 	case current.is(token.LBRACK) && processor.tokenAt(tokenIndex+1).is(token.ELLIPSIS) && !processor.tokenAt(tokenIndex+2).is(token.RBRACK):
@@ -394,6 +396,12 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 // tokenIndex ends, with no space between them.
 func (processor *processor) touchesNext(tokenIndex int) bool {
 	return processor.tokenAt(tokenIndex+1).offset == processor.tokenAt(tokenIndex).end()
+}
+
+// isTemplate reports whether the name at token tagIndex is the tag of a
+// template literal.
+func (processor *processor) isTemplate(tagIndex int) bool {
+	return processor.isRawString(tagIndex+1) && processor.touchesNext(tagIndex) && !processor.isGoRawString(tagIndex)
 }
 
 func (processor *processor) isRawString(tokenIndex int) bool {

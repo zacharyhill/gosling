@@ -6,7 +6,6 @@ import (
 	"go/types"
 	"strconv"
 	"strings"
-	"unicode"
 
 	"github.com/zacharyhill/gosling/internal/preprocess"
 )
@@ -114,60 +113,7 @@ func rawText(arg ast.Expr) string {
 	if !ok || len(literal.Value) < 2 {
 		return ""
 	}
-	return unescape(literal.Value[1 : len(literal.Value)-1])
-}
-
-var simpleEscapes = map[byte]string{
-	'n': "\n", 't': "\t", 'r': "\r", 'b': "\b", 'f': "\f", 'v': "\v", '0': "\x00",
-	'\n': "", // a backslash before a newline continues the line
-}
-
-func unescape(raw string) string {
-	var decoded strings.Builder
-	for byteIndex := 0; byteIndex < len(raw); byteIndex++ {
-		if raw[byteIndex] != '\\' || byteIndex+1 == len(raw) {
-			decoded.WriteByte(raw[byteIndex])
-			continue
-		}
-		byteIndex++
-		if text, ok := simpleEscapes[raw[byteIndex]]; ok {
-			decoded.WriteString(text)
-			continue
-		}
-		if decodedRune, consumed, ok := hexEscape(raw[byteIndex:]); ok {
-			decoded.WriteRune(decodedRune)
-			byteIndex += consumed - 1
-			continue
-		}
-		decoded.WriteByte(raw[byteIndex]) // \\, \$, \", and unknown escapes give the character itself
-	}
-	return decoded.String()
-}
-
-// hexEscape decodes xHH, uHHHH, or u{H...} at the start of escapeText. It
-// returns the rune and the number of bytes used.
-func hexEscape(escapeText string) (rune, int, bool) {
-	var digits string
-	var consumed int
-	switch {
-	case strings.HasPrefix(escapeText, "u{"):
-		end := strings.IndexByte(escapeText, '}')
-		if end < 0 {
-			return 0, 0, false
-		}
-		digits, consumed = escapeText[2:end], end+1
-	case escapeText[0] == 'u' && len(escapeText) >= 5:
-		digits, consumed = escapeText[1:5], 5
-	case escapeText[0] == 'x' && len(escapeText) >= 3:
-		digits, consumed = escapeText[1:3], 3
-	default:
-		return 0, 0, false
-	}
-	codePoint, err := strconv.ParseUint(digits, 16, 32)
-	if err != nil || codePoint > unicode.MaxRune {
-		return 0, 0, false
-	}
-	return rune(codePoint), consumed, true
+	return preprocess.Unescape(literal.Value[1 : len(literal.Value)-1])
 }
 
 // floatBits returns 32 or 64 for a plain float type, and 0 otherwise.
