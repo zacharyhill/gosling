@@ -19,6 +19,8 @@ type lowerer struct {
 	drops          []edit
 	parents        map[ast.Node]ast.Node
 	consumedHoists map[*ast.CallExpr]bool
+	// checkedAssigns holds the augmented assignments that lowering checked or reported.
+	checkedAssigns map[*ast.AssignStmt]bool
 	optionalRoots  map[ast.Expr]bool
 }
 
@@ -29,6 +31,7 @@ func newLowerer(transpiler *transpiler, file *file, typeInfo *types.Info) *lower
 		typeInfo:       typeInfo,
 		identPositions: map[string][]token.Pos{},
 		consumedHoists: map[*ast.CallExpr]bool{},
+		checkedAssigns: map[*ast.AssignStmt]bool{},
 	}
 	ast.Inspect(file.ast, func(node ast.Node) bool {
 		if ident, ok := node.(*ast.Ident); ok && ident.Pos().IsValid() {
@@ -74,6 +77,7 @@ func (lowerer *lowerer) lowerFile() {
 			lowerer.errorf(lowerer.file, call.Pos(), errUncheckableCall)
 		}
 	}
+	lowerer.reportUncheckedAssigns()
 }
 
 func (lowerer *lowerer) walkBlock(list []ast.Stmt, try *tryContext) {

@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -254,6 +255,31 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:5:7: this call can fail, but its error cannot be checked here; move it into its own statement",
 		},
 		{
+			name: "fallible assignment outside try",
+			src:  "package p\nimport \"strconv\"\nfunc f(s string) int {\n\tlet x = 0\n\tx = strconv.Atoi(s)\n\treturn x\n}",
+			want: "x.gol:5:6: strconv.Atoi returns an error that is not checked here; assign the error, or move the call into its own statement in a try block",
+		},
+		{
+			name: "fallible let outside try",
+			src:  "package p\nimport \"strconv\"\nfunc f(s string) int {\n\tlet x = strconv.Atoi(s)\n\treturn x\n}",
+			want: "x.gol:4:10: strconv.Atoi returns an error that is not checked here; assign the error, or move the call into its own statement in a try block",
+		},
+		{
+			name: "fallible const outside try",
+			src:  "package p\nimport \"strconv\"\nfunc f(s string) int {\n\tconst x = strconv.Atoi(s)\n\treturn x\n}",
+			want: "x.gol:4:12: strconv.Atoi returns an error that is not checked here; assign the error, or move the call into its own statement in a try block",
+		},
+		{
+			name: "fallible assignment in a function literal inside try",
+			src:  "package p\nimport \"strconv\"\nfunc f(s string) {\n\ttry {\n\t\tfunc() {\n\t\t\tlet x = 0\n\t\t\tx = strconv.Atoi(s)\n\t\t\tprintln(x)\n\t\t}()\n\t} catch {\n\t}\n}",
+			want: "x.gol:7:8: strconv.Atoi returns an error that is not checked here; assign the error, or move the call into its own statement in a try block",
+		},
+		{
+			name: "fallible assignment in a catch block without an outer try",
+			src:  "package p\nimport \"strconv\"\nfunc f(s string) (x int) {\n\ttry {\n\t\tx = strconv.Atoi(s)\n\t} catch {\n\t\tx = strconv.Atoi(\"0\")\n\t}\n\treturn x\n}",
+			want: "x.gol:7:7: strconv.Atoi returns an error that is not checked here; assign the error, or move the call into its own statement in a try block",
+		},
+		{
 			name: "positional field in struct spread",
 			src:  "package p\ntype P struct{ X, Y int }\nfunc f(p P) P {\n\treturn P{...p, 1}\n}",
 			want: "x.gol:4:17: fields after a struct spread must be named",
@@ -279,6 +305,32 @@ func TestErrors(test *testing.T) {
 				test.Errorf("error:\n%v\nwant substring:\n%s", err, testCase.want)
 			}
 		})
+	}
+}
+
+// TestUncheckedAssignsInSourceOrder reads the lowering errors before
+// Transpile sorts them, so it catches an order that changes between runs.
+func TestUncheckedAssignsInSourceOrder(test *testing.T) {
+	src := "package p\nimport \"strconv\"\nfunc f(s string) {\n" +
+		"\tlet a = strconv.Atoi(s)\n\tlet b = strconv.Atoi(s)\n\tlet c = strconv.Atoi(s)\n" +
+		"\tlet d = strconv.Atoi(s)\n\tlet e = strconv.Atoi(s)\n\tlet g = strconv.Atoi(s)\n" +
+		"\tprintln(a, b, c, d, e, g)\n}"
+	session := &transpiler{config: Config{Importer: importer.Default()}, fileSet: token.NewFileSet()}
+	if err := session.parse([]Input{{Path: "x.gol", Src: []byte(src)}}); err != nil {
+		test.Fatal(err)
+	}
+	typeInfo := session.check()
+	if err := session.diagnostics.Err(); err != nil {
+		test.Fatal(err)
+	}
+	newLowerer(session, session.files[0], typeInfo).lowerFile()
+	var gotLines []int
+	for _, diagnostic := range session.diagnostics {
+		gotLines = append(gotLines, diagnostic.Pos.Line)
+	}
+	wantLines := []int{4, 5, 6, 7, 8, 9}
+	if !slices.Equal(gotLines, wantLines) {
+		test.Errorf("error lines = %v, want %v\n%v", gotLines, wantLines, session.diagnostics)
 	}
 }
 
