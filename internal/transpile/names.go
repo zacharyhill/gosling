@@ -26,10 +26,18 @@ func (lowerer *lowerer) usedIn(name string, from, to token.Pos) (token.Pos, bool
 
 func (lowerer *lowerer) taken(name string) bool { return len(lowerer.identPositions[name]) > 0 }
 
-// fresh returns an identifier not used anywhere in the file.
+// isPackageLevelName reports whether a file of the package declares name at
+// package level. Generated code can refer to such a name that this file does
+// not contain, for example in an inferred arrow parameter type.
+func (lowerer *lowerer) isPackageLevelName(name string) bool {
+	return lowerer.checkedPackage != nil && lowerer.checkedPackage.Scope().Lookup(name) != nil
+}
+
+// fresh returns an identifier not used anywhere in the file and not
+// declared at package level.
 func (lowerer *lowerer) fresh(base string) string {
 	name := base
-	for suffix := 2; lowerer.taken(name); suffix++ {
+	for suffix := 2; lowerer.taken(name) || lowerer.isPackageLevelName(name); suffix++ {
 		name = fmt.Sprintf("%s%d", base, suffix)
 	}
 	lowerer.identPositions[name] = append(lowerer.identPositions[name], token.NoPos)
@@ -48,17 +56,17 @@ func (lowerer *lowerer) nextTryID() int {
 }
 
 // pickErrorVar picks a name for a generated error variable. The name must
-// not be a catch variable of an enclosing try block. With a scope, := declares
-// the name at position. So the name must reuse an earlier error variable of that
-// scope, or not occur later in the scope. If end is valid, the name must not
-// occur in [position, end).
+// not be a catch variable of an enclosing try block or a package-level name.
+// With a scope, := declares the name at position. So the name must reuse an
+// earlier error variable of that scope, or not occur later in the scope. If
+// end is valid, the name must not occur in [position, end).
 func (lowerer *lowerer) pickErrorVar(try *tryContext, scope *types.Scope, position, end token.Pos) string {
 	for attempt := 1; ; attempt++ {
 		name := "err"
 		if attempt > 1 {
 			name = fmt.Sprintf("err%d", attempt)
 		}
-		if excludedByTry(try, name) {
+		if excludedByTry(try, name) || lowerer.isPackageLevelName(name) {
 			continue
 		}
 		if scope != nil {
@@ -101,14 +109,15 @@ func isErrorVar(object types.Object) bool {
 	return ok && types.Identical(variable.Type(), errorType)
 }
 
-// pickTempVar returns a temporary name not referenced in [from, to).
+// pickTempVar returns a temporary name not referenced in [from, to) and
+// not declared at package level.
 func (lowerer *lowerer) pickTempVar(from, to token.Pos) string {
 	for attempt := 1; ; attempt++ {
 		name := "v"
 		if attempt > 1 {
 			name = "v" + strconv.Itoa(attempt)
 		}
-		if _, used := lowerer.usedIn(name, from, to); !used {
+		if _, used := lowerer.usedIn(name, from, to); !used && !lowerer.isPackageLevelName(name) {
 			return name
 		}
 	}
