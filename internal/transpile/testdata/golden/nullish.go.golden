@@ -208,3 +208,57 @@ func inTemplate(user *User) string {
 		return "there"
 	}())
 }
+
+type Settings struct {
+	Port   *int
+	Labels map[string]*string
+	Names  []string
+	Out    io.Writer
+}
+
+func defaults(s *Settings, port *int, fallback string) {
+	if v := &s.Port; *v == nil {
+		*v = port
+	}
+	if v := &s.Port; *v == nil {
+		*v = new(8080)
+	}
+	if v := &s.Labels; *v == nil {
+		*v = map[string]*string{}
+	}
+	if m, k := s.Labels, "x"; m[k] == nil {
+		m[k] = &fallback
+	}
+	if v := &s.Names; *v == nil {
+		*v = []string{fallback}
+	}
+	if v := &s.Out; *v == nil {
+		*v = io.Discard
+	}
+}
+
+func shadowAssign(v, m map[*int]*int, k *int) {
+	if m2, k2 := m, k; m2[k2] == nil {
+		m2[k2] = v[k]
+	}
+}
+
+func localSlice(m map[string][]int) []int {
+	var xs []int
+	if v := &xs; *v == nil {
+		*v = func() []int {
+			if v := m["a"]; v != nil {
+				return v
+			}
+			return []int{1}
+		}()
+	}
+	return xs
+}
+
+func literalMap(key string) map[string]*int {
+	if m, k := (map[string]*int{}), key; m[k] == nil {
+		m[k] = new(1)
+	}
+	return nil
+}

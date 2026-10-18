@@ -155,6 +155,99 @@ func (lowerer *lowerer) lowerNullish() {
 	for _, root := range roots {
 		lowerer.lowerChain(root)
 	}
+	for assign := range lowerer.file.nullishAssigns {
+		lowerer.lowerNullishAssign(assign)
+	}
+}
+
+const errNullishAssignNotStatement = "??= can only be used as a statement in a block"
+
+// lowerNullishAssign lowers x ??= d to an if statement. The if binds the
+// address of x, or the map and key of a map element, so it evaluates x once:
+//
+//	if v := &x; *v == nil {
+//		*v = d
+//	}
+//
+//	if m, k := m, key; m[k] == nil {
+//		m[k] = d
+//	}
+func (lowerer *lowerer) lowerNullishAssign(assign *ast.AssignStmt) {
+	if !lowerer.checkNullishAssign(assign) {
+		return
+	}
+	left, value := assign.Lhs[0], assign.Rhs[0]
+	line, depth := lowerer.line(assign.Pos()), lowerer.depth(assign)
+	lowerer.insertOrdered(assign.End(), "\n}", line, -depth)
+	if indexExpr, ok := left.(*ast.IndexExpr); ok && lowerer.isMap(indexExpr.X) {
+		mapVar, keyVar := lowerer.pickName("m", assign.Pos(), assign.End()), lowerer.pickName("k", assign.Pos(), assign.End())
+		lowerer.insertIfHeader(assign.Pos(), indexExpr.X, fmt.Sprintf("if %s, %s := ", mapVar, keyVar), line, depth)
+		lowerer.replace(indexExpr.X.End(), indexExpr.Lbrack+1, ", ", line)
+		lowerer.replace(indexExpr.Rbrack, value.Pos(), fmt.Sprintf("; %s[%s] == nil {\n%s[%s] = ", mapVar, keyVar, mapVar, keyVar), line)
+		return
+	}
+	tempVar := lowerer.pickTempVar(assign.Pos(), assign.End())
+	lowerer.insertIfHeader(assign.Pos(), left, fmt.Sprintf("if %s := &", tempVar), line, depth)
+	lowerer.replace(left.End(), value.Pos(), fmt.Sprintf("; *%s == nil {\n*%s = ", tempVar, tempVar), line)
+}
+
+// insertIfHeader inserts header at position, before operand. A composite
+// literal in an if header needs parentheses.
+func (lowerer *lowerer) insertIfHeader(position token.Pos, operand ast.Expr, header string, line, depth int) {
+	if !hasBareCompositeLit(operand) {
+		lowerer.insertOrdered(position, header, line, depth)
+		return
+	}
+	lowerer.insertOrdered(position, header+"(", line, depth)
+	lowerer.insertOrdered(operand.End(), ")", line, -depth)
+}
+
+// checkNullishAssign reports an error and false if ??= cannot lower assign.
+func (lowerer *lowerer) checkNullishAssign(assign *ast.AssignStmt) bool {
+	fail := func(format string, arguments ...any) bool {
+		lowerer.errorf(lowerer.file, assign.Pos(), format, arguments...)
+		return false
+	}
+	if len(assign.Lhs) != 1 || len(assign.Rhs) != 1 {
+		return fail("??= needs one value on each side")
+	}
+	switch parent := lowerer.parents[assign].(type) {
+	case *ast.BlockStmt, *ast.CaseClause, *ast.LabeledStmt:
+	case *ast.CommClause:
+		if parent.Comm == assign {
+			return fail(errNullishAssignNotStatement)
+		}
+	default:
+		return fail(errNullishAssignNotStatement)
+	}
+	left := assign.Lhs[0]
+	switch {
+	case isBlank(left):
+		return fail("??= cannot assign to _")
+	case ast.Unparen(left) != left:
+		return fail("the left side of ??= cannot be in parentheses")
+	case lowerer.optionalRoots[left]:
+		return fail("the left side of ??= cannot use ?.")
+	}
+	leftType := lowerer.typeInfo.Types[left].Type
+	if _, isTypeParam := leftType.(*types.TypeParam); isTypeParam || !nilable(leftType) {
+		return fail("left side of ??= must be a pointer, map, slice, interface, func, or chan, not %s", displayName(leftType))
+	}
+	return true
+}
+
+func (lowerer *lowerer) isMap(expr ast.Expr) bool {
+	goType := lowerer.typeInfo.Types[expr].Type
+	if goType == nil {
+		return false
+	}
+	_, isMap := goType.Underlying().(*types.Map)
+	return isMap
+}
+
+func isBlank(expr ast.Expr) bool {
+	ident, ok := expr.(*ast.Ident)
+	return ok && ident.Name == "_"
 }
 
 // coalesceOperand reports whether the lowering of a ?? chain includes operand.

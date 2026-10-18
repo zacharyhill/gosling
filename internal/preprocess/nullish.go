@@ -5,15 +5,16 @@ import "go/token"
 // OMarker marks an optional selector. a?.b becomes a.__goslingO.b.
 const OMarker = "__goslingO"
 
-// questionMark rewrites "??" (nullish coalescing) and "?." (optional
-// chaining). Any other ? is an error.
+// questionMark rewrites "??" (nullish coalescing), "??=" (nullish
+// assignment), and "?." (optional chaining). Any other ? is an error.
 func (processor *processor) questionMark(tokenIndex int) (int, error) {
 	question, next := processor.tokens[tokenIndex], processor.tokenAt(tokenIndex+1)
 	isAdjacent := processor.touchesNext(tokenIndex)
 	switch {
 	case isAdjacent && next.is(token.ILLEGAL) && next.text == "?":
 		if after := processor.tokenAt(tokenIndex + 2); after.is(token.ASSIGN) && processor.touchesNext(tokenIndex+1) {
-			return 0, &Error{question.offset, "??= is not supported"}
+			processor.result.NullishAssigns = append(processor.result.NullishAssigns, processor.replace(question.offset, after.end(), "="))
+			return tokenIndex + 2, nil
 		}
 		processor.result.Coalesce = append(processor.result.Coalesce, processor.replace(question.offset, next.end(), "||"))
 		return tokenIndex + 1, nil

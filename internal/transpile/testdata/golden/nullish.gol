@@ -94,3 +94,34 @@ func literalBase() int {
 func inTemplate(user *User) string {
 	return t`hi ${user?.Profile?.Name ?? "there"}`
 }
+
+type Settings struct {
+	Port   *int
+	Labels map[string]*string
+	Names  []string
+	Out    io.Writer
+}
+
+func defaults(s *Settings, port *int, fallback string) {
+	s.Port ??= port
+	s.Port ??= new(8080)
+	s.Labels ??= map[string]*string{}
+	s.Labels["x"] ??= &fallback
+	s.Names ??= []string{fallback}
+	s.Out ??= io.Discard
+}
+
+func shadowAssign(v, m map[*int]*int, k *int) {
+	m[k] ??= v[k]
+}
+
+func localSlice(m map[string][]int) []int {
+	let xs: []int
+	xs ??= m["a"] ?? []int{1}
+	return xs
+}
+
+func literalMap(key string) map[string]*int {
+	map[string]*int{}[key] ??= new(1)
+	return nil
+}

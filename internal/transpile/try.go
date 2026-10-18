@@ -520,7 +520,8 @@ func addBlankForErrors(file *file, typeInfo *types.Info) bool {
 		if !ok || len(assign.Rhs) != 1 || (assign.Tok != token.DEFINE && assign.Tok != token.ASSIGN) {
 			return true
 		}
-		if _, done := file.augmented[assign]; done {
+		// The call in x ??= f() runs only if x is nil, so try cannot check it.
+		if _, done := file.augmented[assign]; done || file.nullishAssigns[assign] {
 			return true
 		}
 		resultCount, ok := fallible(typeInfo, assign.Rhs[0])

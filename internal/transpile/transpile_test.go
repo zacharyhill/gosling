@@ -359,6 +359,41 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:4:11: cannot dereference an optional chain; it gives nil when the chain is skipped",
 		},
 		{
+			name: "nullish assignment to a value that is never nil",
+			src:  "package p\nfunc f(n int) int {\n\tn ??= 1\n\treturn n\n}",
+			want: "x.gol:3:2: left side of ??= must be a pointer, map, slice, interface, func, or chan, not int",
+		},
+		{
+			name: "nullish assignment does not take the address",
+			src:  "package p\nfunc f(p *int) {\n\tp ??= 1\n}",
+			want: "x.gol:3:8: cannot use 1 (untyped int constant) as *int value in assignment",
+		},
+		{
+			name: "nullish assignment in a header",
+			src:  "package p\nfunc f(p, q *int) {\n\tif p ??= q; p != nil {\n\t}\n}",
+			want: "x.gol:3:5: ??= can only be used as a statement in a block",
+		},
+		{
+			name: "nullish assignment with two values",
+			src:  "package p\nfunc f(p, q *int) {\n\tp, q ??= q, p\n}",
+			want: "x.gol:3:2: ??= needs one value on each side",
+		},
+		{
+			name: "nullish assignment to a const variable",
+			src:  "package p\nfunc g() *int { return nil }\nfunc f(q *int) {\n\tconst p = g()\n\tp ??= q\n}",
+			want: "x.gol:5:2: cannot assign to p: declared with const",
+		},
+		{
+			name: "nullish assignment of a call that can fail",
+			src:  "package p\nimport \"os\"\nfunc f(file *os.File) {\n\ttry {\n\t\tfile ??= os.Open(\"x\")\n\t} catch {\n\t}\n}",
+			want: "x.gol:5:12: assignment mismatch: 1 variable but os.Open returns 2 values",
+		},
+		{
+			name: "nullish assignment of a nested call that can fail",
+			src:  "package p\nimport \"strconv\"\nfunc f(p *int) {\n\ttry {\n\t\tp ??= new(strconv.Atoi(\"1\"))\n\t} catch {\n\t}\n}",
+			want: "x.gol:5:13: this call can fail but only runs conditionally here",
+		},
+		{
 			name: "nullish coalescing mixed with ||",
 			src:  "package p\nfunc f(a *bool, b bool) bool {\n\treturn a ?? b || true\n}",
 			want: "x.gol:3:9: ?? cannot be mixed with || or && without parentheses",

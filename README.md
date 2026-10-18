@@ -29,7 +29,7 @@ Features:
 - `let` and `const` declarations: `let n = 0`, `let names: []string`, `const data = os.ReadFile(path)`
 - Parameter types after a colon: `func f(a: int, b: string): bool`
 - `for (const x of xs)`, `for (const k in m)`, and `for (let i = 0; i < n; i++)`
-- Optional chaining and `??`: `user?.Profile?.Name ?? "anon"`
+- Optional chaining, `??`, and `??=`: `user?.Profile?.Name ?? "anon"`, `cfg.Port ??= new(8080)`
 - Arrow functions: `x => x * 2`, `(a, b) => a + b`
 - Array methods on slices and arrays: `nums.filter(n => n%2 == 0).map(n => n * n)`
 - Map methods: `ages.has(name)`, `ages.get(name) ?? 0`, `ages.keys()`
@@ -605,7 +605,7 @@ A pattern in a `for...in` loop is an error. To read the keys and values of a map
 
 `for (let i = 0; i < n; i++)` becomes `for i := 0; i < n; i++`.
 
-### Optional chaining and ??
+### Optional chaining, ??, and ??=
 
 `a?.b` reads `b` only if `a` is not nil. If a link is nil, gosling skips the rest of the chain and gives the zero value. The left side of `?.` must be a pointer or an interface. A type parameter is allowed only if each type in its constraint can be nil, as in `[P *User]`.
 
@@ -635,6 +635,24 @@ name := func() string {
 ```
 
 The Go compiler inlines these function literals. A chain used as a statement, such as `conn?.Close()`, becomes an `if` statement.
+
+`x ??= d` assigns `d` to `x` only if `x` is nil. `x` can be a pointer, a map, a slice, an interface, a func, or a chan. A map element is nil if the map has no such key. gosling evaluates `x` one time, and `d` only if `x` is nil:
+
+```go
+cfg.Port ??= new(8080)
+headers[key] ??= []string{}
+
+if v := &cfg.Port; *v == nil {
+	*v = new(8080)
+}
+if m, k := headers, key; m[k] == nil {
+	m[k] = []string{}
+}
+```
+
+- `??=` does not take an address. If `x` is a pointer, `d` must also be a pointer, such as `&port` or `new(8080)`. With an automatic `&d`, `x` would share the variable `d`, and a change through `x` would change `d`.
+- `??=` is a statement. It cannot be in an `if`, `for`, or `switch` header.
+- A call that can fail cannot be on the right side of `??=`, also in a try block. The call runs only if `x` is nil.
 
 ### Arrow functions
 
@@ -922,7 +940,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - Without `catch panic`, a panic does not run `finally` blocks. A panic in a catch block or in a catch panic block also does not run them.
 - `catch panic` cannot follow a typed catch clause.
 - Object patterns have no rest element.
-- `?.[index]`, `?.(call)`, and `??=` are not supported.
+- `?.[index]` and `?.(call)` are not supported.
 - In a try block, an optional call that returns an error is an error.
 - gosling does not check switches in `.go` files.
 - In a `case` expression, a function type or literal cannot use `):`. Use Go order there.
