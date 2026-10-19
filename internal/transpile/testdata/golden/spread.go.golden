@@ -152,3 +152,14 @@ func mergePointers(a map[Point]*Point) map[Point]*Point {
 		return v
 	}()
 }
+
+func sum(base int, nums ...int) int {
+	for _, n := range nums {
+		base += n
+	}
+	return base
+}
+
+func callSpread(xs, ys []int) int {
+	return sum(1, xs...) + sum(0, slices.Concat(xs, []int{2}, ys)...)
+}

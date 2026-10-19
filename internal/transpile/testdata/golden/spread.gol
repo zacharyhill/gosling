@@ -102,3 +102,14 @@ func untypedStruct(p Point) Point {
 func mergePointers(a map[Point]*Point) map[Point]*Point {
 	return map[Point]*Point{...a, {1, 2}: {3, 4}}
 }
+
+func sum(base int, nums ...int) int {
+	for (const n of nums) {
+		base += n
+	}
+	return base
+}
+
+func callSpread(xs, ys []int) int {
+	return sum(1, ...xs) + sum(0, ...xs, 2, ...ys)
+}

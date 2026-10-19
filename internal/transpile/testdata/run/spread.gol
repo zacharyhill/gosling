@@ -40,4 +40,7 @@ func main() {
 		"z": 26,
 	}
 	fmt.Println((*counts)["z"], len(*counts))
+	let parts = []any{"spread", 1}
+	fmt.Println(...parts)
+	fmt.Println(append(a, ...b, 9), a)
 }

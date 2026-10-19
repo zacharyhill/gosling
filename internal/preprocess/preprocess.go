@@ -363,6 +363,8 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		return processor.sliceSpread(tokenIndex)
 	case current.is(token.LBRACE) && processor.spreadBraces[tokenIndex]:
 		return processor.braceSpread(tokenIndex)
+	case current.is(token.ELLIPSIS) && tokenIndex > 0 && (processor.tokens[tokenIndex-1].is(token.LPAREN) || processor.tokens[tokenIndex-1].is(token.COMMA)):
+		return tokenIndex, processor.callSpread(tokenIndex)
 	case (current.is(token.LBRACE) || current.is(token.LBRACK)) && processor.atStmtStart(tokenIndex):
 		if next, ok, err := processor.destructure(tokenIndex, nil); ok || err != nil {
 			return next, err

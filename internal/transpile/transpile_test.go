@@ -794,6 +794,11 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:9: spread in braces needs a map or struct type; use [...a] for slices",
 		},
 		{
+			name: "call spread to a function that is not variadic",
+			src:  "package p\nfunc g(a, b int) int { return a + b }\nfunc f(xs []int) int {\n\treturn g(...xs)\n}",
+			want: "x.gol:4:16: cannot use ... in call to non-variadic g",
+		},
+		{
 			name: "missing catch",
 			src:  "package p\nfunc f() {\n\ttry { }\n}",
 			want: "x.gol:3:8: try block must be followed by catch",
