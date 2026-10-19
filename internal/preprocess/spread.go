@@ -130,10 +130,14 @@ func (processor *processor) structSpread(tokenIndex int) (int, error) {
 	}
 	processor.replace(lbrace.offset, processor.tokenAt(tokenIndex+1).end(), "("+WithMarker+"(")
 	processor.braceStack = append(processor.braceStack, frame{kind: frameBlock})
-	if len(elements) > 1 {
+	hasTrailingComma := elements[0].end < closeIndex
+	switch {
+	case len(elements) > 1:
 		processor.scheduled[elements[0].end] = ", " + typeText + "{"
 		processor.scheduled[closeIndex] = "}))"
-	} else {
+	case hasTrailingComma:
+		processor.scheduled[closeIndex] = typeText + "{}))"
+	default:
 		processor.scheduled[closeIndex] = ", " + typeText + "{}))"
 	}
 	return tokenIndex + 1, nil
