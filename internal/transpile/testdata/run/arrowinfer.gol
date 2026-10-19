@@ -1,0 +1,26 @@
+package main
+
+import (
+	"fmt"
+	"sort"
+	"strings"
+)
+
+func main() {
+	const inc = x => x + 1
+	fmt.Printf("%T %v\n", inc(1), inc(1))
+
+	const half = x => x / 2
+	fmt.Printf("%T %v\n", half(3.0), half(3.0))
+
+	const join = (a, b) => a + "-" + b
+	fmt.Println(join("x", "y"))
+
+	let words = []string{"ccc", "a", "bb"}
+	const shorter = (i, j) => len(words[i]) < len(words[j])
+	sort.Slice(words, shorter)
+	fmt.Println(words)
+
+	const shout = w => strings.ToUpper(w)
+	fmt.Println(words.map(shout))
+}

@@ -135,3 +135,23 @@ func fromCompositeLiterals() {
 	let nested = [][]func(int) int{{n => n + 1}}
 	fmt.Println(len(checks), len(byName), named.check("ok"), positional.format(1), indexed[1](1), nested[0][0](1))
 }
+
+func fromFirstCall() int {
+	const inc = x => x + 1
+	return inc(41)
+}
+
+func fromFirstCallWithFloat() float64 {
+	let half = x => x / 2
+	return half(3.0)
+}
+
+func fromFirstUseAsCallback(xs []string) []string {
+	const shout = s => strings.ToUpper(s)
+	return xs.map(shout)
+}
+
+func fromFirstUseAsArgument(xs []string) {
+	const less = (i, j) => xs[i] < xs[j]
+	sort.Slice(xs, less)
+}

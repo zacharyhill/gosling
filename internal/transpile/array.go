@@ -171,8 +171,14 @@ func (call *arrayCall) markerName() string {
 
 // callbackParams returns how many parameters a callback argument takes.
 func (transpiler *transpiler) callbackParams(file *file, typeInfo *types.Info, arg ast.Expr) (int, bool) {
+	argIdent, _ := ast.Unparen(arg).(*ast.Ident)
+	argObject := typeInfo.Uses[argIdent]
 	for _, arrowFunc := range file.arrows {
 		if arrowFunc.node() == arg {
+			return arrowFunc.paramCount(), true
+		}
+		isUntypedArrowVariable := arrowFunc.nilStandIn != nil && argObject != nil && argObject == arrowFunc.declaredVariable(typeInfo)
+		if isUntypedArrowVariable {
 			return arrowFunc.paramCount(), true
 		}
 	}
@@ -184,9 +190,9 @@ func (transpiler *transpiler) callbackParams(file *file, typeInfo *types.Info, a
 
 // callbackContext returns the parameter and result types that an array
 // method gives to its callback.
-func (transpiler *transpiler) callbackContext(typeInfo *types.Info, call *ast.CallExpr, arrayCall *arrayCall, arrowFunc *arrow) (funcContext, bool) {
+func (transpiler *transpiler) callbackContext(typeInfo *types.Info, call *ast.CallExpr, arrayCall *arrayCall, callback ast.Expr) (funcContext, bool) {
 	slice, ok := underlyingSlice(typeInfo.Types[call.Args[0]].Type)
-	if !ok || len(call.Args) < 2 || call.Args[1] != arrowFunc.node() {
+	if !ok || len(call.Args) < 2 || call.Args[1] != callback {
 		return funcContext{}, false
 	}
 	elementType := slice.Elem()
