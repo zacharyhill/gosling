@@ -11,6 +11,8 @@ type User struct {
 	age  int
 }
 
+func describe[T any](...T) string { return "generic variadic" }
+
 func main() {
 	let a = []int{1, 2}
 	let b = [...a, 3]
@@ -43,4 +45,5 @@ func main() {
 	let parts = []any{"spread", 1}
 	fmt.Println(...parts)
 	fmt.Println(append(a, ...b, 9), a)
+	fmt.Println(describe(...a), describe[int](...a, 3))
 }

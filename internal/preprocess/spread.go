@@ -170,14 +170,18 @@ func (processor *processor) findEnclosingBracket(tokenIndex int) (int, bool) {
 }
 
 // isCall reports whether the ( at token openIndex starts the arguments of a
-// call, and not the parameters of a function or method.
+// call, and not the parameters of a function, a generic function, or a method.
 func (processor *processor) isCall(openIndex int) bool {
 	if openIndex == 0 {
 		return false
 	}
 	switch processor.tokens[openIndex-1].kind {
-	case token.RPAREN, token.RBRACK, token.RBRACE:
+	case token.RPAREN, token.RBRACE:
 		return true
+	case token.RBRACK:
+		lbrack := processor.findOpeningBracket(openIndex - 1)
+		isGenericDeclaration := lbrack > 0 && processor.tokens[lbrack-1].is(token.IDENT) && processor.isFuncDeclName(lbrack-1)
+		return !isGenericDeclaration
 	case token.IDENT:
 		return !processor.isFuncDeclName(openIndex - 1)
 	}

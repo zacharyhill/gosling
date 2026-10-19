@@ -73,6 +73,21 @@ func TestSource(test *testing.T) {
 			want: "package p\n\nfunc f(s string) bool {\n\treturn /a  b\"/.MatchString(s) && /x/i.MatchString(s)\n}\n",
 		},
 		{
+			name: "space before regex literal after define",
+			src:  "package p\n\nfunc f() {\n\tx:=/a+/\n\t_ = x\n}\n",
+			want: "package p\n\nfunc f() {\n\tx := /a+/\n\t_ = x\n}\n",
+		},
+		{
+			name: "space before regex literal after return",
+			src:  "package p\n\nimport \"regexp\"\n\nfunc f() *regexp.Regexp {\n\treturn/a  b/i\n}\n",
+			want: "package p\n\nimport \"regexp\"\n\nfunc f() *regexp.Regexp {\n\treturn /a  b/i\n}\n",
+		},
+		{
+			name: "space around regex literal in call arguments",
+			src:  "package p\n\nfunc f(s string) {\n\tg(s,/a/,/b/)\n\tg(/d/)\n\tconst r=/c/\n\t_ = r\n}\n",
+			want: "package p\n\nfunc f(s string) {\n\tg(s, /a/, /b/)\n\tg(/d/)\n\tconst r = /c/\n\t_ = r\n}\n",
+		},
+		{
 			name: "nullish assignment",
 			src:  "package p\n\nfunc f(p *int, q *int) {\np ??= q\n}\n",
 			want: "package p\n\nfunc f(p *int, q *int) {\n\tp ??= q\n}\n",
