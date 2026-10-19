@@ -1,0 +1,75 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+type MyError struct{ Code int }
+
+func (myError *MyError) Error() string { return fmt.Sprintf("code %d", myError.Code) }
+
+func find(code int) (int, *MyError) {
+	if code != 0 {
+		return 0, &MyError{Code: code}
+	}
+	return 42, nil
+}
+
+func check(code int) *MyError {
+	if code != 0 {
+		return &MyError{Code: code}
+	}
+	return nil
+}
+
+func define(code int) string {
+	try {
+		const n = find(code)
+		return fmt.Sprint("found ", n)
+	} catch (e) {
+		return "caught: " + e.Error()
+	}
+}
+
+func bare(code int) string {
+	try {
+		check(code)
+		return "ok"
+	} catch (e) {
+		let myError: *MyError
+		if errors.As(e, &myError) {
+			return fmt.Sprint("caught MyError ", myError.Code)
+		}
+		return "caught other"
+	}
+}
+
+func assign(code int) (n int, message string) {
+	try {
+		n = find(code)
+		message = "ok"
+	} catch (e) {
+		message = "caught: " + e.Error()
+	}
+	return n, message
+}
+
+func hoisted(code int) string {
+	try {
+		return fmt.Sprint(find(code) + 1)
+	} catch (e) {
+		return "caught: " + e.Error()
+	}
+}
+
+func main() {
+	fmt.Println(define(0))
+	fmt.Println(define(3))
+	fmt.Println(bare(0))
+	fmt.Println(bare(4))
+	fmt.Println(assign(0))
+	fmt.Println(assign(5))
+	fmt.Println(hoisted(0))
+	fmt.Println(hoisted(6))
+}

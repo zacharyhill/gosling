@@ -1,0 +1,8 @@
+found 42
+caught: code 3
+ok
+caught MyError 4
+42 ok
+0 caught: code 5
+43
+caught: code 6
