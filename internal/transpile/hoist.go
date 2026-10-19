@@ -383,7 +383,9 @@ func (lowerer *lowerer) isConditional(marker ast.Node, bound ast.Node) bool {
 			return true
 		}
 		if expr, ok := ancestor.(ast.Expr); ok && lowerer.optionalRoots[expr] {
-			if links, _ := lowerer.links(expr); len(links) > 0 && marker.Pos() > links[0].X.End() {
+			// The chain lowering reports an invalid chain, so skip it here.
+			links := lowerer.collectOptionalLinks(expr)
+			if len(links) > 0 && lowerer.findNonNilableLink(links) == nil && marker.Pos() > links[0].X.End() {
 				return true
 			}
 		}
