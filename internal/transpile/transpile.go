@@ -104,6 +104,9 @@ type file struct {
 	arrayCalls     map[*ast.CallExpr]*arrayCall
 	// lengths maps each len call that replaced x.length to the selector.
 	lengths map[*ast.CallExpr]*ast.SelectorExpr
+	// keptLengths holds the x.length selectors that stay as they are,
+	// because a declaration shadows len.
+	keptLengths map[*ast.SelectorExpr]bool
 	// stringCalls maps each string method marker call to its call.
 	stringCalls map[*ast.CallExpr]*stringCall
 	// identNames holds every identifier name in the source. Added imports
@@ -384,6 +387,7 @@ func newFile(input Input, preprocessed *preprocess.Result) *file {
 		nullishAssigns: map[*ast.AssignStmt]bool{},
 		arrayCalls:     map[*ast.CallExpr]*arrayCall{},
 		lengths:        map[*ast.CallExpr]*ast.SelectorExpr{},
+		keptLengths:    map[*ast.SelectorExpr]bool{},
 		identNames:     map[string]bool{},
 		added:          map[string]string{},
 		aliased:        map[string]bool{},
@@ -572,7 +576,7 @@ func (transpiler *transpiler) isSpurious(typeError types.Error, typeInfo *types.
 	if file := transpiler.fileAt(typeError.Pos); file != nil {
 		// A bad union variant also breaks its generated method. Rewriting
 		// already reports bad spreads.
-		if badUnions[file][file.preprocessed.OrigOffset(file.tokenFile.Offset(typeError.Pos))] || file.inBadSpread(typeError.Pos) || file.isCoveredByDefaults(typeError) || file.isUnusedNarrowing(typeError) {
+		if badUnions[file][file.preprocessed.OrigOffset(file.tokenFile.Offset(typeError.Pos))] || file.inBadSpread(typeError.Pos) || file.isCoveredByDefaults(typeError) || file.isUnusedNarrowing(typeError) || file.isShadowedLength(typeError) {
 			return true
 		}
 	}

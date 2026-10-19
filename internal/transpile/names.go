@@ -209,13 +209,20 @@ func (lowerer *lowerer) pickNameExcept(base string, from, to token.Pos, isExclud
 // checkBuiltins reports an error and returns false if a declaration at position
 // shadows one of names. The code that gosling generates there uses these builtins.
 func (lowerer *lowerer) checkBuiltins(position token.Pos, construct string, names ...string) bool {
-	scope := lowerer.scopeAt(position)
-	if scope == nil {
+	return lowerer.checkBuiltinsIn(lowerer.file, lowerer.typeInfo, position, construct, names...)
+}
+
+// checkBuiltinsIn is checkBuiltins for a file and type information that
+// the caller gives.
+func (transpiler *transpiler) checkBuiltinsIn(file *file, typeInfo *types.Info, position token.Pos, construct string, names ...string) bool {
+	fileScope := typeInfo.Scopes[file.ast]
+	if fileScope == nil {
 		return true
 	}
+	scope := fileScope.Innermost(position)
 	for _, name := range names {
 		if _, object := scope.LookupParent(name, position); object != nil && object.Parent() != types.Universe {
-			lowerer.errorf(lowerer.file, position, "%s needs the builtin %s, but a declaration shadows it here; rename that declaration", construct, name)
+			transpiler.errorf(file, position, "%s needs the builtin %s, but a declaration shadows it here; rename that declaration", construct, name)
 			return false
 		}
 	}

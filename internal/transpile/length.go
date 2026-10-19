@@ -13,7 +13,11 @@ func (transpiler *transpiler) rewriteLengths(file *file, typeInfo *types.Info) b
 	changed := false
 	astutil.Apply(file.ast, nil, func(cursor *astutil.Cursor) bool {
 		selector, ok := cursor.Node().(*ast.SelectorExpr)
-		if !ok || selector.Sel.Name != "length" || !transpiler.hasLength(typeInfo, selector.X) {
+		if !ok || selector.Sel.Name != "length" || file.keptLengths[selector] || !transpiler.hasLength(typeInfo, selector.X) {
+			return true
+		}
+		if !transpiler.checkBuiltinsIn(file, typeInfo, selector.Pos(), "length", "len") {
+			file.keptLengths[selector] = true
 			return true
 		}
 		call := &ast.CallExpr{
@@ -28,6 +32,17 @@ func (transpiler *transpiler) rewriteLengths(file *file, typeInfo *types.Info) b
 		return true
 	})
 	return changed
+}
+
+// isShadowedLength reports the type error of an x.length that stays
+// because a declaration shadows len. checkBuiltinsIn already reported it.
+func (file *file) isShadowedLength(typeError types.Error) bool {
+	for selector := range file.keptLengths {
+		if selector.Sel.Pos() == typeError.Pos {
+			return true
+		}
+	}
+	return false
 }
 
 func (transpiler *transpiler) hasLength(typeInfo *types.Info, expr ast.Expr) bool {
