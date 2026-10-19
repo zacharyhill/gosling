@@ -1,0 +1,44 @@
+package tryexpr
+
+import (
+	"os"
+	"strconv"
+	"time"
+)
+
+func port(s string) int {
+	const n = try strconv.Atoi(s) catch 8080 // default port
+	return n
+}
+
+func timeout(s string) time.Duration {
+	return try time.ParseDuration(s) catch 5 * time.Second
+}
+
+func firstFile(paths []string) []byte {
+	return try os.ReadFile(paths[0]) catch try os.ReadFile(paths[1]) catch nil
+}
+
+func sum(a, b string) int64 {
+	return add(try strconv.ParseInt(a, 10, 64) catch 0, try strconv.ParseInt(b, 10, 64) catch -1)
+}
+
+func add(a, b int64) int64 { return a + b }
+
+func inTry(s string) (int, error) {
+	try {
+		const n = strconv.Atoi(s)
+		const m = try strconv.Atoi(s + "0") catch n
+		return n + m, nil
+	} catch (e) {
+		return 0, e
+	}
+}
+
+func shadowed(v string, err int) int {
+	return try strconv.Atoi(v) catch err
+}
+
+func generic[T any](load func() (T, error), fallback T) T {
+	return try load() catch fallback
+}

@@ -414,7 +414,11 @@ func (transpiler *transpiler) check() *types.Info {
 	}
 	badUnions := transpiler.collectUnions()
 	for _, typeError := range typeErrors {
-		if !transpiler.isSpurious(typeError, typeInfo, badUnions) {
+		switch {
+		case transpiler.isSpurious(typeError, typeInfo, badUnions):
+		case isTryCallError(typeError):
+			transpiler.diagnostics.Add(transpiler.position(transpiler.findTryCall(typeError.Pos)), errTryCall)
+		default:
 			transpiler.diagnostics.Add(transpiler.position(typeError.Pos), cleanMessage(typeError.Msg))
 		}
 	}
@@ -522,6 +526,7 @@ func markerDecls(packageName string) string {
 		"func " + preprocess.ThrowMarker + "(error) any { return nil }\n" +
 		"func " + preprocess.AsMarker + "(any) bool { return false }\n" +
 		"func " + preprocess.IsMarker + "(error) bool { return false }\n" +
+		"func " + preprocess.TryMarker + "[T any](v T, err error) func(T) T { return nil }\n" +
 		"func " + coalesceMarker + "[T any](x any, d T) T { return d }\n" +
 		"func " + coalescePtrMarker + "[T any](x *T, d T) T { return d }\n" +
 		"func " + hoistMarker + "[T any](v T, err error) T { return v }\n" +

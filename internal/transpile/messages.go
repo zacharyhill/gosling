@@ -25,6 +25,7 @@ func cleanMessage(message string) string {
 		"in argument to "+preprocess.ThrowMarker, "in throw",
 		"in argument to "+preprocess.IsMarker, "in catch",
 	).Replace(message)
+	message = tryFallbackRE.ReplaceAllString(message, "in try expression fallback")
 	if match := spreadMismatchRE.FindStringSubmatch(message); match != nil {
 		return formatSpreadMismatch(match[1], match[2], match[3])
 	}

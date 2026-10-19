@@ -84,6 +84,7 @@ func (lowerer *lowerer) lowerFile() {
 		lowerer.walkBlock(funcDecl.Body.List, nil)
 	}
 	lowerer.lowerConsts()
+	lowerer.lowerTryExpressions()
 	lowerer.lowerTemplates()
 	lowerer.lowerNullish()
 	lowerer.lowerArrows()

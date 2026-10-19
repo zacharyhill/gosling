@@ -22,6 +22,7 @@ func Load(path string) (Config, error) {
 Features:
 
 - `try` / `catch` / `finally` and `throw`, with typed catch clauses: `catch (e: *fs.PathError)`, `catch (e is fs.ErrNotExist)`
+- `try` expressions: `try strconv.Atoi(s) catch 0`
 - Template literals: `` t`hello ${name}` ``
 - Destructuring: `const {Name: name, Port} = cfg`, `let [first, ...rest] = xs`
 - `let` and `const` declarations: `let n = 0`, `let names: []string`, `const data = os.ReadFile(path)`
@@ -336,6 +337,29 @@ try {
 - Without it, an error that no clause matches goes to the outer try. The finally block of this try runs first. If no outer try exists, the function returns the error. Then the last result of the function must be `error`, and the other results get their zero values.
 - Each catch must be on the same line as the closing brace before it.
 - A catch type must be on one line.
+
+### try expressions
+
+`try call catch fallback` gives the value of the call. If the call fails, it gives the fallback. gosling discards the error.
+
+```go
+const port = try strconv.Atoi(s) catch 8080
+
+port := func() int {
+	if v, err := strconv.Atoi(s); err == nil {
+		return v
+	}
+	return 8080
+}()
+```
+
+- The call must return exactly a value and an `error`.
+- Only the error of the call counts. In a try block, a failing call in its arguments goes to the catch block, as usual.
+- The fallback runs only if the call fails. It must have the type of the value.
+- The fallback continues to the end of the expression, such as a `,`, a `)`, or the end of the statement. Use parentheses to end it earlier: `(try f() catch 0) + 1`.
+- A fallback can be another try expression: `try a() catch try b() catch 0`.
+- The fallback cannot read the error. `catch (e) => ...` is an error. Use a try statement.
+- `try` starts a try expression only if `catch` follows in the same expression. Otherwise `try` is an identifier.
 
 ### finally
 
