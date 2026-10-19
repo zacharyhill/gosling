@@ -174,7 +174,7 @@ func Process(src []byte) (*Result, error) {
 func ProcessReserving(src []byte, reservedNames map[string]bool) (*Result, error) {
 	processor := &processor{
 		src:         src,
-		tokens:      tokenize(src),
+		tokens:      tokenize(MaskBackticks(src)),
 		result:      &Result{},
 		identifiers: map[string]bool{},
 		scheduled:   map[int]string{},

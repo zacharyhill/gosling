@@ -46,3 +46,7 @@ func noInterpolationEscapes() string {
 func floats(f float64, g float32, h int) string {
 	return fmt.Sprintf("%s %s %s %s %s", strconv.FormatFloat(f, 'f', -1, 64), strconv.FormatFloat(float64(g), 'f', -1, 32), strconv.FormatFloat(1000000.0, 'f', -1, 64), strconv.FormatFloat(0.1+0.2, 'f', -1, 64), strconv.FormatFloat(float64(h)/3, 'f', -1, 64))
 }
+
+func backticks(name string) string {
+	return fmt.Sprintf("run `go %s` := now", name)
+}

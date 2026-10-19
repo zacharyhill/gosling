@@ -293,7 +293,7 @@ func (transpiler *transpiler) buildFile(input Input, reservedNames map[string]bo
 func (transpiler *transpiler) reportGoDeclarations(input Input) {
 	golFile := &file{path: input.Path, original: input.Src}
 	// The Go parser reports scanner errors later.
-	sourceScanner, tokenFile := newScanner(input.Src, 0)
+	sourceScanner, tokenFile := newScanner(preprocess.MaskBackticks(input.Src), 0)
 	braceDepth := 0
 	for {
 		position, kind, _ := sourceScanner.Scan()
