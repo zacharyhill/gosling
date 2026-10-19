@@ -568,6 +568,76 @@ func last() int {
 	}
 }
 
+// TestPackageScopeNames checks that generated names do not shadow names
+// that another file of the package declares.
+func TestPackageScopeNames(test *testing.T) {
+	declarations := `package p
+
+type ret struct{ code int }
+
+type v struct{ code int }
+
+type err struct{ code int }
+
+type box struct{}
+
+func each(visit func(ret)) { visit(ret{1}) }
+
+func eachFailure(visit func(err)) { visit(err{3}) }
+
+func (b *box) each(visit func(v)) { visit(v{2}) }
+`
+	uses := `package p
+
+import "os"
+
+func count() int {
+	try {
+		os.Remove("a")
+		each(item => println(item.code))
+		return 1
+	} catch {
+		return 0
+	} finally {
+		println("done")
+	}
+}
+
+func visit(b *box) {
+	b?.each(item => println(item.code))
+}
+
+func size(path string) int {
+	try {
+		const contents = os.ReadFile(path)
+		eachFailure(item => println(item.code))
+		return len(contents)
+	} catch {
+		return 0
+	}
+}
+`
+	inputs := []Input{{Path: "declarations.gol", Src: []byte(declarations)}, {Path: "uses.gol", Src: []byte(uses)}}
+	outputs, err := Transpile(Config{Importer: importer.Default()}, inputs)
+	if err != nil {
+		test.Fatal(err)
+	}
+	fileSet := token.NewFileSet()
+	var parsedFiles []*ast.File
+	for _, output := range outputs {
+		parsedFile, err := parser.ParseFile(fileSet, output.Path, output.Src, 0)
+		if err != nil {
+			test.Fatal(err)
+		}
+		parsedFiles = append(parsedFiles, parsedFile)
+	}
+	var typeErrors []string
+	checkConfig := types.Config{Importer: importer.Default(), Error: func(err error) { typeErrors = append(typeErrors, err.Error()) }}
+	if _, err := checkConfig.Check("p", fileSet, parsedFiles, nil); err != nil {
+		test.Fatalf("generated code does not type-check:\n%s\n%s", strings.Join(typeErrors, "\n"), outputs[1].Src)
+	}
+}
+
 func writeFile(test *testing.T, path, content string) {
 	test.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
