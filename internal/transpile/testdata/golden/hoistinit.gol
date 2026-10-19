@@ -55,3 +55,16 @@ func bothCalls(s string) bool {
 	}
 	return false
 }
+
+func elseIfCheckedInit(a, b string) bool {
+	try {
+		if a == "" {
+			return false
+		} else if const n = parse(a); n > parse(b) {
+			return true
+		}
+	} catch {
+		return false
+	}
+	return false
+}

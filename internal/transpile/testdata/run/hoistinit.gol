@@ -68,6 +68,38 @@ func checkedInit(a, b string) string {
 	}
 }
 
+func parse(label, s string) (int, error) {
+	fmt.Println("eval", label)
+	return strconv.Atoi(s)
+}
+
+func elseIfChecked(a, b string) string {
+	try {
+		if a == "" {
+			return "empty"
+		} else if const n = parse("init", a); n > parse("cond", b) {
+			return "bigger"
+		} else {
+			return t`not bigger than ${n}`
+		}
+	} catch (e) {
+		return t`error: ${e}`
+	}
+}
+
+func elseIfHoistedInit(a, b string) string {
+	try {
+		if a == "" {
+			return "empty"
+		} else if let x = trace("init", parse("init call", a)); x > half(x) {
+			return "bigger"
+		}
+		return t`not bigger, ${b}`
+	} catch (e) {
+		return t`error: ${e}`
+	}
+}
+
 func main() {
 	fmt.Println(compare(4))
 	fmt.Println(compare(3))
@@ -78,4 +110,9 @@ func main() {
 	fmt.Println(checkedInit("1", "2"))
 	fmt.Println(checkedInit("x", "2"))
 	fmt.Println(checkedInit("1", "y"))
+	fmt.Println(elseIfChecked("3", "1"))
+	fmt.Println(elseIfChecked("x", "1"))
+	fmt.Println(elseIfChecked("1", "y"))
+	fmt.Println(elseIfHoistedInit("4", "b"))
+	fmt.Println(elseIfHoistedInit("x", "b"))
 }
