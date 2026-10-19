@@ -42,6 +42,15 @@ func nilable(goType types.Type) bool {
 	return false
 }
 
+// isComparableToNil reports whether a value of goType can be compared with
+// nil. A type parameter qualifies only if each type in its type set can be nil.
+func isComparableToNil(goType types.Type) bool {
+	if typeParam, ok := goType.(*types.TypeParam); ok {
+		return types.AssignableTo(types.Typ[types.UntypedNil], typeParam)
+	}
+	return nilable(goType)
+}
+
 // typeName prints goType as this file writes it. It reports false if the
 // type belongs to a package that the file does not import.
 func (lowerer *lowerer) typeName(goType types.Type) (string, bool) {

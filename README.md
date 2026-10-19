@@ -405,13 +405,13 @@ const add = (a: int, b: int) => a + b             // add := func(a int, b int) i
 
 ### Optional chaining and ??
 
-`a?.b` reads `b` only if `a` is not nil. If a link is nil, gosling skips the rest of the chain and gives the zero value. The left side of `?.` must be a pointer or an interface.
+`a?.b` reads `b` only if `a` is not nil. If a link is nil, gosling skips the rest of the chain and gives the zero value. The left side of `?.` must be a pointer or an interface. A type parameter is allowed only if each type in its constraint can be nil, as in `[P *User]`.
 
 `x ?? d` gives `d` if `x` is nil or its chain was skipped. If `x` is a pointer and `d` has the element type, gosling dereferences `x`. So `cfg.Port ?? 8080` with `Port *int` gives an `int`.
 
 These are errors:
 
-- a left side of `??` that cannot be nil
+- a left side of `??` that cannot be nil, such as a type parameter with constraint `any`
 - `??` mixed with `||` or `&&` without parentheses
 
 gosling evaluates each link one time:

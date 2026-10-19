@@ -211,6 +211,16 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:4:10: ?. needs a pointer or interface on its left, not P",
 		},
 		{
+			name: "optional chaining on a type parameter that allows non-nil types",
+			src:  "package p\ntype S interface{ M() int }\nfunc f[P S](v P) int {\n\treturn v?.M()\n}",
+			want: "x.gol:4:10: ?. needs a pointer or interface on its left, but type parameter P allows types that cannot be nil",
+		},
+		{
+			name: "nullish coalescing on a type parameter that allows non-nil types",
+			src:  "package p\nfunc f[P any](v, d P) P {\n\treturn v ?? d\n}",
+			want: "x.gol:3:9: left side of ?? cannot be compared with nil: type parameter P allows types that cannot be nil",
+		},
+		{
 			name: "nullish coalescing mixed with ||",
 			src:  "package p\nfunc f(a *bool, b bool) bool {\n\treturn a ?? b || true\n}",
 			want: "x.gol:3:9: ?? cannot be mixed with || or && without parentheses",
