@@ -276,14 +276,7 @@ To highlight `.gol` files, add the VS Code extension folder as a TextMate bundle
 
 ### Language server limitations
 
-- Code that gosling generates, such as `try` and `catch`, has no definition.
-- A definition in generated code, such as a catch variable, goes to the nearest token before it.
-- A rename can change a name that gosling copies into generated code, such as a catch variable, an arrow parameter, or a destructured name. The server then transpiles the renamed files and compares the result with the rename in Go. If they differ, the rename fails, because a partial rename would break the code. For example, a rename of the field `X` fails if `const {X} = p` uses it.
-- A rename in a file that changed after a syntax error fails if the name occurs in generated code.
-- After a syntax error, the server uses the last version that parsed, with the changed lines that still parse. The lines that do not parse get no results until the file parses again. Type errors do not have this problem.
-- gopls uses only the build configuration of your system. A `.gol` file for another system or with a build tag gets no results from gopls.
-- A default value has no hover or definition. The outline also shows its helper function.
-- A rename of `this` or of a constructor fails. gosling generates their declarations.
+See [Language server](docs/known-issues.md#language-server) in the known issues.
 
 ## Language
 
@@ -1375,23 +1368,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 
 ## Limitations
 
-- Without `catch panic`, a panic does not run `finally` blocks. A panic in a catch block or in a catch panic block also does not run them.
-- `catch panic` cannot follow a typed catch clause.
-- Object patterns have no rest element.
-- In a try block, an optional call that returns an error must be a statement to be checked.
-- A line cannot start with the `?` or the `:` of a ternary.
-- In the value of an enum member, refer to other members as `Color.Red` or `ColorRed`, not `Red`.
-- gosling does not check switches in `.go` files.
-- In a `case` expression, a function type or literal cannot use `):`. Use Go order there.
-- VS Code highlights the name in `name: type` parameters as a type.
-- An arrow cannot get a type from the context if a local declaration hides the name of that type. Rename the local declaration.
-- Only a package-level `const` with one name can hold a generic arrow. Go function literals cannot have type parameters.
-- Only composite literals in the same package take a `T` value for an optional field. Other packages see a plain `*T` field. An assignment also needs a pointer: `cfg.Host = &host`.
-- Regex literals do not support JavaScript-only syntax, such as lookahead `(?=...)` and backreferences `\1`. RE2 does not have them.
-- Default values are not supported in generic functions, variadic functions, function literals, arrow functions, and interface methods.
-- A default value must be plain Go. It cannot use gosling syntax, such as a template literal.
-- A `yield` statement must be directly in a generator body, not in a function literal in it. Arrow functions cannot be generators.
-- `using` declares one name. It cannot have a type or a destructuring pattern.
+The open bugs, the behavior traps, and the limitations are in one file: [known issues](docs/known-issues.md). Read it before you write `.gol` code. Update it when you find or fix an issue.
 
 ## How it works
 
