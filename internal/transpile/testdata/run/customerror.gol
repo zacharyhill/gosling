@@ -3,6 +3,7 @@ package main
 import (
 	"errors"
 	"fmt"
+	"strconv"
 )
 
 type MyError struct{ Code int }
@@ -63,6 +64,32 @@ func hoisted(code int) string {
 	}
 }
 
+func mixed(code int, s string) string {
+	try {
+		const n = find(code)
+		const m = strconv.Atoi(s)
+		return fmt.Sprint(n + m)
+	} catch (e) {
+		return "caught: " + e.Error()
+	}
+}
+
+func mixedHoisted(code int, s string) string {
+	try {
+		return fmt.Sprint(find(code) + strconv.Atoi(s))
+	} catch (e) {
+		return "caught: " + e.Error()
+	}
+}
+
+func mixedNested(ok bool, code int, s string) string {
+	try {
+		return fmt.Sprint(ok && find(code) > strconv.Atoi(s))
+	} catch (e) {
+		return "caught: " + e.Error()
+	}
+}
+
 func main() {
 	fmt.Println(define(0))
 	fmt.Println(define(3))
@@ -72,4 +99,14 @@ func main() {
 	fmt.Println(assign(5))
 	fmt.Println(hoisted(0))
 	fmt.Println(hoisted(6))
+	fmt.Println(mixed(0, "1"))
+	fmt.Println(mixed(7, "1"))
+	fmt.Println(mixed(0, "x"))
+	fmt.Println(mixedHoisted(0, "2"))
+	fmt.Println(mixedHoisted(8, "2"))
+	fmt.Println(mixedHoisted(0, "y"))
+	fmt.Println(mixedNested(true, 0, "1"))
+	fmt.Println(mixedNested(true, 9, "1"))
+	fmt.Println(mixedNested(true, 0, "z"))
+	fmt.Println(mixedNested(false, 9, "z"))
 }

@@ -133,13 +133,27 @@ func (lowerer *lowerer) pickErrorVar(try *tryContext, scope *types.Scope, positi
 		if _, ok := lowerer.usedIn(name, position, end); end.IsValid() && ok {
 			continue
 		}
+		lowerer.addErrorVar(scope, name, errorResult)
 		return name
 	}
+}
+
+func (lowerer *lowerer) addErrorVar(scope *types.Scope, name string, errorResult types.Type) {
+	if scope == nil {
+		return
+	}
+	if lowerer.errorVars[scope] == nil {
+		lowerer.errorVars[scope] = map[string]types.Type{}
+	}
+	lowerer.errorVars[scope][name] = errorResult
 }
 
 // fitsScope reports whether := at position can reuse name as an error
 // variable of scope. It also reports whether name is free in the rest of scope.
 func (lowerer *lowerer) fitsScope(name string, scope *types.Scope, position token.Pos, errorResult types.Type) (canReuse, isFree bool) {
+	if errorVarType, ok := lowerer.errorVars[scope][name]; ok {
+		return types.Identical(errorVarType, errorResult), false
+	}
 	if object := scope.Lookup(name); object != nil {
 		return object.Pos() < position && isVarOfType(object, errorResult), false
 	}

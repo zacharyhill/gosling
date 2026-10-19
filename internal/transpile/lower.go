@@ -27,6 +27,9 @@ type lowerer struct {
 	// with its variable.
 	hoistDrops   map[ast.Expr]int
 	namedResults map[types.Object]bool
+	// errorVars holds the types of the error variables that := declares
+	// in each scope. The type checker does not know these variables.
+	errorVars map[*types.Scope]map[string]types.Type
 	// wrappedHeaders holds the statements whose init statement moved into a new block.
 	wrappedHeaders map[ast.Stmt]bool
 	// optionalChecks holds the error checks for optional calls in try
@@ -47,6 +50,7 @@ func newLowerer(transpiler *transpiler, file *file, typeInfo *types.Info) *lower
 		wrappedHeaders: map[ast.Stmt]bool{},
 		checkedAssigns: map[*ast.AssignStmt]bool{},
 		namedResults:   map[types.Object]bool{},
+		errorVars:      map[*types.Scope]map[string]types.Type{},
 		optionalChecks: map[ast.Expr]optionalCheck{},
 	}
 	ast.Inspect(file.ast, func(node ast.Node) bool {

@@ -6,3 +6,13 @@ caught MyError 4
 0 caught: code 5
 43
 caught: code 6
+43
+caught: code 7
+caught: strconv.Atoi: parsing "x": invalid syntax
+44
+caught: code 8
+caught: strconv.Atoi: parsing "y": invalid syntax
+true
+caught: code 9
+caught: strconv.Atoi: parsing "z": invalid syntax
+false

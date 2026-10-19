@@ -1,5 +1,7 @@
 package customerror
 
+import "strconv"
+
 type MyError struct{ Code int }
 
 func (myError *MyError) Error() string { return "failed" }
@@ -90,5 +92,15 @@ func iface() string {
 		return lookup()
 	} catch {
 		return ""
+	}
+}
+
+func mixed(ok bool, s string) int {
+	try {
+		const n = find(ok)
+		const m = strconv.Atoi(s)
+		return n + m
+	} catch {
+		return -1
 	}
 }
