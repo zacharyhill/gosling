@@ -223,6 +223,16 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:9: left side of ?? cannot be compared with nil: type parameter P allows types that cannot be nil",
 		},
 		{
+			name: "address of an optional chain",
+			src:  "package p\ntype P struct{ X int }\nfunc f(v *P) *int {\n\treturn &v?.X\n}",
+			want: "x.gol:4:10: cannot take the address of an optional chain",
+		},
+		{
+			name: "address of a parenthesized optional chain",
+			src:  "package p\ntype P struct{ X int }\nfunc f(v *P) *int {\n\treturn &(v?.X)\n}",
+			want: "x.gol:4:11: cannot take the address of an optional chain",
+		},
+		{
 			name: "nullish coalescing mixed with ||",
 			src:  "package p\nfunc f(a *bool, b bool) bool {\n\treturn a ?? b || true\n}",
 			want: "x.gol:3:9: ?? cannot be mixed with || or && without parentheses",
