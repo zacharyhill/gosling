@@ -426,6 +426,9 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 	case isQuestion(current) && processor.ternaryParts[tokenIndex]:
 		processor.rewriteTernary(tokenIndex)
 	case current.is(token.COLON) && processor.ternaryParts[tokenIndex]:
+		if processor.isTernaryArmEnd(tokenIndex + 1) {
+			return 0, &Error{current.offset, "ternary is missing the value after ':'"}
+		}
 		processor.replace(current.offset, current.end(), ",")
 	case isQuestion(current):
 		return processor.questionMark(tokenIndex)

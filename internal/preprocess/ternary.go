@@ -28,6 +28,29 @@ func (processor *processor) findTernaries() {
 	}
 }
 
+// makeIncompleteTernaryError returns the error for the ? at token
+// questionIndex that has no matching :.
+func (processor *processor) makeIncompleteTernaryError(questionIndex int) error {
+	question, armIndex := processor.tokens[questionIndex], questionIndex+1
+	if processor.isCanceledSemicolon(armIndex) {
+		armIndex++
+	}
+	if processor.isTernaryArmEnd(armIndex) {
+		return &Error{question.offset, "ternary is missing the value after '?'"}
+	}
+	return &Error{question.offset, "ternary is missing ':'"}
+}
+
+// isTernaryArmEnd reports whether the token at tokenIndex cannot start the
+// value of a ternary arm.
+func (processor *processor) isTernaryArmEnd(tokenIndex int) bool {
+	switch processor.tokenAt(tokenIndex).kind {
+	case token.RPAREN, token.RBRACK, token.RBRACE, token.COMMA, token.SEMICOLON, token.COLON, token.EOF:
+		return true
+	}
+	return false
+}
+
 // isLoneQuestion reports whether the token at tokenIndex is a ? that is not
 // part of ?? or ?.
 func (processor *processor) isLoneQuestion(tokenIndex int) bool {
