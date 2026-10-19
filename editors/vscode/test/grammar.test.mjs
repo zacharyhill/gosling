@@ -45,6 +45,11 @@ test("try, catch, finally are keywords", () => {
   assertScope(source, "e", "variable.parameter.gol");
 });
 
+test("throw is a keyword", () => {
+  assertScope(inFunctionBody("\tthrow fmt.Errorf(\"x\")"), "throw", "keyword.control.exception.gol");
+  assertNoScope(inFunctionBody("\tthrows(err)"), "throws", "keyword");
+});
+
 test("catch without a variable", () => {
   assertScope(inFunctionBody("\t} catch {"), "catch", "keyword.control.exception.gol");
 });

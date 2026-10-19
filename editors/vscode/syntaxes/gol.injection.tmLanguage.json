@@ -123,7 +123,7 @@
       }
     },
     "exception-keywords": {
-      "match": "\\b(?:try|catch|finally)\\b",
+      "match": "\\b(?:try|catch|finally|throw)\\b",
       "name": "keyword.control.exception.gol"
     },
     "for-of-in": {

@@ -15,15 +15,6 @@ const (
 	ResultMarker  = "__goslingR"
 )
 
-// pendingArrow is an arrow with an expression body that the scan has not
-// finished.
-type pendingArrow struct {
-	start nesting
-	// isParenthesized is true when the body starts on a later line. A newline
-	// directly after return ends the return statement.
-	isParenthesized bool
-}
-
 // arrow rewrites the arrow function whose "=>" starts at token tokenIndex.
 func (processor *processor) arrow(tokenIndex int) (int, error) {
 	assign := processor.tokens[tokenIndex]
@@ -55,7 +46,7 @@ func (processor *processor) arrow(tokenIndex int) (int, error) {
 }
 
 // openExpressionBody replaces the "=>" of an expression-body arrow with the
-// start of a block that returns the body. finishArrows closes the block.
+// start of a block that returns the body. finishClosers closes the block.
 func (processor *processor) openExpressionBody(assign, greater, bodyStart lexeme) {
 	isParenthesized := bytes.IndexByte(processor.src[greater.end():bodyStart.offset], '\n') >= 0
 	returnText := " { return"
@@ -67,7 +58,11 @@ func (processor *processor) openExpressionBody(assign, greater, bodyStart lexeme
 		returnText += " "
 	}
 	processor.replace(assign.offset, greater.end(), ResultMarker+returnText)
-	processor.pendingArrows = append(processor.pendingArrows, pendingArrow{start: processor.nesting(), isParenthesized: isParenthesized})
+	closer := " }"
+	if isParenthesized {
+		closer = ") }"
+	}
+	processor.pendingClosers = append(processor.pendingClosers, pendingCloser{start: processor.nesting(), text: closer})
 }
 
 // arrowParams rewrites the parameter list closed by the ) at token rparenIndex.
@@ -123,26 +118,4 @@ func (processor *processor) untypedParams(from, to int) ([]lexeme, bool) {
 		}
 	}
 	return names, true
-}
-
-// finishArrows closes the pending arrows whose body ends at token tokenIndex.
-func (processor *processor) finishArrows(tokenIndex int) {
-	for len(processor.pendingArrows) > 0 {
-		pending := processor.pendingArrows[len(processor.pendingArrows)-1]
-		if processor.nesting() != pending.start {
-			return
-		}
-		switch processor.tokenAt(tokenIndex).kind {
-		case token.COMMA, token.RPAREN, token.RBRACK, token.RBRACE, token.SEMICOLON, token.COLON, token.EOF:
-		default:
-			return
-		}
-		processor.pendingArrows = processor.pendingArrows[:len(processor.pendingArrows)-1]
-		end := processor.tokenAt(tokenIndex - 1).end()
-		if pending.isParenthesized {
-			processor.replace(end, end, ") }")
-		} else {
-			processor.replace(end, end, " }")
-		}
-	}
 }

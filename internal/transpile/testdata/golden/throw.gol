@@ -1,0 +1,97 @@
+package throw
+
+import (
+	"errors"
+	"fmt"
+	"os"
+	"strconv"
+)
+
+var errEmpty = errors.New("empty")
+
+type config struct {
+	name string
+	port int
+}
+
+func parse(s string) (config, *config, int, error) {
+	if s == "" {
+		throw errEmpty // no input
+	}
+	return config{name: s}, nil, len(s), nil
+}
+
+func onlyError(path string) error {
+	if path == "" {
+		throw fmt.Errorf("no path")
+	}
+	return nil
+}
+
+func inTry(s string) (int, error) {
+	try {
+		let n = strconv.Atoi(s)
+		if n < 0 {
+			throw fmt.Errorf("negative: %d", n)
+		}
+		return n, nil
+	} catch (e) {
+		return 0, fmt.Errorf("parse %q: %w", s, e)
+	}
+}
+
+func bareCatch(s string) bool {
+	try {
+		if s == "" {
+			throw errEmpty
+		}
+	} catch {
+		return false
+	}
+	return true
+}
+
+func rethrow(path string) ([]byte, error) {
+	try {
+		const data = os.ReadFile(path)
+		return data, nil
+	} catch (e) {
+		throw fmt.Errorf("read %s: %w", path, e)
+	}
+}
+
+func nested() string {
+	try {
+		try {
+			throw errEmpty
+		} catch (inner) {
+			throw fmt.Errorf("wrapped: %w", inner)
+		}
+	} catch (outer) {
+		return outer.Error()
+	}
+}
+
+func withFinally(s string) (int, error) {
+	try {
+		if s == "" {
+			throw errEmpty
+		}
+	} finally {
+		fmt.Println("done")
+	}
+	return 1, nil
+}
+
+func generic[T any](ok bool) (T, error) {
+	if !ok {
+		throw errEmpty
+	}
+	return *new(T), nil
+}
+
+func literal() func() error {
+	return func() error {
+		throw errEmpty
+	}
+}

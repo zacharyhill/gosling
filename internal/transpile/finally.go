@@ -229,11 +229,19 @@ func (lowerer *lowerer) lowerExit(stmt ast.Stmt, try *tryContext) bool {
 		lowerer.replace(stmt.Pos(), stmt.End(), "{\n"+lowerer.enter(layers, 0, final, false)+"\n}", line)
 		return true
 	}
-	// The output evaluates the return values before the finally code runs.
 	signature := enclosingSignature(lowerer.typeInfo, lowerer.parents, stmt)
 	if signature == nil {
 		return false
 	}
+	lowerer.returnThroughFinally(stmt, layers, signature, returnStmt.Results[0].Pos(), "")
+	return true
+}
+
+// returnThroughFinally sends a return with values through layers. The
+// values are valuesPrefix and the source text from valuesStart to the end of
+// stmt. The output evaluates them before the finally code runs.
+func (lowerer *lowerer) returnThroughFinally(stmt ast.Stmt, layers []*finallyLayer, signature *types.Signature, valuesStart token.Pos, valuesPrefix string) {
+	line := lowerer.line(stmt.Pos())
 	for _, layer := range layers {
 		if !layer.terminates {
 			lowerer.ensureReturnVars(layer, signature)
@@ -246,9 +254,8 @@ func (lowerer *lowerer) lowerExit(stmt ast.Stmt, try *tryContext) bool {
 		// The output never returns the values but still evaluates them.
 		destination = strings.TrimSuffix(strings.Repeat("_, ", signature.Results().Len()), ", ")
 	}
-	lowerer.replace(returnStmt.Return, returnStmt.Results[0].Pos(), "{\n"+destination+" = ", line)
+	lowerer.replace(stmt.Pos(), valuesStart, "{\n"+destination+" = "+valuesPrefix, line)
 	lowerer.insertAfter(stmt, "", "\n"+entry+"\n}", line)
-	return true
 }
 
 // jumpOut returns the code for a failure in try that target catches. The

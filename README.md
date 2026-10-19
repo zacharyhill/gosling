@@ -21,7 +21,7 @@ func Load(path string) (Config, error) {
 
 Features:
 
-- `try` / `catch` / `finally`
+- `try` / `catch` / `finally` and `throw`
 - Template literals: `` t`hello ${name}` ``
 - Destructuring: `const {Name: name, Port} = cfg`, `let [first, ...rest] = xs`
 - `let` and `const` declarations: `let n = 0`, `let names: []string`, `const data = os.ReadFile(path)`
@@ -321,6 +321,29 @@ The finally block runs after the try or catch block. It runs on every exit: the 
 - A `return` in the finally block replaces the pending return.
 - Nested finally blocks run from the inside out.
 - In a try with no catch, a failure goes to the outer try after the finally block runs.
+
+### throw
+
+`throw` sends an error to the catch block, as a failing call does:
+
+```go
+try {
+	const n = strconv.Atoi(s)
+	if n < 0 {
+		throw fmt.Errorf("negative: %d", n)
+	}
+	return n, nil
+} catch (e) {
+	return 0, fmt.Errorf("parse %q: %w", s, e)
+}
+```
+
+- In a try block, `throw err` sets the catch variable and jumps to the catch block. The finally blocks between them run first.
+- In a catch block, `throw` goes to the outer try. So `throw fmt.Errorf("load: %w", e)` rethrows a wrapped error.
+- If no try block catches the error, the function returns it. The last result of the function must be `error`. The other results get their zero values. So `throw err` in `func f() (int, error)` becomes `return 0, err`.
+- In other functions, `throw` without a try block is an error.
+- The value must be an `error`.
+- `throw` is a keyword only at the start of a statement, before a value on the same line. So `throw(x)` and `throw = x` use an identifier named `throw`.
 
 ### Template literals
 

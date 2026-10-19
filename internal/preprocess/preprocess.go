@@ -108,6 +108,13 @@ func (processor *processor) nesting() nesting {
 	return nesting{braces: len(processor.braceStack), parens: processor.parens}
 }
 
+// pendingCloser is a rewrite that the scan has not finished, such as an
+// arrow with an expression body. text closes it at the end of its expression.
+type pendingCloser struct {
+	start nesting
+	text  string
+}
+
 type processor struct {
 	src         []byte
 	tokens      []lexeme
@@ -121,7 +128,7 @@ type processor struct {
 	// when it ends at a token that a scan ahead found.
 	scheduled           map[int]string
 	pendingDestructures []*destructure
-	pendingArrows       []pendingArrow
+	pendingClosers      []pendingCloser
 	// inserts maps a token index to text to add before that token.
 	inserts map[int]string
 	// typedArrows holds the offsets of the ")" that close arrow parameter
@@ -200,7 +207,7 @@ func (processor *processor) run() error {
 	if err := processor.rewriteTokens(); err != nil {
 		return err
 	}
-	processor.finishArrows(len(processor.tokens))
+	processor.finishClosers(len(processor.tokens))
 	return processor.finishDestructure(len(processor.tokens))
 }
 
@@ -211,7 +218,7 @@ func (processor *processor) rewriteInterpolation(from, to int) error {
 	if err := processor.rewriteTokens(); err != nil {
 		return err
 	}
-	processor.finishArrows(len(processor.tokens))
+	processor.finishClosers(len(processor.tokens))
 	return nil
 }
 
@@ -232,12 +239,12 @@ func interpolationTokens(src []byte, from, to int) []lexeme {
 // the outer scan. The output and the bracket depth stay shared.
 func (processor *processor) startScan(tokens []lexeme) (restore func()) {
 	savedTokens, savedScheduled, savedInserts := processor.tokens, processor.scheduled, processor.inserts
-	savedDestructures, savedArrows := processor.pendingDestructures, processor.pendingArrows
+	savedDestructures, savedClosers := processor.pendingDestructures, processor.pendingClosers
 	processor.tokens, processor.scheduled, processor.inserts = tokens, map[int]string{}, map[int]string{}
-	processor.pendingDestructures, processor.pendingArrows = nil, nil
+	processor.pendingDestructures, processor.pendingClosers = nil, nil
 	return func() {
 		processor.tokens, processor.scheduled, processor.inserts = savedTokens, savedScheduled, savedInserts
-		processor.pendingDestructures, processor.pendingArrows = savedDestructures, savedArrows
+		processor.pendingDestructures, processor.pendingClosers = savedDestructures, savedClosers
 	}
 }
 
@@ -253,7 +260,7 @@ func (processor *processor) rewriteTokens() error {
 			processor.replace(current.offset, current.end(), text)
 			delete(processor.scheduled, tokenIndex)
 		}
-		processor.finishArrows(tokenIndex)
+		processor.finishClosers(tokenIndex)
 		if err := processor.finishDestructure(tokenIndex); err != nil {
 			return err
 		}
@@ -274,6 +281,8 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 	case current.isIdent("try") && processor.tokenAt(tokenIndex+1).is(token.LBRACE) && processor.atStmtStart(tokenIndex):
 		processor.result.Tries = append(processor.result.Tries, Try{If: processor.replace(current.offset, current.end(), "if true")})
 		*pendingTry = len(processor.result.Tries) - 1
+	case processor.isThrow(tokenIndex):
+		return tokenIndex, processor.rewriteThrow(tokenIndex)
 	case current.is(token.ILLEGAL) && current.text == "?":
 		return processor.questionMark(tokenIndex)
 	case current.is(token.TYPE):
@@ -397,4 +406,23 @@ func (result *Result) OrigRange(start, end int) (int, bool) {
 		delta = change.origEnd - change.newEnd
 	}
 	return start + delta, true
+}
+
+// finishClosers closes the pending rewrites whose expression ends at token
+// tokenIndex.
+func (processor *processor) finishClosers(tokenIndex int) {
+	for len(processor.pendingClosers) > 0 {
+		pending := processor.pendingClosers[len(processor.pendingClosers)-1]
+		if processor.nesting() != pending.start {
+			return
+		}
+		switch processor.tokenAt(tokenIndex).kind {
+		case token.COMMA, token.RPAREN, token.RBRACK, token.RBRACE, token.SEMICOLON, token.COLON, token.EOF:
+		default:
+			return
+		}
+		processor.pendingClosers = processor.pendingClosers[:len(processor.pendingClosers)-1]
+		end := processor.tokenAt(tokenIndex - 1).end()
+		processor.replace(end, end, pending.text)
+	}
 }

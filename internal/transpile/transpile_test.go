@@ -554,6 +554,16 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:13: template literal needs the builtin float64, but a declaration shadows it here; rename that declaration",
 		},
 		{
+			name: "throw outside try in a function without an error result",
+			src:  "package p\nimport \"errors\"\nfunc f() int {\n\tthrow errors.New(\"x\")\n}",
+			want: "x.gol:4:2: throw needs an enclosing try or a function whose last result is error",
+		},
+		{
+			name: "throw of a value that is not an error",
+			src:  "package p\nfunc f() error {\n\tthrow 1\n}",
+			want: "x.gol:3:8: cannot use 1 (constant of type int) as error value in throw",
+		},
+		{
 			name: "missing catch",
 			src:  "package p\nfunc f() {\n\ttry { }\n}",
 			want: "x.gol:3:8: try block must be followed by catch",

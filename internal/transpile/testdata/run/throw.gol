@@ -1,0 +1,57 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+)
+
+var errEmpty = errors.New("empty")
+
+var steps []string
+
+func parsePort(s string) (int, error) {
+	if s == "" {
+		throw errEmpty
+	}
+	try {
+		let port = strconv.Atoi(s)
+		if port <= 0 {
+			throw fmt.Errorf("port %d is not positive", port)
+		}
+		return port, nil
+	} catch (e) {
+		throw fmt.Errorf("parse port: %w", e)
+	}
+}
+
+func cleanup(fail bool) (result string, err error) {
+	try {
+		try {
+			if fail {
+				throw errEmpty
+			}
+			steps = append(steps, "body")
+		} finally {
+			steps = append(steps, "inner finally")
+		}
+	} catch (e) {
+		steps = append(steps, "caught "+e.Error())
+		throw e
+	} finally {
+		steps = append(steps, "outer finally")
+	}
+	return "ok", nil
+}
+
+func main() {
+	for (const input of []string{"", "x", "-1", "8080"}) {
+		let port, err = parsePort(input)
+		fmt.Println(port, err, errors.Is(err, errEmpty))
+	}
+	for (const fail of []bool{false, true}) {
+		let result, err = cleanup(fail)
+		fmt.Printf("%q %v %v\n", result, err, steps)
+		steps = nil
+	}
+}
