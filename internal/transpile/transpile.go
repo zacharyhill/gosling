@@ -565,7 +565,7 @@ func usePtrCoalesce(file *file, typeInfo *types.Info) bool {
 	changed := false
 	for call := range file.coalesce {
 		callee := call.Fun.(*ast.Ident)
-		_, isPointer := typeInfo.Types[call.Args[0]].Type.(*types.Pointer)
+		_, isPointer := pointerElem(typeInfo.Types[call.Args[0]].Type)
 		// The checker records a constant with its converted type, so check
 		// for any constant, not only an untyped one.
 		if callee.Name == coalesceMarker && isPointer && typeInfo.Types[call.Args[1]].Value != nil {
