@@ -22,6 +22,7 @@ func TestProcess(test *testing.T) {
 		arrayTemps  []ArrayTemp
 		params      []int
 		assigns     []int
+		enums       []Enum
 	}{
 		{
 			name: "try catch with binding",
@@ -617,6 +618,50 @@ func TestProcess(test *testing.T) {
 			unions: []Union{{Name: "Code", Constants: []string{"Code200", "CodeNeg1", "Code16"}}},
 		},
 		{
+			name: "enum on one line",
+			src:  "enum Color { Red, Green, Blue }\n",
+			want: "type Color int; const ( ColorRed Color = iota; ColorGreen; ColorBlue ); func (Color) String() string { return \"\" }\n",
+			splits: []int{
+				len("type Color int"),
+				len("type Color int; const ( ColorRed Color = iota"),
+				len("type Color int; const ( ColorRed Color = iota; ColorGreen"),
+				len("type Color int; const ( ColorRed Color = iota; ColorGreen; ColorBlue )"),
+			},
+			enums: []Enum{{
+				Name:        "Color",
+				Members:     []string{"Red", "Green", "Blue"},
+				MethodStart: len("type Color int; const ( ColorRed Color = iota; ColorGreen; ColorBlue ); "),
+				MethodEnd:   len("type Color int; const ( ColorRed Color = iota; ColorGreen; ColorBlue ); func (Color) String() string { return \"\" }"),
+			}},
+		},
+		{
+			name: "enum with values over lines",
+			src:  "enum Code {\n\tOK\n\tMoved = 5 // note\n\tGone,\n}\n",
+			want: "type Code int; const (\n\tCodeOK Code = 0\n\tCodeMoved Code = 5 // note\n\tCodeGone Code = CodeMoved + 1\n); func (Code) String() string { return \"\" }\n",
+			splits: []int{
+				len("type Code int"),
+				len("type Code int; const (\n\tCodeOK Code = 0\n\tCodeMoved Code = 5 // note\n\tCodeGone Code = CodeMoved + 1\n)"),
+			},
+			enums: []Enum{{
+				Name:        "Code",
+				Members:     []string{"OK", "Moved", "Gone"},
+				MethodStart: len("type Code int; const (\n\tCodeOK Code = 0\n\tCodeMoved Code = 5 // note\n\tCodeGone Code = CodeMoved + 1\n); "),
+				MethodEnd:   len("type Code int; const (\n\tCodeOK Code = 0\n\tCodeMoved Code = 5 // note\n\tCodeGone Code = CodeMoved + 1\n); func (Code) String() string { return \"\" }"),
+			}},
+		},
+		{
+			name:   "string enum",
+			src:    "enum level { debug = \"debug\", Info = \"info\" }\n",
+			want:   "type level string; const ( levelDebug level = \"debug\"; levelInfo level = \"info\" )\n",
+			splits: []int{len("type level string"), len("type level string; const ( levelDebug level = \"debug\"")},
+			enums:  []Enum{{Name: "level", Members: []string{"debug", "Info"}, IsString: true}},
+		},
+		{
+			name: "enum as a name",
+			src:  "func f(enum int) int {\n\treturn enum\n}",
+			want: "func f(enum int) int {\n\treturn enum\n}",
+		},
+		{
 			name: "plain alias untouched",
 			src:  "type ID = string\n",
 			want: "type ID = string\n",
@@ -1162,6 +1207,9 @@ func TestProcess(test *testing.T) {
 			if !slices.Equal(result.Params, testCase.params) {
 				test.Errorf("params %v, want %v", result.Params, testCase.params)
 			}
+			if !reflect.DeepEqual(result.Enums, testCase.enums) {
+				test.Errorf("enums %+v, want %+v", result.Enums, testCase.enums)
+			}
 			if !slices.Equal(result.Splits, testCase.splits) {
 				test.Errorf("splits %v, want %v", result.Splits, testCase.splits)
 			}
@@ -1210,6 +1258,11 @@ func TestProcessErrors(test *testing.T) {
 		{"literal without a constant name", "type M = \"\" | \"a\"\n", "cannot make a constant name from the literal \"\"", len("type M = ")},
 		{"generic literal union", "type M[T any] = \"a\" | \"b\"\n", "a literal union cannot be generic", 0},
 		{"literal union in a type group", "type (\n\tM = \"a\" | \"b\"\n)\n", "a literal union needs its own type keyword, not a type group", len("type (\n\t")},
+		{"enum inside function", "func f() {\n\tenum E { A }\n}", "enums must be declared at package level", len("func f() {\n\t")},
+		{"empty enum", "enum E {}\n", "enum E has no members", 0},
+		{"enum member that is not a name", "enum E { A, 1 }\n", "expected an enum member name", len("enum E { A, ")},
+		{"string enum member without value", "enum E { A = \"a\", B }\n", "member B of a string enum needs a string value", len("enum E { A = \"a\", ")},
+		{"enum member with string after number", "enum E { A = 1, B = \"b\" }\n", "member B of a numeric enum cannot have a string value", len("enum E { A = 1, ")},
 		{"question mark", "x := f()?", "the ? operator is not supported; use try/catch", len("x := f()")},
 		{"question mark before space", "x := f()? .y", "the ? operator is not supported", len("x := f()")},
 		{"spread with missing comma", "m := M{...a\n}", "missing comma before newline in spread", len("m := M{...a")},
@@ -1304,8 +1357,8 @@ func TestOrigOffset(test *testing.T) {
 	}
 }
 
-func TestOrigRange(test *testing.T) {
-	src := "func f() {\n\tlet n = g()\n\treturn n\n}"
+func TestOrigPieces(test *testing.T) {
+	src := "func f() {\n\tlet n = g()\n\treturn n\n}\nenum Color { Red }\n"
 	result, err := Process([]byte(src))
 	if err != nil {
 		test.Fatal(err)
@@ -1313,16 +1366,22 @@ func TestOrigRange(test *testing.T) {
 	processed := string(result.Src)
 	for _, name := range []string{"g", "return"} {
 		start := strings.Index(processed, name)
-		origStart, ok := result.OrigRange(start, start+len(name))
-		if !ok {
-			test.Fatalf("OrigRange(%q) is not exact", name)
+		pieces := result.OrigPieces(start, start+len(name))
+		if len(pieces) != 1 || pieces[0].Start != start || pieces[0].End != start+len(name) {
+			test.Fatalf("OrigPieces(%q) = %+v, want the whole name", name, pieces)
 		}
-		if got := src[origStart : origStart+len(name)]; got != name {
-			test.Errorf("OrigRange(%q) maps to %q", name, got)
+		if got := src[pieces[0].OrigStart : pieces[0].OrigStart+len(name)]; got != name {
+			test.Errorf("OrigPieces(%q) maps to %q", name, got)
 		}
 	}
 	defineStart := strings.Index(processed, ":=")
-	if _, ok := result.OrigRange(defineStart, defineStart+len(":=")); ok {
-		test.Errorf("OrigRange of generated := is exact, want not exact")
+	if pieces := result.OrigPieces(defineStart, defineStart+len(":=")); len(pieces) != 0 {
+		test.Errorf("OrigPieces of generated := = %+v, want none", pieces)
+	}
+	constStart := strings.Index(processed, "ColorRed")
+	pieces := result.OrigPieces(constStart, constStart+len("ColorRed"))
+	want := []CopiedPiece{{Start: constStart + len("Color"), End: constStart + len("ColorRed"), OrigStart: strings.Index(src, "Red")}}
+	if !slices.Equal(pieces, want) {
+		test.Errorf("OrigPieces(ColorRed) = %+v, want %+v", pieces, want)
 	}
 }

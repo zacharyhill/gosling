@@ -22,6 +22,9 @@
       "include": "#union"
     },
     {
+      "include": "#enum"
+    },
+    {
       "include": "#arrow"
     },
     {
@@ -250,6 +253,39 @@
         {
           "match": "(?:\\w+\\.)?\\w+",
           "name": "entity.name.type.gol"
+        }
+      ]
+    },
+    "enum": {
+      "begin": "\\b(enum)\\s+(\\w+)\\s*(\\{)",
+      "beginCaptures": {
+        "1": {
+          "name": "keyword.enum.gol"
+        },
+        "2": {
+          "name": "entity.name.type.gol"
+        },
+        "3": {
+          "name": "punctuation.definition.begin.bracket.curly.gol"
+        }
+      },
+      "end": "\\}",
+      "endCaptures": {
+        "0": {
+          "name": "punctuation.definition.end.bracket.curly.gol"
+        }
+      },
+      "patterns": [
+        {
+          "match": "(?:^|(?<=[{,]))\\s*([A-Za-z_]\\w*)",
+          "captures": {
+            "1": {
+              "name": "variable.other.constant.gol"
+            }
+          }
+        },
+        {
+          "include": "source.go"
         }
       ]
     },

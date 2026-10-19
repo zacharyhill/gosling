@@ -27,6 +27,7 @@ type Result struct {
 	Src    []byte
 	Tries  []Try
 	Unions []Union
+	Enums  []Enum
 	// Coalesce holds the offsets of the "||" operators that replace "??".
 	Coalesce []int
 	// NullishAssigns holds the offsets of the "=" operators that replace "??=".
@@ -365,6 +366,8 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		return tokenIndex, processor.rewriteThrow(tokenIndex)
 	case current.isIdent("try") && !processor.tokenAt(tokenIndex+1).is(token.LBRACE):
 		return tokenIndex, processor.rewriteTryExpression(tokenIndex)
+	case processor.isEnum(tokenIndex):
+		return processor.rewriteEnum(tokenIndex)
 	case isQuestion(current) && processor.ternaryParts[tokenIndex]:
 		processor.rewriteTernary(tokenIndex)
 	case current.is(token.COLON) && processor.ternaryParts[tokenIndex]:
@@ -508,6 +511,34 @@ func (result *Result) OrigRange(start, end int) (int, bool) {
 		delta = change.origEnd - change.newEnd
 	}
 	return start + delta, true
+}
+
+// CopiedPiece is a part of Src that preprocessing copied from the original
+// source.
+type CopiedPiece struct {
+	Start, End int // offsets into Src
+	OrigStart  int
+}
+
+// OrigPieces returns the parts of Src[start:end] that are not generated
+// text, with their offsets in the original source.
+func (result *Result) OrigPieces(start, end int) []CopiedPiece {
+	var pieces []CopiedPiece
+	cursor, delta := start, 0
+	for _, change := range result.edits {
+		if change.newStart >= end {
+			break
+		}
+		if change.newStart > cursor {
+			pieces = append(pieces, CopiedPiece{Start: cursor, End: change.newStart, OrigStart: cursor + delta})
+		}
+		cursor = max(cursor, change.newEnd)
+		delta = change.origEnd - change.newEnd
+	}
+	if cursor < end {
+		pieces = append(pieces, CopiedPiece{Start: cursor, End: end, OrigStart: cursor + delta})
+	}
+	return pieces
 }
 
 // finishClosers closes the pending rewrites whose expression ends at token

@@ -188,6 +188,19 @@ test("union types", () => {
   assertScope(source, "|", "punctuation.separator.union.gol");
 });
 
+test("enums", () => {
+  const source = 'package p\n\nenum Color { Red, Green = 2 }\n\nenum Level {\n\tDebug = "debug" // low\n\tInfo\n}';
+  assertScope(source, "enum", "keyword.enum.gol");
+  assertScope(source, "Color", "entity.name.type.gol");
+  assertScope(source, "Red", "variable.other.constant.gol");
+  assertScope(source, "Green", "variable.other.constant.gol");
+  assertScope(source, "Debug", "variable.other.constant.gol");
+  assertScope(source, "Info", "variable.other.constant.gol");
+  assertScope(source, "2", "constant.numeric");
+  assertScope(source, "debug", "string.quoted");
+  assertScope(source, "low", "comment");
+});
+
 test("switch with let type binding", () => {
   assertScope(inFunctionBody("\tswitch let s = s.(type) {\n\t}"), "let", "keyword.let.gol");
 });

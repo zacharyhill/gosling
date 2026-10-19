@@ -1,0 +1,38 @@
+package enums
+
+// Color is a paint color.
+enum Color {
+	Red
+	Green
+	Blue
+}
+
+enum Status { Active = 1, Disabled = 4, Deleted, Archived = 4 }
+
+enum Level {
+	Debug = "debug",
+	Info = "info",
+}
+
+func describe(color Color) string {
+	switch color {
+	case Color.Red:
+		return "warm"
+	case ColorGreen, Color.Blue:
+		return "cool"
+	}
+	return "unknown"
+}
+
+func severity(level Level) int {
+	switch level {
+	case Level.Debug:
+		return 0
+	default:
+		return 1
+	}
+}
+
+func show(status Status) string {
+	return t`${status} ${Color.Blue} ${Level.Info}`
+}

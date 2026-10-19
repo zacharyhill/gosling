@@ -100,6 +100,7 @@ func (lowerer *lowerer) lowerFile() {
 	lowerer.lowerArrays()
 	lowerer.lowerLengths()
 	lowerer.lowerUnions()
+	lowerer.lowerEnums()
 	lowerer.lowerSpread()
 	lowerer.lowerForOfBlanks()
 	lowerer.emitImports()
@@ -171,6 +172,7 @@ func (lowerer *lowerer) walkStmt(stmt ast.Stmt, try *tryContext) {
 		lowerer.walkBlock(stmt.Body.List, try)
 	case *ast.SwitchStmt:
 		lowerer.checkLiteralSwitch(stmt)
+		lowerer.checkEnumSwitch(stmt)
 		lowerer.hoistSwitch(stmt, try)
 		lowerer.lowerInit(stmt, try)
 		lowerer.walkExprs(stmt.Init, stmt.Tag)
