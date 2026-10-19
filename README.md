@@ -541,9 +541,25 @@ switch const s = shape.(type) { // switch s := shape.(type) {
 case let msg, ok = <-ch:        // case msg, ok := <-ch:
 ```
 
+A header declaration can also have a type. A Go header cannot, so gosling writes a conversion:
+
+```go
+for (let i: int64 = 0; i < n; i++) { // for i := int64(0); i < n; i++ {
+if const r: io.Reader = f; r != nil { // if r := io.Reader(f); r != nil {
+```
+
+A conversion accepts more values than an assignment. So gosling first checks that the value is assignable to the type, as in `var i int64 = 0`. Then the conversion does not change the value. These are errors:
+
+```go
+if let n: int64 = count; ... // count is an int: write int64(count)
+if let s: string = 'a'; ...  // string('a') would give "a"
+if let b: []byte = "a"; ...  // write []byte("a")
+if let x: int8 = 300; ...    // 300 overflows int8
+```
+
 - `let` needs a type, a value, or both.
 - The guard of a type switch after an init statement can also use `let` or `const`: `switch let v = f(); const s = v.(type) {`.
-- A header declaration cannot have a type. Write `let i = int64(0)`, not `let i: int64 = 0`.
+- A typed header declaration declares one name. It cannot use `range` or be in a `case`.
 - Code cannot assign to a name that `const` declares in a header.
 - `const ( ... )` groups are plain Go. Their values must be constant.
 

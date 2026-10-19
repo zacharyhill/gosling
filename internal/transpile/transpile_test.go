@@ -219,6 +219,31 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:8: use let or const instead of :=",
 		},
 		{
+			name: "typed header with a value of another type",
+			src:  "package p\nfunc f(n int) {\n\tfor (let i: int64 = n; i < 3; i++) {\n\t}\n}",
+			want: "x.gol:3:22: cannot use n (variable of type int) as int64 value in variable declaration",
+		},
+		{
+			name: "typed header with a rune constant for a string",
+			src:  "package p\nfunc f() {\n\tif let s: string = 'a'; s != \"\" {\n\t}\n}",
+			want: "x.gol:3:21: cannot use 'a' (untyped rune constant 97) as string value in variable declaration",
+		},
+		{
+			name: "typed header with a string constant for a byte slice",
+			src:  "package p\nfunc f() {\n\tif let b: []byte = \"a\"; len(b) > 0 {\n\t}\n}",
+			want: "x.gol:3:21: cannot use \"a\" (untyped string constant) as []byte value in variable declaration",
+		},
+		{
+			name: "typed header with a constant that overflows",
+			src:  "package p\nfunc f() {\n\tif let x: int8 = 300; x > 0 {\n\t}\n}",
+			want: "x.gol:3:19: cannot use 300 (untyped int constant) as int8 value in variable declaration (overflows)",
+		},
+		{
+			name: "assignment to a typed header const",
+			src:  "package p\nfunc f() {\n\tfor (const i: int64 = 0; i < 3; i++) {\n\t}\n}",
+			want: "x.gol:3:34: cannot assign to i: declared with const",
+		},
+		{
 			name: "var in a function",
 			src:  "package p\nvar top int\nfunc f() int {\n\tvar x int\n\treturn x + top\n}",
 			want: "x.gol:4:2: use let instead of var in a function",

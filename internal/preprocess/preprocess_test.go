@@ -889,6 +889,22 @@ func TestProcess(test *testing.T) {
 			want: "let := 1\nx := let + 2",
 		},
 		{
+			name: "typed c-style for header",
+			src:  "for (let i: int64 = 0; i < n; i++) {\n}",
+			want: "for i := __goslingTyped[ int64 ]( 0); i < n; i++ {\n}",
+		},
+		{
+			name:   "typed const if header",
+			src:    "if const r: io.Reader = f(x); r != nil { }",
+			want:   "if r := __goslingTyped[ io.Reader ]( f(x)); r != nil { }",
+			consts: []int{len("if ")},
+		},
+		{
+			name: "typed header with a function literal value",
+			src:  "if let f: func() int = func() int { return 1 }; f() > 0 { }",
+			want: "if f := __goslingTyped[ func() int ]( func() int { return 1 }); f() > 0 { }",
+		},
+		{
 			name: "try as identifier",
 			src:  "try := 1\nx := try + 2",
 			want: "try := 1\nx := try + 2",
@@ -1086,7 +1102,6 @@ func TestProcessErrors(test *testing.T) {
 		{"let with keyword after name", "func f() {\n\tlet x := 1\n}", "use let x = value, not :=", len("func f() {\n\t")},
 		{"let destructuring at package level", "let {a} = p\n", "destructuring with let or const is only supported in functions", 0},
 		{"const destructuring with define", "func f() {\n\tconst {a} := p\n}", "use const {...} = value, not :=", len("func f() {\n\t")},
-		{"let with type in header", "if let x: int = 1; x > 0 { }", "let in an if, for, switch, or case header cannot have a type", len("if ")},
 		{"mixed parameter orders", "func f(a: int, b string) {}", "write name: type for every parameter", len("func f(a: int, ")},
 		{"grouped annotated parameters", "func f(a, b: int) {}", "write name: type for every parameter", len("func f(")},
 		{"go parameters with annotated result", "func f(a int): bool {}", "write name: type for every parameter", len("func f(")},
@@ -1113,6 +1128,10 @@ func TestProcessErrors(test *testing.T) {
 		{"typed and untyped arrow parameters", "f := (a: int, b) => a", "write name: type for every parameter", len("f := (a: int, ")},
 		{"go parameters with arrow result", "f := (x int): string => g(x)", "write name: type for every parameter", len("f := (")},
 		{"typed and untyped arrow parameters with result", "f := (a: int, b): bool => a", "write name: type for every parameter", len("f := (a: int, ")},
+		{"let with type in case header", "select {\ncase let v: int = <-ch:\n}", "let in a case header cannot have a type", len("select {\ncase ")},
+		{"typed header with two names", "if let a, b: int = 1, 2; a > b { }", "let with a type in a header can declare only one name", len("if ")},
+		{"typed header with range", "for let k: string = range m { }", "let with range cannot have a type", len("for ")},
+		{"typed header without value", "if let x: int; x > 0 { }", "let x needs a value", len("if ")},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {

@@ -87,6 +87,7 @@ func (lowerer *lowerer) lowerFile() {
 	lowerer.lowerConsts()
 	lowerer.lowerTryExpressions()
 	lowerer.lowerTuples()
+	lowerer.lowerTypedHeaders()
 	lowerer.lowerTemplates()
 	lowerer.lowerNullish()
 	lowerer.lowerDefaults()

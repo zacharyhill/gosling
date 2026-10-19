@@ -12,8 +12,11 @@ var (
 	markerRE               = regexp.MustCompile(`\b__gosling\w*`)
 	spreadMismatchRE       = regexp.MustCompile(`^in call to ` + preprocess.CatMarker + `, type (.+) of (.+) does not match inferred type (.+) for S$`)
 	structSpreadMismatchRE = regexp.MustCompile(`^in call to ` + preprocess.WithMarker + `, type (.+) of .+ does not match inferred type (.+) for V$`)
-	methodMarkerRE         = regexp.MustCompile(`(?:` + arrayMarkerPrefix + `|` + mapMarkerPrefix + `)(\w+)`)
-	callbackMismatchRE     = regexp.MustCompile(`^in call to (?:` + arrayMarkerPrefix + `|` + mapMarkerPrefix + `)(\w+), type (func\(.+?) of .+ does not match inferred type (func\(.+) for func\(.+$`)
+	// typedMarkerRE matches the end of an assignability error for a typed
+	// header declaration. The type in brackets can contain brackets.
+	typedMarkerRE      = regexp.MustCompile(`in argument to ` + preprocess.TypedMarker + `\[.*\]( \(|$)`)
+	methodMarkerRE     = regexp.MustCompile(`(?:` + arrayMarkerPrefix + `|` + mapMarkerPrefix + `)(\w+)`)
+	callbackMismatchRE = regexp.MustCompile(`^in call to (?:` + arrayMarkerPrefix + `|` + mapMarkerPrefix + `)(\w+), type (func\(.+?) of .+ does not match inferred type (func\(.+) for func\(.+$`)
 )
 
 // cleanMessage changes marker names in a type checker message back to the
@@ -27,6 +30,7 @@ func cleanMessage(message string) string {
 		"in argument to "+preprocess.IsMarker, "in catch",
 	).Replace(message)
 	message = tryFallbackRE.ReplaceAllString(message, "in try expression fallback")
+	message = typedMarkerRE.ReplaceAllString(message, "in variable declaration$1")
 	message = defaultMarkerRE.ReplaceAllString(message, "in destructuring default")
 	if match := spreadMismatchRE.FindStringSubmatch(message); match != nil {
 		return formatSpreadMismatch(match[1], match[2], match[3])

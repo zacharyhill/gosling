@@ -5,6 +5,10 @@ import (
 	"go/token"
 )
 
+// TypedMarker replaces the type of a header declaration. `let x: T = v`
+// becomes `x := __goslingTyped[T](v)`.
+const TypedMarker = "__goslingTyped"
+
 // declaration rewrites TypeScript-style declarations at tokenIndex:
 //
 //	let x = v       ->  x := v (var x = v at package level)
@@ -103,23 +107,76 @@ func (processor *processor) isSwitchInitEnd(semicolonIndex int) bool {
 }
 
 // headerDeclaration rewrites `let x = v` or `const x = v` in a header into
-// `x := v`. Go headers cannot declare a type.
+// `x := v`, and `let x: T = v` into `x := __goslingTyped[T](v)`. Go headers
+// cannot declare a type.
 func (processor *processor) headerDeclaration(tokenIndex, lastNameIndex int) error {
 	keyword, first, after := processor.tokens[tokenIndex], processor.tokens[tokenIndex+1], processor.tokenAt(lastNameIndex+1)
+	assignIndex := lastNameIndex + 1
 	if after.is(token.COLON) {
-		return &Error{keyword.offset, fmt.Sprintf("%s in an if, for, switch, or case header cannot have a type", keyword.text)}
+		var err error
+		if assignIndex, err = processor.checkHeaderType(tokenIndex, lastNameIndex); err != nil {
+			return err
+		}
 	}
-	if !after.is(token.ASSIGN) {
+	if !processor.tokenAt(assignIndex).is(token.ASSIGN) {
 		return &Error{keyword.offset, fmt.Sprintf("%s %s needs a value", keyword.text, first.text)}
 	}
 	namesAt := processor.replace(keyword.offset, first.offset, "")
-	processor.scheduled[lastNameIndex+1] = ":="
+	if after.is(token.COLON) {
+		processor.scheduled[lastNameIndex+1] = " := " + TypedMarker + "["
+		processor.scheduled[assignIndex] = "]("
+		// The value ends like an arrow body, after the arrows inside it.
+		processor.pendingClosers = append(processor.pendingClosers, pendingCloser{start: processor.nesting(), text: ")", afterIndex: assignIndex})
+	} else {
+		processor.scheduled[assignIndex] = ":="
+	}
 	if keyword.is(token.CONST) {
 		for nameIndex := tokenIndex + 1; nameIndex <= lastNameIndex; nameIndex += 2 {
 			processor.result.Consts = append(processor.result.Consts, namesAt+processor.tokens[nameIndex].offset-first.offset)
 		}
 	}
 	return nil
+}
+
+// checkHeaderType checks the type of a typed header declaration. It returns
+// the index of the = after the type, or of the token that ends the declaration.
+func (processor *processor) checkHeaderType(tokenIndex, lastNameIndex int) (int, error) {
+	keyword := processor.tokens[tokenIndex]
+	if processor.tokens[tokenIndex-1].is(token.CASE) {
+		return 0, &Error{keyword.offset, fmt.Sprintf("%s in a case header cannot have a type", keyword.text)}
+	}
+	if lastNameIndex != tokenIndex+1 {
+		return 0, &Error{keyword.offset, fmt.Sprintf("%s with a type in a header can declare only one name", keyword.text)}
+	}
+	assignIndex := processor.findOutsideBrackets(lastNameIndex+2, func(current lexeme) bool {
+		return current.is(token.ASSIGN) || current.is(token.SEMICOLON)
+	})
+	if processor.tokenAt(assignIndex).is(token.ASSIGN) && processor.tokenAt(assignIndex+1).is(token.RANGE) {
+		return 0, &Error{keyword.offset, fmt.Sprintf("%s with range cannot have a type", keyword.text)}
+	}
+	return assignIndex, nil
+}
+
+// findOutsideBrackets returns the index of the first token from start that
+// matches stop and is outside brackets. It stops at an unmatched closing
+// bracket or at the end of the tokens.
+func (processor *processor) findOutsideBrackets(start int, stop func(lexeme) bool) int {
+	depth := 0
+	for tokenIndex := start; tokenIndex < len(processor.tokens); tokenIndex++ {
+		current := processor.tokens[tokenIndex]
+		switch {
+		case current.is(token.LPAREN) || current.is(token.LBRACK) || current.is(token.LBRACE):
+			depth++
+		case current.is(token.RPAREN) || current.is(token.RBRACK) || current.is(token.RBRACE):
+			if depth == 0 {
+				return tokenIndex
+			}
+			depth--
+		case depth == 0 && stop(current):
+			return tokenIndex
+		}
+	}
+	return len(processor.tokens)
 }
 
 // declaredPattern rewrites `let {a, b} = x` and `const [a, b] = x` into a

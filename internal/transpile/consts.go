@@ -7,6 +7,8 @@ import (
 	"go/types"
 
 	"golang.org/x/tools/go/ast/astutil"
+
+	"github.com/zacharyhill/gosling/internal/preprocess"
 )
 
 // convertConsts turns each const declaration whose value is not constant
@@ -177,4 +179,41 @@ func (lowerer *lowerer) lowerConsts() {
 		lowerer.replace(decl.TokPos, assign.Lhs[0].Pos(), "", line)
 		lowerer.replace(assign.TokPos, assign.TokPos+1, ":=", line)
 	}
+}
+
+// lowerTypedHeaders turns each typed header declaration, x :=
+// __goslingTyped[T](v), into x := T(v). The type checker already checked that
+// v is assignable to T, so the conversion does not change the value.
+func (lowerer *lowerer) lowerTypedHeaders() {
+	ast.Inspect(lowerer.file.ast, func(node ast.Node) bool {
+		call, ok := node.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		markerIndex, ok := call.Fun.(*ast.IndexExpr)
+		if !ok {
+			return true
+		}
+		if marker, ok := markerIndex.X.(*ast.Ident); !ok || marker.Name != preprocess.TypedMarker {
+			return true
+		}
+		line := lowerer.line(call.Pos())
+		openParen, closeParen := "", ""
+		if shouldParenthesizeType(markerIndex.Index) {
+			openParen, closeParen = "(", ")"
+		}
+		lowerer.replace(markerIndex.X.Pos(), markerIndex.Index.Pos(), openParen, line)
+		lowerer.replace(markerIndex.Index.End(), call.Lparen, closeParen, line)
+		return true
+	})
+}
+
+// shouldParenthesizeType reports whether a conversion to typeExpr needs
+// parentheses around the type, as in (*T)(v) or (func())(v).
+func shouldParenthesizeType(typeExpr ast.Expr) bool {
+	switch typeExpr.(type) {
+	case *ast.Ident, *ast.SelectorExpr, *ast.IndexExpr, *ast.IndexListExpr, *ast.ArrayType, *ast.MapType:
+		return false
+	}
+	return true
 }
