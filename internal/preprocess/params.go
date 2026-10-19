@@ -135,6 +135,9 @@ func (processor *processor) renameParam(tokenIndex int) (int, bool) {
 // isUntypedParamList reports whether tokens [from, to) are only names and
 // patterns, like "a, {b}", with no types.
 func (processor *processor) isUntypedParamList(from, to int) bool {
+	if from == to {
+		return false // () needs no placeholder types
+	}
 	for start := from; start < to; {
 		end := processor.findParamEnd(start, to)
 		first := processor.tokens[start]

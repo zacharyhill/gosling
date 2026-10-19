@@ -155,3 +155,31 @@ func fromFirstUseAsArgument(xs []string) {
 	const less = (i, j) => xs[i] < xs[j]
 	sort.Slice(xs, less)
 }
+
+func resultType() string {
+	let label = (n: int): string => strconv.Itoa(n)
+	return label(7)
+}
+
+func resultTypes() (int, error) {
+	let parse = (s: string): (int, error) => {
+		return strconv.Atoi(s)
+	}
+	return parse("12")
+}
+
+func resultTypeWithUntypedParams(xs []string) {
+	sort.Slice(xs, (i, j): bool => len(xs[i]) < len(xs[j]))
+}
+
+func resultTypeConverts() func() any {
+	return (): any => 1
+}
+
+func namedResults(text string) (int, error) {
+	let parse = (s: string): (n: int, err: error) => {
+		n, err = strconv.Atoi(s)
+		return
+	}
+	return parse(text)
+}

@@ -179,18 +179,25 @@ func (processor *processor) isTypedPatternEntry(entryStart int) bool {
 	return ok && processor.tokenAt(closeIndex+1).is(token.COLON)
 }
 
-// typedArrow inserts "func" before an arrow parameter list with types or
-// destructured parameters, like (x: int) => x or ({a}) => a. It runs at the
-// "(", before the scan copies the list, so rewrites inside the list do not
-// block the insert.
+// typedArrow inserts "func" before an arrow parameter list with types,
+// destructured parameters, or a result type, like (x: int) => x, ({a}) => a,
+// or (x): string => f(x). It runs at the "(", before the scan copies the
+// list, so rewrites inside the list do not block the insert.
 func (processor *processor) typedArrow(openIndex int) error {
 	list, ok := processor.parseParamList(openIndex)
+	if !ok || (openIndex > 0 && processor.isArrowResultColon(openIndex-1)) {
+		return nil
+	}
+	arrowIndex, hasResult := processor.findArrowAfterResult(list.close + 1)
 	openParen := processor.tokens[openIndex]
-	if !ok || !processor.isArrow(list.close+1) || openParen.offset < processor.copiedUpTo {
+	if hasResult && openParen.offset < processor.copiedUpTo {
+		return &Error{openParen.offset, "unsupported arrow function"}
+	}
+	if !hasResult && (!processor.isArrow(list.close+1) || openParen.offset < processor.copiedUpTo) {
 		return nil
 	}
 	isGeneric := processor.genericParamOffsets[openParen.offset]
-	if _, isUntyped := processor.untypedParams(openIndex+1, list.close); isUntyped {
+	if _, isUntyped := processor.untypedParams(openIndex+1, list.close); isUntyped && !hasResult {
 		if isGeneric {
 			return &Error{openParen.offset, genericUntypedMessage}
 		}
@@ -200,20 +207,48 @@ func (processor *processor) typedArrow(openIndex int) error {
 	if err != nil {
 		return err
 	}
-	isUntyped := len(patterns) > 0 && processor.isUntypedParamList(openIndex+1, list.close)
+	isUntyped := processor.isUntypedParamList(openIndex+1, list.close)
 	if isUntyped && isGeneric {
 		return &Error{openParen.offset, genericUntypedMessage}
 	}
-	if !isUntyped {
-		if err := processor.stripColons(list, list.isAnnotated()); err != nil {
-			return err
-		}
+	if err := processor.stripArrowColons(list, isUntyped, arrowIndex, hasResult); err != nil {
+		return err
 	}
 	if !isGeneric {
 		// A generic arrow already has its func keyword.
 		processor.replace(openParen.offset, openParen.offset, "func")
 	}
 	return processor.registerArrowPatterns(openIndex, list.close, patterns, isUntyped)
+}
+
+// stripArrowColons removes the annotation colons of an arrow parameter list,
+// and the colons of its result type if hasResult is true.
+func (processor *processor) stripArrowColons(list paramList, isUntyped bool, arrowIndex int, hasResult bool) error {
+	if !isUntyped {
+		// With a result type, the parameters must use name: type.
+		if err := processor.stripColons(list, hasResult || list.isAnnotated()); err != nil {
+			return err
+		}
+	}
+	if !hasResult {
+		return nil
+	}
+	return processor.prepareArrowResult(list.close, arrowIndex)
+}
+
+// prepareArrowResult removes the colon before the result type of an arrow
+// whose parameters close at token closeIndex, and the colons of named
+// results. The "=>" at token arrowIndex then needs no result placeholder.
+func (processor *processor) prepareArrowResult(closeIndex, arrowIndex int) error {
+	colonIndex := closeIndex + 1
+	if results, ok := processor.parseParamList(colonIndex + 1); ok {
+		if err := processor.stripColons(results, results.isAnnotated()); err != nil {
+			return err
+		}
+	}
+	processor.scheduled[colonIndex] = ""
+	processor.resultArrows[processor.tokens[arrowIndex].offset] = processor.tokens[closeIndex].offset
+	return nil
 }
 
 // registerArrowPatterns marks the arrow parameter list from openIndex to

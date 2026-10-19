@@ -136,6 +136,66 @@ func TestProcess(test *testing.T) {
 			want: "func sum[T int | float64](xs []T) __goslingR { return xs.reduce(func(a __goslingU, x __goslingU) __goslingR { return a + x }, T(0)) }\n",
 		},
 		{
+			name: "arrow with result type",
+			src:  "f := (x: int): string => strconv.Itoa(x)",
+			want: "f := func(x int) string { return strconv.Itoa(x) }",
+		},
+		{
+			name: "arrow with result types and block body",
+			src:  "p := (a: int, b: int): (int, error) => {\n\treturn a + b, nil\n}",
+			want: "p := func(a int, b int) (int, error) {\n\treturn a + b, nil\n}",
+		},
+		{
+			name: "arrow with named results",
+			src:  "p := (s: string): (n: int, err: error) => {\n\treturn\n}",
+			want: "p := func(s string) (n int, err error) {\n\treturn\n}",
+		},
+		{
+			name: "arrow with result type and untyped parameters",
+			src:  "sort.Slice(xs, (i, j): bool => xs[i] < xs[j])",
+			want: "sort.Slice(xs, func(i __goslingU, j __goslingU) bool { return xs[i] < xs[j] })",
+		},
+		{
+			name: "arrow with result type and no parameters",
+			src:  "f := (): int => 42",
+			want: "f := func() int { return 42 }",
+		},
+		{
+			name: "arrow with composite result type",
+			src:  "f := (xs: []int): map[string][]int => nil",
+			want: "f := func(xs []int) map[string][]int { return nil }",
+		},
+		{
+			name: "arrow with function result type",
+			src:  "f := (n: int): func(int) int => (x: int): int => x + n",
+			want: "f := func(n int) func(int) int { return func(x int) int { return x + n } }",
+		},
+		{
+			name: "arrow with annotated function result type",
+			src:  "f := (n: int): func(x: int): int => (x: int): int => x + n",
+			want: "f := func(n int) func(x int) int { return func(x int) int { return x + n } }",
+		},
+		{
+			name: "arrow with untyped parameters and annotated function result type",
+			src:  "f := (n): func(x: int): int => (x: int): int => x + n",
+			want: "f := func(n __goslingU) func(x int) int { return func(x int) int { return x + n } }",
+		},
+		{
+			name: "arrow with result type inside arrow",
+			src:  "xs.map(x => (y: int): int => x + y)",
+			want: "xs.__goslingMap(func(x __goslingU) __goslingR { return func(y int) int { return x + y } })",
+		},
+		{
+			name: "call before colon is not a result type",
+			src:  "m := M{f(a): x => x}",
+			want: "m := M{f(a): func(x __goslingU) __goslingR { return x }}",
+		},
+		{
+			name: "let with type and arrow with result type",
+			src:  "func f() {\n\tlet g: func(n: int): int = (n: int): int => n\n}",
+			want: "func f() {\n\tvar g func(n int) int = func(n int) int { return n }\n}",
+		},
+		{
 			name: "arrow inside interpolation",
 			src:  "s := t`${xs.map(x => x + 1)}`",
 			want: "s := __goslingT(``, xs.__goslingMap(func(x __goslingU) __goslingR { return x + 1 }), ``)",
@@ -890,6 +950,9 @@ func TestProcessErrors(test *testing.T) {
 		{"generic arrow with untyped parameters", "const id = <T>(x) => x\n", "the parameters of a generic arrow function need types", len("const id = <T>")},
 		{"type parameters without arrow", "const id = <T>(x T)\n", "expected an arrow function after the type parameters", len("const id = ")},
 		{"empty type parameters", "const id = <>(x int) => x\n", "expected an arrow function after the type parameters", len("const id = ")},
+		{"typed and untyped arrow parameters", "f := (a: int, b) => a", "write name: type for every parameter", len("f := (a: int, ")},
+		{"go parameters with arrow result", "f := (x int): string => g(x)", "write name: type for every parameter", len("f := (")},
+		{"typed and untyped arrow parameters with result", "f := (a: int, b): bool => a", "write name: type for every parameter", len("f := (a: int, ")},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {
