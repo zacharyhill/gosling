@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -1160,6 +1161,21 @@ func marker(n int) int { return n }
 	})
 	if want := []int{19, 22}; !slices.Equal(gotLines, want) {
 		test.Errorf("marker lines = %v, want %v\n%s", gotLines, want, outputs[0].Src)
+	}
+}
+
+// TestNoAdjacentLineDirectives checks that the output never writes two line
+// directives in a row. The second one makes the first useless.
+func TestNoAdjacentLineDirectives(test *testing.T) {
+	paths, err := filepath.Glob("testdata/golden/lines*.gol")
+	if err != nil {
+		test.Fatal(err)
+	}
+	adjacentDirectivePattern := regexp.MustCompile(`\*/\s*/\*line `)
+	for _, path := range paths {
+		if got := transpileFile(test, path, true); adjacentDirectivePattern.Match(got) {
+			test.Errorf("%s has adjacent line directives:\n%s", path, got)
+		}
 	}
 }
 

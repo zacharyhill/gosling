@@ -1,0 +1,16 @@
+package linesunion
+
+type Circle struct{ R float64 }
+type Square struct{ S float64 }
+
+type Shape = Circle | *Square
+
+func area(s Shape) float64 {
+	switch const v = s.(type) {
+	case Circle:
+		return v.R * v.R * 3
+	case *Square:
+		return v.S * v.S
+	}
+	panic("unreachable")
+}
