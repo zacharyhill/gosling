@@ -1,0 +1,24 @@
+package main
+
+import "fmt"
+
+type Path string
+
+func main() {
+	const text = "  Hello, World  "
+	fmt.Printf("%q %q %q\n", text.trim(), text.trimStart(), text.trimEnd())
+	const word = text.trim()
+	fmt.Println(word.toUpperCase(), word.toLowerCase(), word.includes("lo, W"), word.startsWith("He"), word.endsWith("x"))
+	fmt.Println(word.split(", "), len("a,b,,c".split(",")))
+	fmt.Println(word.replace("l", "L"), word.replaceAll("l", "L"))
+	fmt.Println(word.indexOf("o"), word.lastIndexOf("o"), word.indexOf("z"))
+	fmt.Println(word.slice(7), word.slice(-5), word.slice(0, -7), word.slice(3, 1) == "", word.slice(-100, 100))
+	fmt.Println("ab".repeat(3), "7".padStart(3, "0"), "7".padStart(6, "ab"), "x".padEnd(3) + "|", "long".padStart(2))
+	fmt.Println(word.at(0), word.at(-1))
+	const path: Path = "/usr/local/bin"
+	fmt.Println(path.split("/"), path.slice(1, 4), path.endsWith("bin"))
+	fmt.Println("héllo".slice(0, 2) == "h\xc3", len("héllo"))
+	const parts = " a, b ,c ".split(",").map(part => part.trim().toUpperCase())
+	fmt.Println(parts, parts.join("-").length, word.length > 5 ? word.slice(0, 5) : word)
+	fmt.Println(t`${word.padStart(14, "*")}|${word.at(1):q}`)
+}

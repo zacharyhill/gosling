@@ -1,0 +1,44 @@
+package strs
+
+type ID string
+
+func (id ID) trim() ID { return id }
+
+func isMatch(name string, id ID) bool {
+	const hasPrefix = name.startsWith("x") && name.endsWith("z")
+	return hasPrefix && name.includes("a") && id.includes("-")
+}
+
+func clean(line string) string {
+	const trimmed = line.trim().toLowerCase()
+	return trimmed.replace("  ", " ").replaceAll("\t", " ")
+}
+
+func fields(csv string) []string {
+	const upper = csv.trimStart().trimEnd().toUpperCase()
+	return upper.split(",")
+}
+
+func positions(text string) (int, int) {
+	return text.indexOf("x"), "abcabc".lastIndexOf("b")
+}
+
+func middle(text string) string {
+	return text.slice(1, -1)
+}
+
+func suffix(text string, id ID) string {
+	return text.slice(-3) + id.slice(2)
+}
+
+func padded(number string) string {
+	return number.padStart(5, "0") + number.padEnd(8)
+}
+
+func ruler(number string) string {
+	return "-".repeat(3) + number.at(-1)
+}
+
+func own(id ID) ID {
+	return id.trim()
+}
