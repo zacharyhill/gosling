@@ -12,14 +12,15 @@ var (
 	markerRE               = regexp.MustCompile(`\b__gosling\w*`)
 	spreadMismatchRE       = regexp.MustCompile(`^in call to ` + preprocess.CatMarker + `, type (.+) of (.+) does not match inferred type (.+) for S$`)
 	structSpreadMismatchRE = regexp.MustCompile(`^in call to ` + preprocess.WithMarker + `, type (.+) of .+ does not match inferred type (.+) for V$`)
-	callbackMismatchRE     = regexp.MustCompile(`^in call to ` + arrayMarkerPrefix + `(\w+), type (func\(.+?) of .+ does not match inferred type (func\(.+) for func\(.+$`)
+	methodMarkerRE         = regexp.MustCompile(`(?:` + arrayMarkerPrefix + `|` + mapMarkerPrefix + `)(\w+)`)
+	callbackMismatchRE     = regexp.MustCompile(`^in call to (?:` + arrayMarkerPrefix + `|` + mapMarkerPrefix + `)(\w+), type (func\(.+?) of .+ does not match inferred type (func\(.+) for func\(.+$`)
 )
 
 // cleanMessage changes marker names in a type checker message back to the
 // user's syntax.
 func cleanMessage(message string) string {
-	if strings.Contains(message, arrayMarkerPrefix+"forEach") && strings.Contains(message, "used as value") {
-		return "forEach can only be used as a statement"
+	if match := methodMarkerRE.FindStringSubmatch(message); match != nil && strings.Contains(message, "used as value") {
+		return arrayMethodName(match[1]) + " can only be used as a statement"
 	}
 	message = strings.NewReplacer(
 		"in argument to "+preprocess.ThrowMarker, "in throw",
@@ -154,7 +155,9 @@ func cleanCall(name, text string) (string, string, bool) {
 		return args[0], after, true
 	case (name == coalesceMarker || name == coalescePtrMarker) && len(args) == 2:
 		return args[0] + " ?? " + args[1], after, true
-	case strings.HasPrefix(name, arrayMarkerPrefix) && len(args) > 0:
+	case name == arrayRefMarker && len(args) == 1:
+		return args[0], strings.TrimPrefix(after, "[:]"), true
+	case isMethodMarker(name) && len(args) > 0:
 		return args[0] + "." + markerDisplayName(name) + "(" + strings.Join(args[1:], ", ") + ")", after, true
 	}
 	return "", "", false
@@ -251,8 +254,10 @@ func markerDisplayName(name string) string {
 	case preprocess.OMarker:
 		return "?."
 	}
-	if method, ok := strings.CutPrefix(name, arrayMarkerPrefix); ok {
-		return arrayMethodName(method)
+	for _, prefix := range []string{arrayMarkerPrefix, mapMarkerPrefix} {
+		if method, ok := strings.CutPrefix(name, prefix); ok {
+			return arrayMethodName(method)
+		}
 	}
 	if union, ok := strings.CutPrefix(name, preprocess.VariantsPrefix); ok {
 		return union
@@ -264,7 +269,8 @@ func markerDisplayName(name string) string {
 func arrayMethodName(suffixed string) string {
 	for _, suffix := range []string{"", "PI", "P", "I"} {
 		if method, ok := strings.CutSuffix(suffixed, suffix); ok {
-			if _, isMethod := arrayMethods[method]; isMethod {
+			_, isArrayMethod := arrayMethods[method]
+			if _, isMapMethod := mapMethods[method]; isArrayMethod || isMapMethod {
 				return method
 			}
 		}

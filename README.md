@@ -31,7 +31,8 @@ Features:
 - `for (const x of xs)`, `for (const k in m)`, and `for (let i = 0; i < n; i++)`
 - Optional chaining and `??`: `user?.Profile?.Name ?? "anon"`
 - Arrow functions: `x => x * 2`, `(a, b) => a + b`
-- Array methods on slices: `nums.filter(n => n%2 == 0).map(n => n * n)`
+- Array methods on slices and arrays: `nums.filter(n => n%2 == 0).map(n => n * n)`
+- Map methods: `ages.has(name)`, `ages.get(name) ?? 0`, `ages.keys()`
 - Union types with exhaustive switches: `type Shape = Circle | Square`
 - Struct shorthand and spread: `User{name, age}`, `[...a, ...b]`, `Point{...p, X: 5}`
 
@@ -644,7 +645,7 @@ sort.Slice(xs, (i, j): bool => xs[i] < xs[j])      // func(i int, j int) bool { 
 
 ### Array methods
 
-Slices have `map`, `filter`, `reduce`, `forEach`, `find`, `findIndex`, `some`, `every`, `includes`, and `indexOf`. A callback can be an arrow or a function value. If the callback has a second parameter, it gets the index.
+Slices and arrays have `map`, `filter`, `reduce`, `forEach`, `find`, `findIndex`, `some`, `every`, `includes`, and `indexOf`. A callback can be an arrow or a function value. If the callback has a second parameter, it gets the index.
 
 Each call becomes a loop in a function literal. No runtime package is necessary.
 
@@ -668,6 +669,26 @@ evens := func() []int {
 - `forEach` can only be a statement.
 - `filter` keeps a named slice type. A method of the type with the same name has priority.
 - Each call in a chain is a separate loop.
+- On an array, the result of `filter` is a slice. The loop uses `a[:]`, so `find` points into the array. If the array is not addressable, such as a function result, the loop uses a copy.
+
+### Map methods
+
+Maps have `has`, `get`, `keys`, `values`, `entries`, `delete`, and `forEach`:
+
+```go
+ages.has("ada")                                     // true if the key exists
+ages.get("ada") ?? 0                                // the value, or 0 if the key is missing
+ages.keys()                                         // []string
+ages.values()                                       // []int
+ages.entries()                                      // []struct{ Key string; Value int }
+ages.delete("ada")                                  // delete(ages, "ada")
+ages.forEach((age, name) => fmt.Println(name, age)) // the value comes first, then the key
+```
+
+- `get` returns the value if it can be nil. Otherwise it returns a pointer to a copy of the value, or nil if the key is missing. A write through this pointer does not change the map.
+- The order of `keys`, `values`, `entries`, and `forEach` is random, as for `range`. `keys` does not sort. To sort the keys, assign them to a variable and call `slices.Sort`.
+- `delete` and `forEach` can only be statements.
+- A method of the map type with the same name has priority.
 
 ### Union types
 
@@ -736,7 +757,6 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - In a try block, an optional call that returns an error is an error.
 - Unions cannot be generic or be in a `type ( ... )` group.
 - gosling does not check switches in `.go` files.
-- Arrays do not have array methods, only slices.
 - In a `case` expression, a function type or literal cannot use `):`. Use Go order there.
 - VS Code highlights the name in `name: type` parameters as a type.
 - An arrow cannot get a type from the context if a local declaration hides the name of that type. Rename the local declaration.

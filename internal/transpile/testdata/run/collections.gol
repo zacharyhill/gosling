@@ -1,0 +1,42 @@
+package main
+
+import (
+	"fmt"
+	"slices"
+)
+
+type User struct {
+	Name string
+}
+
+func main() {
+	let ages = map[string]int{"ada": 36, "bob": 17}
+	fmt.Println(ages.has("ada"), ages.has("cy"))
+	fmt.Println(ages.get("ada") ?? -1, ages.get("cy") ?? -1)
+	let users = map[int]*User{1: {"ada"}}
+	fmt.Println(users.get(1)?.Name ?? "none", users.get(2)?.Name ?? "none")
+	let names = ages.keys()
+	slices.Sort(names)
+	let values = ages.values()
+	slices.Sort(values)
+	fmt.Println(names, values)
+	let total = 0
+	for (const entry of ages.entries()) {
+		total += entry.Value
+	}
+	fmt.Println(total)
+	let visits = 0
+	ages.forEach((age, name) => {
+		visits += age + len(name)
+	})
+	fmt.Println(visits)
+	ages.delete("bob")
+	fmt.Println(len(ages), ages.has("bob"))
+
+	let grid = [4]int{1, 2, 3, 4}
+	fmt.Println(grid.filter(n => n%2 == 0), grid.map((n, i) => n * i))
+	let found = grid.find(n => n > 2)
+	*found = 30
+	fmt.Println(grid, grid.includes(30), grid.reduce((acc, n) => acc + n, 0))
+	fmt.Println([2]string{"a", "b"}.some(s => s == "b"))
+}
