@@ -159,6 +159,8 @@ func (processor *processor) parseParamList(openIndex int) (paramList, bool) {
 				// A destructured parameter fits both orders. Its rename removes its colon.
 			case processor.tokens[entryStart].is(token.IDENT) && processor.tokens[entryStart+1].is(token.COLON):
 				list.colons = append(list.colons, entryStart+1)
+			case processor.tokens[entryStart].is(token.IDENT) && isQuestion(processor.tokens[entryStart+1]) && processor.tokenAt(entryStart+2).is(token.COLON):
+				list.colons = append(list.colons, entryStart+2)
 			default:
 				list.plainEntries = append(list.plainEntries, entryStart)
 			}

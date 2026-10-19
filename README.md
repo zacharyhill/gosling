@@ -41,6 +41,7 @@ Features:
 - Enums with exhaustive switches: `enum Color { Red, Green, Blue }`
 - Struct shorthand and spread: `User{name, age}`, `[...a, ...b]`, `Point{...p, X: 5}`, `{...defaults, ...overrides}`, `f(...xs)`
 - Optional struct fields: `Host? string`
+- Default and optional parameters: `func Dial(addr: string, timeout: time.Duration = 5*time.Second, port?: int)`
 
 ## Why
 
@@ -276,6 +277,7 @@ To highlight `.gol` files, add the VS Code extension folder as a TextMate bundle
 - A rename in a file that changed after a syntax error fails if the name occurs in generated code.
 - After a syntax error, the server uses the last version that parsed, with the changed lines that still parse. The lines that do not parse get no results until the file parses again. Type errors do not have this problem.
 - gopls uses only the build configuration of your system. A `.gol` file for another system or with a build tag gets no results from gopls.
+- A default value has no hover or definition. The outline also shows its helper function.
 
 ## Language
 
@@ -1168,6 +1170,28 @@ A value of type `*T`, such as `&port` or `nil`, stays as it is. Use `?.` and `??
 - Declare each optional field on its own line. `A, B? int` is an error.
 - The type of an optional field cannot be a pointer.
 
+### Default and optional parameters
+
+A parameter of a function or method declaration can have a default value. A parameter with `?` after its name is optional. Its default value is the zero value of its type.
+
+```go
+func Dial(addr string, timeout time.Duration = 5*time.Second, port? int) Conn
+
+Dial("db")                   // Dial("db", dialTimeoutDefault(), 0)
+Dial("db", time.Second)      // Dial("db", time.Second, 0)
+Dial("db", time.Second, 543) // Dial("db", time.Second, 543)
+```
+
+The Go signature keeps all parameters. A call in a `.gol` file of the same package can omit the parameters with default values from the end. gosling adds the default values to the call.
+
+- gosling copies a simple value, such as `3` or `defaultHost`, into the call. A value that uses an import or has more than one line goes into a helper function after the declaration, such as `dialTimeoutDefault`. A call where a local name hides a name in the value also uses the helper.
+- Each call evaluates the default value again, as in TypeScript. The value is evaluated in the scope of the declaration.
+- A default value can use package-level names and imports. It cannot use other parameters.
+- Parameters with default values come last. Each one needs its own name and type. Write `a int = 1, b int = 2`, not `a, b int = 1`.
+- With parameter types after a colon, write `timeout: time.Duration = time.Second` and `port?: int`.
+- A call through a function value or an interface must give all arguments.
+- Calls in `.go` files and in other packages must give all arguments.
+
 ### Imports and generated names
 
 gosling adds the imports that the output needs. If the package name is already in use in the file, gosling reports an error. If another file of the package declares the name, the import gets an alias, such as `fmtpkg`.
@@ -1198,6 +1222,8 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - Only composite literals in the same package take a `T` value for an optional field. Other packages see a plain `*T` field. An assignment also needs a pointer: `cfg.Host = &host`.
 - Regex literals do not support JavaScript-only syntax, such as lookahead `(?=...)` and backreferences `\1`. RE2 does not have them.
 - In a template literal, a regex literal cannot contain `}`.
+- Default values are not supported in generic functions, variadic functions, function literals, arrow functions, and interface methods.
+- A default value must be plain Go. It cannot use gosling syntax, such as a template literal.
 
 ## How it works
 

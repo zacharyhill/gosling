@@ -55,6 +55,7 @@ type Result struct {
 	Params []int
 	// Optionals holds the offsets of the names of optional struct fields.
 	Optionals []int
+	Defaults  []Default
 	edits     []edit
 }
 
@@ -186,6 +187,9 @@ type processor struct {
 	ternaryParts map[int]bool
 	// ternaryStarts counts the ternary conditions that start at a token index.
 	ternaryStarts map[int]int
+	// removals maps the first token of a default value or an optional
+	// marker to its last token.
+	removals map[int]int
 }
 
 // Process rewrites the gosling syntax in src into Go source with marker
@@ -213,6 +217,7 @@ func ProcessReserving(src []byte, reservedNames map[string]bool) (*Result, error
 		paramRenames:     map[int]paramRename{},
 		arrowStatements:  map[int]paramStatements{},
 		resultArrows:     map[int]int{},
+		removals:         map[int]int{},
 	}
 	processor.spreadBraces = findSpreadBraces(processor.tokens)
 	processor.resetTernaries()
@@ -300,16 +305,16 @@ func interpolationTokens(src []byte, from, to int) []lexeme {
 // startScan starts a nested scan of tokens. The returned function restores
 // the outer scan. The output and the bracket depth stay shared.
 func (processor *processor) startScan(tokens []lexeme) (restore func()) {
-	savedTokens, savedScheduled, savedInserts := processor.tokens, processor.scheduled, processor.inserts
+	savedTokens, savedScheduled, savedInserts, savedRemovals := processor.tokens, processor.scheduled, processor.inserts, processor.removals
 	savedDestructures, savedClosers, savedSpreads := processor.pendingDestructures, processor.pendingClosers, processor.spreadBraces
 	savedBodies, savedStatements, savedRenames := processor.bodyDestructures, processor.bodyStatements, processor.paramRenames
 	savedTernaryEnds, savedTernaryParts, savedTernaryStarts := processor.ternaryEnds, processor.ternaryParts, processor.ternaryStarts
-	processor.tokens, processor.scheduled, processor.inserts = tokens, map[int]string{}, map[int]string{}
+	processor.tokens, processor.scheduled, processor.inserts, processor.removals = tokens, map[int]string{}, map[int]string{}, map[int]int{}
 	processor.pendingDestructures, processor.pendingClosers, processor.spreadBraces = nil, nil, findSpreadBraces(tokens)
 	processor.bodyDestructures, processor.bodyStatements, processor.paramRenames = map[int]*destructure{}, map[int]paramStatements{}, map[int]paramRename{}
 	processor.resetTernaries()
 	return func() {
-		processor.tokens, processor.scheduled, processor.inserts = savedTokens, savedScheduled, savedInserts
+		processor.tokens, processor.scheduled, processor.inserts, processor.removals = savedTokens, savedScheduled, savedInserts, savedRemovals
 		processor.pendingDestructures, processor.pendingClosers, processor.spreadBraces = savedDestructures, savedClosers, savedSpreads
 		processor.bodyDestructures, processor.bodyStatements, processor.paramRenames = savedBodies, savedStatements, savedRenames
 		processor.ternaryEnds, processor.ternaryParts, processor.ternaryStarts = savedTernaryEnds, savedTernaryParts, savedTernaryStarts
@@ -361,6 +366,9 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 	if lastIndex, ok := processor.renameParam(tokenIndex); ok {
 		return lastIndex, nil
 	}
+	if lastIndex, ok := processor.removals[tokenIndex]; ok {
+		return processor.removeMarked(tokenIndex, lastIndex), nil
+	}
 	switch {
 	case current.isIdent("try") && processor.tokenAt(tokenIndex+1).is(token.LBRACE) && processor.atStmtStart(tokenIndex):
 		processor.result.Tries = append(processor.result.Tries, Try{If: processor.replace(current.offset, current.end(), "if true")})
@@ -411,6 +419,12 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		}
 		processor.openBracket(current, pendingTry)
 	case current.is(token.FUNC):
+		isFuncDecl := len(processor.braceStack) == 0 && processor.parens == 0 && processor.atStmtStart(tokenIndex)
+		if isFuncDecl {
+			if err := processor.findDefaults(tokenIndex); err != nil {
+				return 0, err
+			}
+		}
 		if err := processor.signature(tokenIndex); err != nil {
 			return 0, err
 		}

@@ -58,6 +58,7 @@ func newLowerer(transpiler *transpiler, file *file, typeInfo *types.Info) *lower
 		}
 		return true
 	})
+	lowerer.reserveDefaultNames()
 	lowerer.findChains()
 	return lowerer
 }
@@ -106,6 +107,7 @@ func (lowerer *lowerer) lowerFile() {
 	lowerer.lowerForOfBlanks()
 	lowerer.lowerOptionalValues()
 	lowerer.lowerRegexes()
+	lowerer.lowerParamDefaults()
 	lowerer.emitImports()
 	for body := range lowerer.file.panicAtEnd {
 		lowerer.checkBuiltins(body.Rbrace, "try", "panic")

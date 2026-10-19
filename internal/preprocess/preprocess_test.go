@@ -24,6 +24,7 @@ func TestProcess(test *testing.T) {
 		assigns     []int
 		enums       []Enum
 		optionals   []int
+		defaults    []Default
 	}{
 		{
 			name: "try catch with binding",
@@ -1211,6 +1212,41 @@ func TestProcess(test *testing.T) {
 			src:  "n := (a) / b[0] / T{}.x / 2",
 			want: "n := (a) / b[0] / T{}.x / 2",
 		},
+		{
+			name:     "default parameter value",
+			src:      "func f(a int, b int = 2) {}",
+			want:     "func f(a int, b int) {}",
+			defaults: []Default{{Param: len("func f(a int, "), ValueStart: len("func f(a int, b int = "), ValueEnd: len("func f(a int, b int = 2")}},
+		},
+		{
+			name: "annotated default and optional parameters",
+			src:  "func f(a: int = 2, b?: string): bool {}",
+			want: "func f(a int, b string) bool {}",
+			defaults: []Default{
+				{Param: len("func f("), ValueStart: len("func f(a: int = "), ValueEnd: len("func f(a: int = 2")},
+				{Param: len("func f(a: int = 2, "), Optional: true},
+			},
+		},
+		{
+			name:     "optional parameter",
+			src:      "func f(a int, b? *T) {}",
+			want:     "func f(a int, b *T) {}",
+			defaults: []Default{{Param: len("func f(a int, "), Optional: true}},
+		},
+		{
+			name: "default values in a method keep lines",
+			src:  "func (c *C) Get(path string, wait time.Duration = time.Duration(\n\t5) * time.Second, retries? int) {}",
+			want: "func (c *C) Get(path string, wait time.Duration\n, retries int) {}",
+			defaults: []Default{
+				{Param: len("func (c *C) Get(path string, "), ValueStart: len("func (c *C) Get(path string, wait time.Duration = "), ValueEnd: len("func (c *C) Get(path string, wait time.Duration = time.Duration(\n\t5) * time.Second")},
+				{Param: len("func (c *C) Get(path string, wait time.Duration = time.Duration(\n\t5) * time.Second, "), Optional: true},
+			},
+		},
+		{
+			name: "assignments in a function literal untouched",
+			src:  "var f = func(a int) { a = 2 }",
+			want: "var f = func(a int) { a = 2 }",
+		},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {
@@ -1255,6 +1291,9 @@ func TestProcess(test *testing.T) {
 			}
 			if !slices.Equal(result.Optionals, testCase.optionals) {
 				test.Errorf("optionals %v, want %v", result.Optionals, testCase.optionals)
+			}
+			if !slices.Equal(result.Defaults, testCase.defaults) {
+				test.Errorf("defaults %+v, want %+v", result.Defaults, testCase.defaults)
 			}
 			if !slices.Equal(result.Splits, testCase.splits) {
 				test.Errorf("splits %v, want %v", result.Splits, testCase.splits)
@@ -1359,6 +1398,13 @@ func TestProcessErrors(test *testing.T) {
 		{"invalid regex", "re := /a(/", "error parsing regexp: missing closing )", len("re := ")},
 		{"unsupported regex flag", "re := /a/g", "regex flag g is not supported", len("re := ")},
 		{"repeated regex flag", "re := /a/ii", "regex flag i is repeated", len("re := ")},
+		{"default in a parameter group", "func f(a, b int = 1) {}", "a parameter with a default value cannot share its type with other parameters", len("func f(a, ")},
+		{"required after default", "func f(a int = 1, b int) {}", "a parameter without a default value cannot follow one with a default value", len("func f(a int = 1, ")},
+		{"variadic default", "func f(xs ...int = nil) {}", "a variadic parameter cannot have a default value", len("func f(")},
+		{"default without type", "func f(a = 1) {}", "a parameter with a default value needs a name and a type", len("func f(")},
+		{"missing default value", "func f(a int =) {}", "missing default value", len("func f(a int ")},
+		{"optional with default", "func f(a? int = 1) {}", "an optional parameter cannot also have a default value", len("func f(")},
+		{"default with gosling syntax", "func f(a: int = c ? 1 : 2) {}", "a default value must be plain Go; use a constant or a function", len("func f(a: int = c ")},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {

@@ -31,6 +31,9 @@
       "include": "#arrow"
     },
     {
+      "include": "#optional-parameter"
+    },
+    {
       "include": "#optional-chaining"
     },
     {
@@ -328,6 +331,17 @@
           "name": "storage.type.function.arrow.gol"
         }
       ]
+    },
+    "optional-parameter": {
+      "match": "\\b(\\w+)(\\?)(?=\\s+[\\w*\\[])",
+      "captures": {
+        "1": {
+          "name": "variable.parameter.gol"
+        },
+        "2": {
+          "name": "keyword.operator.optional.gol"
+        }
+      }
     },
     "optional-chaining": {
       "match": "\\?\\.",

@@ -1,0 +1,42 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+)
+
+let calls = 0
+
+func nextID() int {
+	calls++
+	return calls
+}
+
+func label(name string, id int = nextID(), tags? []string) string {
+	return fmt.Sprint(name, id, tags == nil)
+}
+
+func open(path string, mode string = "r") (string, error) {
+	if path == "" {
+		return "", errors.New("empty path")
+	}
+	return path + ":" + mode, nil
+}
+
+func greet(name: string, greeting: string = "hi", times?: int): string {
+	return t`${greeting} ${name} ${times}`
+}
+
+func main() {
+	fmt.Println(greet("ann"), greet("bo", "yo"), greet("cy", "hey", 2))
+	fmt.Println(label("a"))
+	fmt.Println(label("b"))
+	fmt.Println(label("c", 10, []string{"x"}))
+	try {
+		const file = open("x")
+		fmt.Println(file)
+		open("")
+	} catch (e) {
+		fmt.Println("error:", e)
+	}
+}

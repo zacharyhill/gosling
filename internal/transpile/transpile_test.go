@@ -239,6 +239,46 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:5:3: cannot assign to v: declared with const",
 		},
 		{
+			name: "call through a function value cannot omit defaults",
+			src:  "package p\nfunc f(a int, b int = 1) {}\nfunc g() {\n\tconst h = f\n\th(1)\n}",
+			want: "x.gol:5:5: not enough arguments in call to h",
+		},
+		{
+			name: "call through an interface cannot omit defaults",
+			src:  "package p\ntype T struct{}\nfunc (T) M(a int = 1) {}\ntype I interface{ M(a int) }\nfunc g(i I) {\n\ti.M()\n}",
+			want: "x.gol:6:6: not enough arguments in call to i.M",
+		},
+		{
+			name: "call without a required argument",
+			src:  "package p\nfunc f(a int, b int = 1) {}\nfunc g() {\n\tf()\n}",
+			want: "x.gol:4:4: not enough arguments in call to f",
+		},
+		{
+			name: "default value of the wrong type",
+			src:  "package p\nfunc f(a int = \"x\") {}",
+			want: "x.gol:2:16: cannot use \"x\" (untyped string constant) as int value in default value",
+		},
+		{
+			name: "default value uses another parameter",
+			src:  "package p\nfunc f(a int, b int = a + 1) {}",
+			want: "x.gol:2:23: a default value cannot use the parameter a",
+		},
+		{
+			name: "default value in an interface method",
+			src:  "package p\ntype I interface {\n\tM(a int = 1)\n}",
+			want: "x.gol:3:10: default values are only supported in function and method declarations",
+		},
+		{
+			name: "default value in a generic function",
+			src:  "package p\nfunc f[T any](x T, n int = 1) {}",
+			want: "x.gol:2:20: default values are not supported in generic functions",
+		},
+		{
+			name: "default value in a function literal",
+			src:  "package p\nvar f = func(a int = 1) {}",
+			want: "x.gol:2:20: default values are only supported in function and method declarations",
+		},
+		{
 			name: "short variable declaration",
 			src:  "package p\nfunc f() int {\n\tx := 1\n\treturn x\n}",
 			want: "x.gol:3:4: use let or const instead of :=",
@@ -1596,6 +1636,23 @@ func TestNoAdjacentLineDirectives(test *testing.T) {
 		if got := transpileFile(test, path, true); adjacentDirectivePattern.Match(got) {
 			test.Errorf("%s has adjacent line directives:\n%s", path, got)
 		}
+	}
+}
+
+// TestDefaultsAcrossFiles checks a call in another file. The declaring file
+// uses its time import only in a default value.
+func TestDefaultsAcrossFiles(test *testing.T) {
+	declaring := "package p\n\nimport \"time\"\n\nfunc Wait(d time.Duration = time.Second) time.Duration { return d }\n"
+	calling := "package p\n\nfunc twice() int {\n\tlet time = 2\n\treturn int(Wait()) * time\n}\n"
+	outputs, err := Transpile(Config{Importer: importer.Default()}, []Input{{Path: "a.gol", Src: []byte(declaring)}, {Path: "b.gol", Src: []byte(calling)}})
+	if err != nil {
+		test.Fatal(err)
+	}
+	if got := string(outputs[0].Src); !strings.Contains(got, "func waitDDefault() time.Duration {\n\treturn time.Second\n}") {
+		test.Errorf("declaring file has no helper:\n%s", got)
+	}
+	if got := string(outputs[1].Src); !strings.Contains(got, "return int(Wait(waitDDefault())) * time") {
+		test.Errorf("call does not use the helper:\n%s", got)
 	}
 }
 
