@@ -124,6 +124,21 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:4:16: the ? operator is not supported; use try/catch",
 		},
 		{
+			name: "yield of a ternary without arms",
+			src:  "package p\nimport \"iter\"\nfunc* f(x: bool): iter.Seq[bool] {\n\tyield (x) ?\n}",
+			want: "x.gol:4:12: ternary is missing the value after '?'",
+		},
+		{
+			name: "yield of a ternary without an else value",
+			src:  "package p\nimport \"iter\"\nfunc* f(x: bool, a: int): iter.Seq[int] {\n\tyield (x) ? a :\n}",
+			want: "x.gol:4:16: ternary is missing the value after ':'",
+		},
+		{
+			name: "const ternary without colon",
+			src:  "package p\nfunc f(c: bool, a: int): int {\n\tconst v = c ? a\n\treturn v\n}",
+			want: "x.gol:3:14: ternary is missing ':'",
+		},
+		{
 			name: "ternary arms with mismatched types",
 			src:  "package p\nfunc f(c bool) {\n\tlet x = c ? 1 : \"a\"\n\t_ = x\n}",
 			want: "x.gol:3:18: ternary arms have mismatched types untyped int and untyped string",

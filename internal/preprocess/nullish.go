@@ -27,5 +27,9 @@ func (processor *processor) questionMark(tokenIndex int) (int, error) {
 		processor.replace(question.offset, next.end(), "."+OMarker+".")
 		return tokenIndex + 1, nil
 	}
+	isSpacedTernary := tokenIndex > 0 && !processor.touchesNext(tokenIndex-1)
+	if isSpacedTernary {
+		return 0, processor.makeIncompleteTernaryError(tokenIndex)
+	}
 	return 0, &Error{question.offset, "the ? operator is not supported; use try/catch"}
 }
