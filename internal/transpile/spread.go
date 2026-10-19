@@ -119,7 +119,7 @@ func (lowerer *lowerer) lowerCat(call *ast.CallExpr, callee *ast.Ident) {
 		return // the type checker already reported the error
 	}
 	elementType, ok := lowerer.typeName(slice.Elem())
-	slicesName, hasSlicesName := lowerer.importName(lowerer.file, "slices", "slices", false)
+	slicesName, hasSlicesName := lowerer.importNameAt(call.Pos(), "slices", "slices")
 	if !ok || !hasSlicesName {
 		lowerer.errorf(lowerer.file, call.Pos(), "spread needs package slices and the element type, but a needed name is already used in this file")
 		return
