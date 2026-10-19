@@ -107,7 +107,9 @@ func (lowerer *lowerer) hoistSwitch(stmt *ast.SwitchStmt, try *tryContext) {
 			splits = append(splits, caseClause)
 		}
 	}
-	lowerer.hoist(stmt, try, header...)
+	if !lowerer.hoistAfterInit(stmt, try, stmt.Init, "switch ", stmt.Tag) {
+		lowerer.hoist(stmt, try, header...)
+	}
 	if len(splits) > 0 {
 		lowerer.splitSwitch(stmt, splits, try)
 	}

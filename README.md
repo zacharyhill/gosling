@@ -250,7 +250,7 @@ if err != nil { ... }
 n := val * 2
 ```
 
-The moved call runs before other calls to its left. Moved calls run in the order of the original expression.
+The moved call runs before other calls to its left. Moved calls run in the order of the original expression. In an `if` or `switch` with an init statement, such as `if let x = g(); x > f(x) {`, a call from the condition runs after the init statement. The output then puts the init statement, the moved call, and the statement in a new block.
 
 A call that runs only on some paths moves into a new `if` statement. So short-circuit evaluation does not change:
 

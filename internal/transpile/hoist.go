@@ -118,13 +118,19 @@ func (transpiler *transpiler) singleValueUse(typeInfo *types.Info, parentOf map[
 // hoist moves the wrapped calls in exprs, which belong to stmt, into checked
 // statements before stmt.
 func (lowerer *lowerer) hoist(stmt ast.Stmt, try *tryContext, exprs ...ast.Node) {
-	anchor := lowerer.withLabels(stmt)
+	lowerer.hoistAt(stmt, lowerer.withLabels(stmt).Pos(), 0, try, exprs...)
+}
+
+// hoistAt is hoist with the checked statements at position. priority sorts
+// them among other insertions at position.
+func (lowerer *lowerer) hoistAt(stmt ast.Stmt, position token.Pos, priority int, try *tryContext, exprs ...ast.Node) {
 	site := &hoistSite{
-		offset: lowerer.offset(anchor.Pos()),
-		bound:  stmt,
-		scope:  lowerer.scopeAt(anchor.Pos()),
-		from:   anchor.Pos(),
-		end:    stmt.End(),
+		offset:   lowerer.offset(position),
+		bound:    stmt,
+		scope:    lowerer.scopeAt(position),
+		from:     position,
+		end:      stmt.End(),
+		priority: priority,
 	}
 	if lowerer.hoistInto(site, try, exprs...) {
 		lowerer.flushSite(site)

@@ -27,6 +27,8 @@ type lowerer struct {
 	// with its variable.
 	hoistDrops   map[ast.Expr]int
 	namedResults map[types.Object]bool
+	// wrappedHeaders holds the statements whose init statement moved into a new block.
+	wrappedHeaders map[ast.Stmt]bool
 }
 
 func newLowerer(transpiler *transpiler, file *file, typeInfo *types.Info) *lowerer {
@@ -37,6 +39,7 @@ func newLowerer(transpiler *transpiler, file *file, typeInfo *types.Info) *lower
 		identPositions: map[string][]token.Pos{},
 		consumedHoists: map[*ast.CallExpr]bool{},
 		hoistDrops:     map[ast.Expr]int{},
+		wrappedHeaders: map[ast.Stmt]bool{},
 		checkedAssigns: map[*ast.AssignStmt]bool{},
 		namedResults:   map[types.Object]bool{},
 	}
@@ -162,7 +165,9 @@ func (lowerer *lowerer) walkStmt(stmt ast.Stmt, try *tryContext) {
 		lowerer.walkClauses(stmt.Body, try)
 	case *ast.TypeSwitchStmt:
 		lowerer.checkExhaustive(stmt)
-		lowerer.hoist(stmt, try, stmt.Init, stmt.Assign)
+		if !lowerer.hoistAfterInit(stmt, try, stmt.Init, "switch ", stmt.Assign) {
+			lowerer.hoist(stmt, try, stmt.Init, stmt.Assign)
+		}
 		lowerer.lowerInit(stmt, try)
 		lowerer.walkExprs(stmt.Init, stmt.Assign)
 		lowerer.walkClauses(stmt.Body, try)
@@ -186,7 +191,7 @@ func (lowerer *lowerer) walkIf(stmt *ast.IfStmt, try *tryContext) {
 	}
 	if parent, ok := lowerer.parents[stmt].(*ast.IfStmt); ok && parent.Else == stmt {
 		lowerer.hoistElseIf(stmt, try)
-	} else {
+	} else if !lowerer.hoistAfterInit(stmt, try, stmt.Init, "if ", stmt.Cond) {
 		lowerer.hoist(stmt, try, stmt.Init, stmt.Cond)
 	}
 	lowerer.walkExprs(stmt.Init, stmt.Cond)
@@ -200,7 +205,7 @@ func (lowerer *lowerer) walkIf(stmt *ast.IfStmt, try *tryContext) {
 // the check, and the statement. The labels move into the block, so break and continue still work.
 func (lowerer *lowerer) lowerInit(stmt ast.Stmt, try *tryContext) {
 	init, newHeader, keptHeaderStart := lowerer.splitHeader(stmt)
-	if init == nil || !lowerer.lowerTryStmt(init, try) {
+	if init == nil || !lowerer.lowerTryStmt(init, try) || lowerer.wrappedHeaders[stmt] {
 		return
 	}
 	anchor := lowerer.withLabels(stmt)
@@ -208,6 +213,28 @@ func (lowerer *lowerer) lowerInit(stmt ast.Stmt, try *tryContext) {
 	lowerer.replace(anchor.Pos(), init.Pos(), "{\n", line)
 	lowerer.replace(init.End(), keptHeaderStart, "\n"+lowerer.buildLabelPrefix(stmt)+newHeader, line)
 	lowerer.insertOrdered(stmt.End(), "\n}", lowerer.line(stmt.End()), -lowerer.depth(stmt))
+}
+
+// hoistAfterInit hoists the calls in the header of an if or switch statement
+// when the condition has checked calls. Those calls can use the init variables,
+// so the init statement and the calls move into a new block:
+// { x := g(); val, err := f(x); ...; if x > val { ... } }
+// It reports false if the condition has no checked calls or no init statement.
+func (lowerer *lowerer) hoistAfterInit(stmt ast.Stmt, try *tryContext, init ast.Stmt, keyword string, condition ast.Node) bool {
+	if init == nil || condition == nil || len(lowerer.markersIn(condition)) == 0 {
+		return false
+	}
+	lowerer.hoist(stmt, try, init)
+	line := lowerer.line(stmt.Pos())
+	// The error check of a checked init statement has order 0 and goes first.
+	lowerer.insertOrdered(init.End(), "\n", line, 1)
+	lowerer.hoistAt(stmt, init.End(), lastInsertion, try, condition)
+	anchor := lowerer.withLabels(stmt)
+	lowerer.replace(anchor.Pos(), init.Pos(), "{\n", line)
+	lowerer.replace(init.End(), condition.Pos(), lowerer.buildLabelPrefix(stmt)+keyword, line)
+	lowerer.insertOrdered(stmt.End(), "\n}", lowerer.line(stmt.End()), -lowerer.depth(stmt))
+	lowerer.wrappedHeaders[stmt] = true
+	return true
 }
 
 func (lowerer *lowerer) buildLabelPrefix(stmt ast.Stmt) string {

@@ -1,0 +1,57 @@
+package hoistinit
+
+import "strconv"
+
+func parse(s string) (int, error) { return strconv.Atoi(s) }
+
+func ifInit(s string) bool {
+	try {
+		if let x = len(s); x > parse(s[:x]) {
+			return true
+		}
+	} catch {
+		return false
+	}
+	return false
+}
+
+func switchInit(s string) string {
+	try {
+		switch let n = len(s); parse(s[:n]) {
+		case 0:
+			return "zero"
+		}
+	} catch (e) {
+		return e.Error()
+	}
+	return "other"
+}
+
+func labeled(xs []string) int {
+	let count = 0
+	try {
+		for (const s of xs) {
+		outer:
+			switch let n = len(s); parse(s[:n]) {
+			case 0:
+				break outer
+			default:
+				count++
+			}
+		}
+	} catch {
+		return -1
+	}
+	return count
+}
+
+func bothCalls(s string) bool {
+	try {
+		if let x = parse(s) + 1; x > parse(s) {
+			return true
+		}
+	} catch {
+		return false
+	}
+	return false
+}

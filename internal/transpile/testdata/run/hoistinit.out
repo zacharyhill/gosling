@@ -1,0 +1,19 @@
+eval init
+eval half
+bigger
+eval init
+eval half
+error: 3 is odd
+eval init
+eval half
+text
+eval init
+eval half
+error: 3 is odd
+eval init
+int
+eval init
+bad
+three
+error: strconv.Atoi: parsing "x": invalid syntax
+error: strconv.Atoi: parsing "y": invalid syntax
