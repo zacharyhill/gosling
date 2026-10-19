@@ -550,6 +550,10 @@ func (lowerer *lowerer) lowerChain(root ast.Expr) {
 		return
 	}
 	resultType := lowerer.typeInfo.Types[root].Type
+	if assertedType, ok := getCommaOkAssertType(root, resultType); ok {
+		lowerer.lowerCommaOkChain(root, links, tempVar, assertedType)
+		return
+	}
 	if _, isTuple := resultType.(*types.Tuple); isTuple || resultType == nil {
 		lowerer.errorf(lowerer.file, root.Pos(), "an optional call with zero or multiple results can only be used as a statement")
 		return
@@ -568,6 +572,39 @@ func (lowerer *lowerer) lowerChain(root ast.Expr) {
 	}
 	closing := lowerer.guards(root, "func() "+typeText+" {\n", links, tempVar, "return ")
 	lowerer.insertOrdered(root.End(), closing+"\nreturn "+zeroText+"\n}()", lowerer.line(root.Pos()), -lowerer.depth(root))
+}
+
+// getCommaOkAssertType returns T if root is a type assertion x.(T) that gives
+// a value and an ok result.
+func getCommaOkAssertType(root ast.Expr, resultType types.Type) (types.Type, bool) {
+	tuple, isTuple := resultType.(*types.Tuple)
+	if _, isAssert := root.(*ast.TypeAssertExpr); !isAssert || !isTuple || tuple.Len() != 2 {
+		return nil, false
+	}
+	return tuple.At(0).Type(), true
+}
+
+// lowerCommaOkChain lowers `v, ok := a?.b.(T)`. A skipped chain gives zero and false.
+// Go allows comma-ok only in an assignment, so the last link assigns before it returns.
+func (lowerer *lowerer) lowerCommaOkChain(root ast.Expr, links []ast.Expr, tempVar string, assertedType types.Type) {
+	typeText, ok := lowerer.typeName(assertedType)
+	if !ok {
+		lowerer.typeNameTakenError(root.Pos(), "optional chain", typeText)
+		return
+	}
+	if lowerer.reportHiddenType(assertedType, typeText, root.Pos()) {
+		return
+	}
+	zeroText := zeroValue(assertedType, typeText)
+	builtins := append([]string{"bool", "false"}, zeroValueBuiltins(zeroText)...)
+	if !lowerer.checkBuiltins(root.Pos(), "optional chain", builtins...) {
+		return
+	}
+	okName := lowerer.pickName("ok", root.Pos(), root.End())
+	resultNames := tempVar + ", " + okName
+	closing := lowerer.guards(root, "func() ("+typeText+", bool) {\n", links, tempVar, resultNames+" := ")
+	closingText := "\nreturn " + resultNames + closing + "\nreturn " + zeroText + ", false\n}()"
+	lowerer.insertOrdered(root.End(), closingText, lowerer.line(root.Pos()), -lowerer.depth(root))
 }
 
 func isAddressOf(node ast.Node) bool {

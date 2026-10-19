@@ -6,3 +6,6 @@
 0 true
 boxed b
 false 22
+boxed true true false
+not a number 0
+boxed true true false
