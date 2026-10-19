@@ -28,6 +28,9 @@ func (processor *processor) forOf(tokenIndex int) {
 		processor.scheduled[rparenIndex] = ""
 	}
 	textStart := processor.replace(lparen.offset, processor.tokenAt(tokenIndex+5).offset, text)
+	if keyword.text == "of" {
+		processor.result.ForOfBlanks = append(processor.result.ForOfBlanks, textStart)
+	}
 	if declaration.is(token.CONST) {
 		processor.result.Consts = append(processor.result.Consts, textStart+len(variables)-len(name.text))
 	}

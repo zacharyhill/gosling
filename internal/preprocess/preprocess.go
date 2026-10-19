@@ -33,7 +33,10 @@ type Result struct {
 	Consts []int
 	// TempNames holds the names of the temporary variables that the rewrite adds.
 	TempNames []string
-	edits     []edit
+	// ForOfBlanks holds the offsets of the "_" keys that for-of loops add.
+	// A range over a channel, an integer, or iter.Seq cannot have them.
+	ForOfBlanks []int
+	edits       []edit
 }
 
 // Error is a syntax error at an offset into the original source.

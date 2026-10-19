@@ -2,6 +2,8 @@
 
 package forof
 
+import "iter"
+
 func sum(xs []int) int {
 	total := 0
 	for _, x := range xs {
@@ -24,4 +26,35 @@ func literal() int {
 		n += v
 	}
 	return n
+}
+
+func drain(ch <-chan string) []string {
+	var out []string
+	for s := range ch {
+		out = append(out, s)
+	}
+	return out
+}
+
+func countTo(n int) int {
+	total := 0
+	for i := range n {
+		i *= 2
+		total += i
+	}
+	for i := range 3 {
+		total += i
+	}
+	return total
+}
+
+func sumSeq(seq iter.Seq[int], pairs iter.Seq2[string, int]) int {
+	total := 0
+	for x := range seq {
+		total += x
+	}
+	for _, v := range pairs {
+		total += v
+	}
+	return total
 }
