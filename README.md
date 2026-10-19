@@ -645,7 +645,7 @@ sort.Slice(xs, (i, j): bool => xs[i] < xs[j])      // func(i int, j int) bool { 
 
 ### Array methods
 
-Slices and arrays have `map`, `filter`, `reduce`, `forEach`, `find`, `findIndex`, `some`, `every`, `includes`, and `indexOf`. A callback can be an arrow or a function value. If the callback has a second parameter, it gets the index.
+Slices and arrays have `map`, `filter`, `reduce`, `forEach`, `find`, `findIndex`, `findLast`, `findLastIndex`, `some`, `every`, `includes`, `indexOf`, `flatMap`, `flat`, `sort`, `toSorted`, `reverse`, `toReversed`, `slice`, `at`, `join`, `keys`, and `entries`. A callback can be an arrow or a function value. If the callback has a second parameter, it gets the index.
 
 Each call becomes a loop in a function literal. No runtime package is necessary.
 
@@ -665,7 +665,15 @@ evens := func() []int {
 ```
 
 - `reduce` needs an initial value: `nums.reduce((acc, n) => acc + float64(n), 0.0)`.
-- `find` returns the element if it can be nil. Otherwise it returns a pointer into the slice, or nil. An element of a type parameter can be nil only if each type in its constraint can be nil. So `find` on a `[]T` with `T any` returns `*T`.
+- `find`, `findLast`, and `at` return the element if it can be nil. Otherwise they return a pointer into the slice, or nil. An element of a type parameter can be nil only if each type in its constraint can be nil. So `find` on a `[]T` with `T any` returns `*T`.
+- `findLast` and `findLastIndex` search from the end.
+- `sort` and `reverse` change the slice in place, as in JavaScript. They also return the slice. As a statement, they become `slices.SortStableFunc`, `slices.Sort`, or `slices.Reverse`. `toSorted` and `toReversed` return a changed copy.
+- The comparator of `sort` and `toSorted` returns an `int`, as in JavaScript: `users.sort((a, b) => a.Age - b.Age)`. The sort is stable. Without a comparator, the elements must be numbers or strings, and they sort in their natural order. JavaScript sorts them as strings.
+- `slice(start, end)` returns a copy, as in JavaScript. `end` is optional. A negative index counts from the end. gosling clamps an index that is out of range. So `xs.slice(-2)` gives the last two elements.
+- `at(i)` gives nil if `i` is out of range. A negative `i` counts from the end, so `xs.at(-1)` is the last element.
+- `join(sep)` uses `strings.Join` for a `[]string`. For other elements, it uses `fmt.Fprint`.
+- The callback of `flatMap` returns a slice. `flat` flattens one level. It becomes `slices.Concat(xs...)`.
+- `keys` returns the indices. `entries` returns a `[]struct{ Index int; Value T }`.
 - `forEach` can only be a statement.
 - `filter` keeps a named slice type. A method of the type with the same name has priority.
 - Each call in a chain is a separate loop.

@@ -21,9 +21,11 @@ type arrayMethod struct {
 	result         string
 	// pointerResult is the result of the variant for elements that cannot be
 	// nil. This variant returns a pointer, or nil.
-	pointerResult string
-	typeParams    string
-	loopBuiltins  []string
+	pointerResult      string
+	typeParams         string
+	loopBuiltins       []string
+	optionalArgCount   int  // the number of trailing arguments that can be left out
+	allowsNaturalOrder bool // without a callback, the method uses the natural order
 }
 
 func (method arrayMethod) argCount() int {
@@ -45,7 +47,25 @@ var arrayMethods = map[string]arrayMethod{
 	"every":     {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "bool", typeParams: "S ~[]T, T any", loopBuiltins: []string{"true", "false"}},
 	"includes":  {extraParams: ", x T", result: "bool", typeParams: "S ~[]T, T comparable", loopBuiltins: []string{"true", "false"}},
 	"indexOf":   {extraParams: ", x T", result: "int", typeParams: "S ~[]T, T comparable"},
+
+	"sort":          {hasCallback: true, allowsNaturalOrder: true, callbackParams: "T, T", callbackResult: "int", result: "S", typeParams: "S ~[]T, T any"},
+	"toSorted":      {hasCallback: true, allowsNaturalOrder: true, callbackParams: "T, T", callbackResult: "int", result: "S", typeParams: "S ~[]T, T any"},
+	"reverse":       {result: "S", typeParams: "S ~[]T, T any"},
+	"toReversed":    {result: "S", typeParams: "S ~[]T, T any"},
+	"slice":         {extraParams: ", start int, end ...int", optionalArgCount: 1, result: "S", typeParams: "S ~[]T, T any", loopBuiltins: []string{"len", "min", "max"}},
+	"join":          {extraParams: ", sep string", result: "string", typeParams: "S ~[]T, T any", loopBuiltins: []string{"string"}},
+	"flatMap":       {hasCallback: true, callbackParams: "T", callbackResult: "[]R", result: "[]R", typeParams: "S ~[]T, T, R any", loopBuiltins: []string{"append"}},
+	"flat":          {result: "E", typeParams: "S ~[]E, E ~[]T, T any"},
+	"at":            {extraParams: ", i int", result: "T", pointerResult: "*T", typeParams: "S ~[]T, T any", loopBuiltins: []string{"len", "nil"}},
+	"findLast":      {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "T", pointerResult: "*T", typeParams: "S ~[]T, T any", loopBuiltins: []string{"len", "nil"}},
+	"findLastIndex": {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "int", typeParams: "S ~[]T, T any", loopBuiltins: []string{"len"}},
+	"keys":          {result: "[]int", typeParams: "S ~[]T, T any", loopBuiltins: []string{"make", "len", "int"}},
+	"entries":       {result: "[]struct{ Index int; Value T }", typeParams: "S ~[]T, T any", loopBuiltins: []string{"make", "len"}},
 }
+
+// orderedConstraint matches the types that slices.Sort accepts. The marker
+// file cannot import cmp.
+const orderedConstraint = "~int | ~int8 | ~int16 | ~int32 | ~int64 | ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr | ~float32 | ~float64 | ~string"
 
 const mapTypeParams = "M ~map[K]V, K comparable, V any"
 
@@ -80,7 +100,9 @@ type arrayCall struct {
 	originalCall   *ast.CallExpr
 	receiver       ast.Expr
 	indexed        bool // the callback also takes the index or key
-	returnsPointer bool // find or get returns a pointer
+	returnsPointer bool // find, at, or get returns a pointer
+	// usesNaturalOrder is true for sort or toSorted without a comparator.
+	usesNaturalOrder bool
 	// shouldSliceArray is true for an addressable array. The output slices it,
 	// so the loop does not copy it and find points into it.
 	shouldSliceArray bool
@@ -120,28 +142,35 @@ func (set *methodSet) writeMarkerDecls(builder *strings.Builder) {
 	sort.Strings(names)
 	for _, name := range names {
 		method := set.methods[name]
-		writeDecl := func(suffix, callbackParams, result string) {
+		writeDecl := func(suffix, typeParams, callbackParams, result string) {
 			callbackParam := ""
-			if method.hasCallback {
+			if callbackParams != "" {
 				callbackParam = fmt.Sprintf(", f func(%s) %s", callbackParams, method.callbackResult)
 			}
 			body := "{ panic(0) }"
 			if result == "" {
 				body = "{}"
 			}
-			fmt.Fprintf(builder, "func %s%s%s[%s](xs %s%s%s) %s %s\n", set.markerPrefix, name, suffix, method.typeParams, set.receiverTypeParam, callbackParam, method.extraParams, result, body)
+			fmt.Fprintf(builder, "func %s%s%s[%s](xs %s%s%s) %s %s\n", set.markerPrefix, name, suffix, typeParams, set.receiverTypeParam, callbackParam, method.extraParams, result, body)
 		}
-		indexedParams := method.callbackParams + ", " + set.callbackIndexType
-		writeDecl("", method.callbackParams, method.result)
+		callbackParams := ""
 		if method.hasCallback {
-			writeDecl("I", indexedParams, method.result)
+			callbackParams = method.callbackParams
+		}
+		indexedParams := callbackParams + ", " + set.callbackIndexType
+		writeDecl("", method.typeParams, callbackParams, method.result)
+		if method.hasCallback {
+			writeDecl("I", method.typeParams, indexedParams, method.result)
+		}
+		if method.allowsNaturalOrder {
+			writeDecl("N", "S ~[]T, T "+orderedConstraint, "", method.result)
 		}
 		if method.pointerResult == "" {
 			continue
 		}
-		writeDecl("P", method.callbackParams, method.pointerResult)
+		writeDecl("P", method.typeParams, callbackParams, method.pointerResult)
 		if method.hasCallback {
-			writeDecl("PI", indexedParams, method.pointerResult)
+			writeDecl("PI", method.typeParams, indexedParams, method.pointerResult)
 		}
 	}
 }
@@ -244,7 +273,8 @@ func (transpiler *transpiler) asArrayCall(file *file, typeInfo *types.Info, call
 		return methodCall, true
 	}
 	if len(call.Args) == 0 {
-		return nil, false
+		methodCall.usesNaturalOrder = method.allowsNaturalOrder
+		return methodCall, method.allowsNaturalOrder
 	}
 	count, isKnown := transpiler.callbackParams(file, typeInfo, call.Args[0])
 	if !isKnown {
@@ -254,10 +284,14 @@ func (transpiler *transpiler) asArrayCall(file *file, typeInfo *types.Info, call
 	return methodCall, true
 }
 
-// markerName picks the marker variant. P is for a call that returns a
-// pointer. I is for a callback that also takes the index or key.
+// markerName picks the marker variant. N is for a sort in the natural order.
+// P is for a call that returns a pointer. I is for a callback that also takes
+// the index or key.
 func (call *arrayCall) markerName() string {
 	name := call.set.markerPrefix + call.method
+	if call.usesNaturalOrder {
+		name += "N"
+	}
 	if call.returnsPointer {
 		name += "P"
 	}
@@ -295,8 +329,11 @@ func (transpiler *transpiler) callbackContext(typeInfo *types.Info, call *ast.Ca
 	}
 	context := funcContext{params: []types.Type{elementType}, resultsKnown: true}
 	switch arrayCall.method {
-	case "map":
+	case "map", "flatMap":
 		context.resultsKnown = false
+	case "sort", "toSorted":
+		context.params = []types.Type{elementType, elementType}
+		context.results = []types.Type{types.Typ[types.Int]}
 	case "reduce":
 		if len(call.Args) < 3 {
 			return funcContext{}, false
@@ -336,32 +373,52 @@ func (lowerer *lowerer) lowerArrayCall(marker *ast.CallExpr, arrayCall *arrayCal
 	if !ok || !lowerer.checkBuiltins(receiver.Pos(), arrayCall.method, method.loopBuiltins...) {
 		return
 	}
+	prefixes, ok := lowerer.importArrayPackages(arrayCall)
+	if !ok {
+		return
+	}
 	names := pickArrayNames(typeText)
 	line, depth := lowerer.line(receiver.Pos()), lowerer.depth(marker)
 	if lowerer.lowerMapAccess(arrayCall, arguments, typeText, names, line, depth) {
 		return
 	}
-	bindNames, separator := lowerer.arrayBindings(arrayCall, method, names)
+	if form, isDirect := lowerer.findDirectForm(marker, arrayCall, prefixes); isDirect {
+		lowerer.wrapArrayCall(arrayCall, arguments, form, line, depth)
+		return
+	}
+	bindNames, separator := lowerer.arrayBindings(arrayCall, method, names, len(arguments))
 	open := "func() " + typeText + " {\n" + bindNames + " := "
 	if method.result == "" {
 		lowerer.dropParens(marker)
 		open = "{\n" + bindNames + " := "
 	}
-	lowerer.insertOrdered(receiver.Pos(), open, line, depth)
+	tail := arrayLoop(arrayCall, typeText, names)
+	if tail == "" {
+		tail = lowerer.buildUtilityTail(arrayCall, typeText, names, len(arguments), prefixes)
+	}
+	if !arrayCall.isMapCall() && (arrayCall.method == "includes" || arrayCall.method == "indexOf") {
+		tail = ")" + tail
+	}
+	lowerer.wrapArrayCall(arrayCall, arguments, callForm{open, separator, tail}, line, depth)
+}
+
+// callForm holds the text that replaces the parts of an array method call
+// around its receiver and arguments.
+type callForm struct{ open, separator, closing string }
+
+func (lowerer *lowerer) wrapArrayCall(arrayCall *arrayCall, arguments []ast.Expr, form callForm, line, depth int) {
+	receiver, end := arrayCall.receiver, arrayCall.originalCall.Rparen+1
 	receiverEnd := ""
 	if arrayCall.shouldSliceArray {
 		receiverEnd = "[:]"
 	}
-	tail := arrayLoop(arrayCall, typeText, names)
+	lowerer.insertOrdered(receiver.Pos(), form.open, line, depth)
 	if len(arguments) == 0 {
-		lowerer.replace(receiver.End(), arrayCall.originalCall.Rparen+1, receiverEnd+tail, line)
+		lowerer.replace(receiver.End(), end, receiverEnd+form.closing, line)
 		return
 	}
-	lowerer.replace(receiver.End(), arguments[0].Pos(), receiverEnd+separator, line)
-	if !method.hasCallback {
-		tail = ")" + tail
-	}
-	lowerer.replace(arguments[len(arguments)-1].End(), arrayCall.originalCall.Rparen+1, tail, line)
+	lowerer.replace(receiver.End(), arguments[0].Pos(), receiverEnd+form.separator, line)
+	lowerer.replace(arguments[len(arguments)-1].End(), end, form.closing, line)
 }
 
 // lowerMapAccess lowers has, get, and delete on a map to index expressions
@@ -397,8 +454,7 @@ func (lowerer *lowerer) checkArrayCall(marker *ast.CallExpr, arrayCall *arrayCal
 		lowerer.errorf(lowerer.file, receiver.Pos(), "%s can only be used as a statement", arrayCall.method)
 		return "", false
 	}
-	if wantArgs := method.argCount(); len(marker.Args)-1 != wantArgs {
-		lowerer.errorf(lowerer.file, receiver.Pos(), "%s expects %d argument(s)", arrayCall.method, wantArgs)
+	if !lowerer.checkArgCount(marker, arrayCall, method) {
 		return "", false
 	}
 	if method.result == "" {
@@ -420,9 +476,29 @@ func (lowerer *lowerer) checkArrayCall(marker *ast.CallExpr, arrayCall *arrayCal
 	return typeText, true
 }
 
+// checkArgCount reports a call with the wrong number of arguments.
+func (lowerer *lowerer) checkArgCount(marker *ast.CallExpr, arrayCall *arrayCall, method arrayMethod) bool {
+	wantArgs, gotArgs := method.argCount(), len(marker.Args)-1
+	if arrayCall.usesNaturalOrder {
+		wantArgs = 0
+	}
+	minArgs := wantArgs - method.optionalArgCount
+	if gotArgs <= wantArgs && gotArgs >= minArgs {
+		return true
+	}
+	receiver := arrayCall.receiver
+	if method.optionalArgCount > 0 {
+		lowerer.errorf(lowerer.file, receiver.Pos(), "%s expects %d to %d argument(s)", arrayCall.method, minArgs, wantArgs)
+	} else {
+		lowerer.errorf(lowerer.file, receiver.Pos(), "%s expects %d argument(s)", arrayCall.method, wantArgs)
+	}
+	return false
+}
+
 // arrayNames holds the names of the locals in a lowered array method call.
 type arrayNames struct {
 	slice, mapName, callback, accumulator, value, element, index, key, found, out string
+	separator, start, end, builder                                                string
 }
 
 // pickArrayNames picks the local names for an array method call. The result
@@ -448,6 +524,10 @@ func pickArrayNames(typeText string) arrayNames {
 		key:         pickName("k"),
 		found:       pickName("ok"),
 		out:         pickName("out"),
+		separator:   pickName("sep"),
+		start:       pickName("start"),
+		end:         pickName("end"),
+		builder:     pickName("b"),
 	}
 }
 
@@ -468,14 +548,26 @@ func collectIdentifiers(source string) map[string]bool {
 
 // arrayBindings returns the names for the receiver and arguments, and the
 // text between the receiver and the first argument.
-func (lowerer *lowerer) arrayBindings(arrayCall *arrayCall, method arrayMethod, names arrayNames) (string, string) {
+func (lowerer *lowerer) arrayBindings(arrayCall *arrayCall, method arrayMethod, names arrayNames, argCount int) (string, string) {
 	switch {
+	case arrayCall.isMapCall() && argCount == 0:
+		return names.mapName, ""
+	case argCount == 0:
+		return names.slice, ""
 	case arrayCall.isMapCall() && method.hasCallback:
 		return names.mapName + ", " + names.callback, ", "
 	case arrayCall.isMapCall():
 		return names.mapName, ""
 	case arrayCall.method == "reduce":
 		return names.slice + ", " + names.callback + ", " + names.accumulator, ", "
+	case arrayCall.method == "slice" && argCount == 2:
+		return names.slice + ", " + names.start + ", " + names.end, ", "
+	case arrayCall.method == "slice":
+		return names.slice + ", " + names.start, ", "
+	case arrayCall.method == "join":
+		return names.slice + ", " + names.separator, ", "
+	case arrayCall.method == "at":
+		return names.slice + ", " + names.index, ", "
 	case !method.hasCallback:
 		elementType, _, _ := elementTypes(lowerer.typeInfo.Types[arrayCall.receiver].Type)
 		elementText, _ := lowerer.typeName(elementType)

@@ -267,7 +267,7 @@ func markerDisplayName(name string) string {
 
 // arrayMethodName removes the variant suffix from an array marker name.
 func arrayMethodName(suffixed string) string {
-	for _, suffix := range []string{"", "PI", "P", "I"} {
+	for _, suffix := range []string{"", "PI", "P", "I", "N"} {
 		if method, ok := strings.CutSuffix(suffixed, suffix); ok {
 			_, isArrayMethod := arrayMethods[method]
 			if _, isMapMethod := mapMethods[method]; isArrayMethod || isMapMethod {

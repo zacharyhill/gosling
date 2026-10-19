@@ -1,0 +1,59 @@
+package moremethods
+
+type User struct {
+	Name string
+	Age  int
+}
+
+type Names []string
+
+type Color string
+
+func sorting(users []User, nums []int) ([]User, []int) {
+	users.sort((a, b) => a.Age - b.Age)
+	nums.sort()
+	return users.toSorted((a, b) => b.Age - a.Age), nums.toSorted()
+}
+
+func sortedInPlace(names Names) Names {
+	return names.sort()
+}
+
+func reversing(nums []int) []int {
+	nums.reverse()
+	return nums.toReversed()
+}
+
+func slicing(nums []int) ([]int, []int) {
+	return nums.slice(1, -1), nums.slice(-2)
+}
+
+func joining(names Names, colors []Color, nums []int) (string, string, string) {
+	return names.join(", "), colors.join("/"), nums.join("-")
+}
+
+func flattening(groups [][]int, users []User) ([]int, []string) {
+	return groups.flat(), users.flatMap(u => []string{u.Name, u.Name})
+}
+
+func lookups(nums []int, users []*User) (*int, *User, *int, int) {
+	return nums.at(-1), users.at(0), nums.findLast(n => n > 2), users.findLastIndex((u, i) => u.Age > i)
+}
+
+func lastUser(users []*User) *User {
+	return users.findLast(u => u.Age > 18)
+}
+
+func listing(names Names) ([]int, int) {
+	let total = 0
+	for (const entry of names.entries()) {
+		total += entry.Index + len(entry.Value)
+	}
+	return names.keys(), total
+}
+
+type Matrix [][]int
+
+func flatNamed(m Matrix) []int {
+	return m.flat()
+}
