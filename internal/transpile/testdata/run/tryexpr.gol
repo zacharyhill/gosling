@@ -1,0 +1,24 @@
+package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+var calls int
+
+func fallback(n int) int {
+	calls++
+	return n
+}
+
+func parseAll(inputs []string) []int {
+	return inputs.map(s => try strconv.Atoi(s) catch fallback(-1))
+}
+
+func main() {
+	fmt.Println(parseAll([]string{"1", "x", "3", ""}), calls)
+	const flag = try strconv.ParseBool("maybe") catch try strconv.ParseBool("true") catch false
+	fmt.Println(flag)
+	fmt.Println(t`port ${try strconv.Atoi("80") catch 8080}`)
+}

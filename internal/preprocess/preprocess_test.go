@@ -580,6 +580,36 @@ func TestProcess(test *testing.T) {
 			src:  "throw(x)\nthrow = 1\nthrow.Do()\ny := throw",
 			want: "throw(x)\nthrow = 1\nthrow.Do()\ny := throw",
 		},
+		{
+			name: "try expression",
+			src:  "n := try strconv.Atoi(s) catch 0",
+			want: "n := __goslingTry(strconv.Atoi(s) )( 0)",
+		},
+		{
+			name: "try expressions as arguments",
+			src:  "f(try g(a, b) catch x + 1, try h() catch T{1})",
+			want: "f(__goslingTry(g(a, b) )( x + 1), __goslingTry(h() )( T{1}))",
+		},
+		{
+			name: "try expression in fallback",
+			src:  "return try a() catch try b() catch 0, nil\n",
+			want: "return __goslingTry(a() )( __goslingTry(b() )( 0)), nil\n",
+		},
+		{
+			name: "try expression in try block",
+			src:  "try {\n\tn := try a(func() { b() }) catch 0\n} catch {\n}",
+			want: "if true {\n\tn := __goslingTry(a(func() { b() }) )( 0)\n} else {\n}",
+			tries: []Try{{
+				If:       0,
+				HasCatch: true,
+				CatchEnd: len("if true {\n\tn := __goslingTry(a(func() { b() }) )( 0)\n} else {"),
+			}},
+		},
+		{
+			name: "try without catch stays an identifier",
+			src:  "x := try(a)\ny := try.b",
+			want: "x := try(a)\ny := try.b",
+		},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {
@@ -658,6 +688,7 @@ func TestProcessErrors(test *testing.T) {
 		{"catch after catch all", "try { g() } catch (e) { } catch (e is X) { }", "only the last catch can catch all errors", len("try { g() } catch (e) { } ")},
 		{"catch on next line after catch", "try { g() } catch (e is X) { }\ncatch (e) { }", "catch must be on the same line as the closing brace before it", len("try { g() } catch (e is X) { }\n")},
 		{"catch type on two lines", "try { g() } catch (e: interface{\n}) { }", "a catch type must be on one line", len("try { g() } catch (e: ")},
+		{"try expression with catch binding", "n := try g() catch (e) => 0", "a try expression cannot use the error; use a try statement", len("n := try g() ")},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {

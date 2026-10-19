@@ -283,6 +283,8 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		*pendingTry = len(processor.result.Tries) - 1
 	case processor.isThrow(tokenIndex):
 		return tokenIndex, processor.rewriteThrow(tokenIndex)
+	case current.isIdent("try") && !processor.tokenAt(tokenIndex+1).is(token.LBRACE):
+		return tokenIndex, processor.rewriteTryExpression(tokenIndex)
 	case current.is(token.ILLEGAL) && current.text == "?":
 		return processor.questionMark(tokenIndex)
 	case current.is(token.TYPE):

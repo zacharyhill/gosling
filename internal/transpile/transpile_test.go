@@ -584,6 +584,21 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:4:2: typed catch needs package errors, but the name errors is already used in this file",
 		},
 		{
+			name: "try expression on a call without an error",
+			src:  "package p\nfunc g() int { return 1 }\nfunc f() int {\n\treturn try g() catch 0\n}",
+			want: "x.gol:4:13: a try expression needs a call that returns a value and an error",
+		},
+		{
+			name: "try expression with a fallback of another type",
+			src:  "package p\nimport \"strconv\"\nfunc f() int {\n\treturn try strconv.Atoi(\"1\") catch \"x\"\n}",
+			want: "x.gol:4:37: cannot use \"x\" (untyped string constant) as int value in try expression fallback",
+		},
+		{
+			name: "fallible call in a try expression fallback",
+			src:  "package p\nimport \"strconv\"\nfunc f() int {\n\ttry {\n\t\treturn try strconv.Atoi(\"x\") catch strconv.Atoi(\"1\")\n\t} catch {\n\t\treturn 0\n\t}\n}",
+			want: "x.gol:5:38: this call can fail but only runs conditionally here",
+		},
+		{
 			name: "missing catch",
 			src:  "package p\nfunc f() {\n\ttry { }\n}",
 			want: "x.gol:3:8: try block must be followed by catch",
