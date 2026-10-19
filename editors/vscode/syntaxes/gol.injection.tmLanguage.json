@@ -430,13 +430,16 @@
       ]
     },
     "optional-parameter": {
-      "match": "\\b(\\w+)(\\?)(?=\\s+[\\w*\\[])",
+      "match": "\\b(\\w+)(\\?)(?:(:)(?=\\s*[\\w*\\[(])|(?=\\s+[\\w*\\[]))",
       "captures": {
         "1": {
           "name": "variable.parameter.gol"
         },
         "2": {
           "name": "keyword.operator.optional.gol"
+        },
+        "3": {
+          "name": "punctuation.separator.type.gol"
         }
       }
     },
