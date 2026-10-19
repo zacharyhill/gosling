@@ -404,6 +404,8 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		return processor.yield(tokenIndex)
 	case processor.isUsing(tokenIndex):
 		return processor.using(tokenIndex)
+	case processor.isAssertion(tokenIndex):
+		return processor.assertion(tokenIndex)
 	case processor.isThrow(tokenIndex):
 		return tokenIndex, processor.rewriteThrow(tokenIndex)
 	case current.isIdent("try") && !processor.tokenAt(tokenIndex+1).is(token.LBRACE):

@@ -1049,6 +1049,11 @@ func TestErrors(test *testing.T) {
 			want: "n.Close undefined (type int has no field or method Close)",
 		},
 		{
+			name: "as on a value that is not an interface",
+			src:  "package p\nfunc f(n int) int {\n\treturn n as int\n}",
+			want: "x.gol:3:9: invalid operation: n (variable of type int) is not an interface",
+		},
+		{
 			name: "parse error positions map to source",
 			src:  "package p\nfunc f() {\n\ttry { let x = } catch (e) {}\n}",
 			want: "x.gol:3:16: expected operand",

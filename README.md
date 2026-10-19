@@ -45,6 +45,7 @@ Features:
 - Method blocks: `impl User { func Greet() string { ... } }`
 - Generators: `func* walk(t: *Tree): iter.Seq[int] { yield t.Value }`
 - `using` declarations: `using file = os.Open(path)` closes `file` when the function returns
+- Type assertions with `as`: `value as io.Reader`
 
 ## Why
 
@@ -1309,6 +1310,23 @@ func walk(t *Tree) iter.Seq[int] {
 - Methods and function literals can also be generators: `func* (t *Tree) All() iter.Seq[int]`, `func*() iter.Seq[int] { ... }`.
 - A generator can use `name: type` parameters, destructured parameters, and default values. A method in an `impl` block can be a generator.
 - In a generator, a statement that starts with `yield` is a yield statement. `yield *p` gives the value that `p` points to. `yield* p` delegates to `p`.
+
+### as
+
+`x as T` becomes the type assertion `x.(T)`. As in Go, it panics if `x` does not hold a `T`. To get a second `ok` value, declare two names:
+
+```go
+const n = value as int + 1              // n := value.(int) + 1
+const [reader, ok] = value as io.Reader // reader, ok := value.(io.Reader)
+const s, isString = value as string     // s, isString := value.(string)
+```
+
+- `as` applies only to the operand directly before it, such as `a.b(c)[d]`. An operator before that operand is an error, because the meaning is not clear. Write `(a + b) as T` or `(*p) as T`.
+- The result of `as` is an operand, so `x as T + 1` adds to the result.
+- To use a field of the result, add parentheses: `(s as Circle).R`. `x as T.Field` reads `T.Field` as a type in package `T`.
+- Elsewhere, `as` is a name, as in Go: `as := 1` is valid.
+- In a ternary arm, `as` applies to the arm: `ok ? x as int : 0`. After `??`, it is an error.
+- `[v, ok]` cannot take an assertion at the end of a `?.` chain.
 
 ### Imports and generated names
 

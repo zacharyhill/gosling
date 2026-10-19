@@ -71,6 +71,7 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 		return tokenIndex, false, err
 	}
 	elementNames := listFlatElementNames(bindings)
+	allBindings := slices.Clone(bindings)
 	bindings = removeBlankElements(bindings)
 	operatorText := operator.kind.String()
 	var constBindings []binding
@@ -84,6 +85,9 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 		}
 	}
 
+	if isArray && processor.hasTopAssertion(operatorIndex+1) {
+		return processor.commaOk(open, operatorIndex, allBindings, operatorText, constBindings != nil)
+	}
 	if end, ok := processor.simpleExpr(operatorIndex + 1); ok {
 		processor.assignFromSimpleExpr(open.offset, bindings, operatorText, operatorIndex+1, end, constBindings)
 		return end, true, nil

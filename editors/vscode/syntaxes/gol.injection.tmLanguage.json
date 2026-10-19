@@ -52,6 +52,9 @@
       "include": "#optional-parameter"
     },
     {
+      "include": "#as"
+    },
+    {
       "include": "#optional-chaining"
     },
     {
@@ -417,6 +420,14 @@
         },
         "2": {
           "name": "keyword.operator.optional.gol"
+        }
+      }
+    },
+    "as": {
+      "match": "(?<=[\\w)\\]}\"`])\\s+(as)(?=\\s+(?:[\\w*\\[]|<-))",
+      "captures": {
+        "1": {
+          "name": "keyword.control.as.gol"
         }
       }
     },

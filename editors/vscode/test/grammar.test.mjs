@@ -181,6 +181,13 @@ test("using declarations", () => {
   assertNoScope(inFunctionBody("\tusing = 2"), "using", "keyword");
 });
 
+test("as assertions", () => {
+  assertScope(inFunctionBody("\tn := value as int"), "as", "keyword.control.as.gol");
+  assertScope(inFunctionBody("\tr := f(x) as io.Reader"), "as", "keyword.control.as.gol");
+  assertNoScope(inFunctionBody("\tas := 1"), "as", "keyword");
+  assertNoScope(inFunctionBody("\tx := as + 1"), "as", "keyword");
+});
+
 test("optional chaining and nullish coalescing", () => {
   const source = inFunctionBody('\tname := user?.Profile?.Name ?? "anon"');
   assertScope(source, "?.", "punctuation.accessor.optional.gol");
