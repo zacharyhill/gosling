@@ -211,3 +211,31 @@ func fromFirstUseAsArgument(xs []string) {
 	less := func(i int, j int) bool { return xs[i] < xs[j] }
 	sort.Slice(xs, less)
 }
+
+func resultType() string {
+	label := func(n int) string { return strconv.Itoa(n) }
+	return label(7)
+}
+
+func resultTypes() (int, error) {
+	parse := func(s string) (int, error) {
+		return strconv.Atoi(s)
+	}
+	return parse("12")
+}
+
+func resultTypeWithUntypedParams(xs []string) {
+	sort.Slice(xs, func(i int, j int) bool { return len(xs[i]) < len(xs[j]) })
+}
+
+func resultTypeConverts() func() any {
+	return func() any { return 1 }
+}
+
+func namedResults(text string) (int, error) {
+	parse := func(s string) (n int, err error) {
+		n, err = strconv.Atoi(s)
+		return
+	}
+	return parse(text)
+}

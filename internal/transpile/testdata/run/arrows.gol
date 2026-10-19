@@ -1,0 +1,46 @@
+package main
+
+import (
+	"fmt"
+	"sort"
+	"strconv"
+)
+
+type Shape interface{ Area() float64 }
+
+type Square struct{ Side float64 }
+
+func (square Square) Area() float64 { return square.Side * square.Side }
+
+func main() {
+	let label = (n: int): string => "#" + strconv.Itoa(n)
+	fmt.Println(label(7))
+
+	let parse = (s: string): (int, error) => strconv.Atoi(s)
+	const n, err = parse("42")
+	fmt.Println(n, err)
+	const _, bad = parse("x")
+	fmt.Println(bad != nil)
+
+	let shape = (side: float64): Shape => Square{side}
+	fmt.Println(shape(3).Area())
+
+	let words = []string{"ccc", "a", "bb"}
+	sort.Slice(words, (i, j): bool => len(words[i]) < len(words[j]))
+	fmt.Println(words)
+
+	let lengths = words.map((w): int64 => int64(len(w)))
+	fmt.Printf("%T %v\n", lengths, lengths)
+
+	let adder = (a: int): func(b: int): int => (b: int): int => a + b
+	fmt.Println(adder(1)(2))
+
+	type point struct{ X, Y int }
+	let sumPoint = ({X, Y}: point): int => X + Y
+	fmt.Println(sumPoint(point{1, 2}))
+	let points = []point{{3, 4}}
+	fmt.Println(points.map(({X}): string => fmt.Sprint(X)))
+	fmt.Println(pick(5, 6))
+}
+
+const pick = <T>(a: T, b: T): T => b

@@ -157,6 +157,10 @@ type processor struct {
 	// genericParamOffsets holds the offsets of the parameter lists of generic
 	// arrows. Their func keyword is already in the output.
 	genericParamOffsets map[int]bool
+	// resultArrows maps the offset of the "=>" of an arrow with a result
+	// type to the offset of the ")" of its parameters. The scan already
+	// rewrote their parameters and colon.
+	resultArrows map[int]int
 }
 
 // Process rewrites the gosling syntax in src into Go source with marker
@@ -183,6 +187,7 @@ func ProcessReserving(src []byte, reservedNames map[string]bool) (*Result, error
 		bodyStatements:   map[int]paramStatements{},
 		paramRenames:     map[int]paramRename{},
 		arrowStatements:  map[int]paramStatements{},
+		resultArrows:     map[int]int{},
 	}
 	for _, current := range processor.tokens {
 		if current.kind == token.IDENT {
@@ -420,8 +425,10 @@ func (processor *processor) atStmtStart(tokenIndex int) bool {
 		return true
 	}
 	switch processor.tokens[tokenIndex-1].kind {
-	case token.SEMICOLON, token.LBRACE, token.COLON:
+	case token.SEMICOLON, token.LBRACE:
 		return true
+	case token.COLON:
+		return !processor.isArrowResultColon(tokenIndex - 1)
 	}
 	return false
 }
@@ -467,7 +474,11 @@ func (processor *processor) finishClosers(tokenIndex int) {
 			return
 		}
 		switch processor.tokenAt(tokenIndex).kind {
-		case token.COMMA, token.RPAREN, token.RBRACK, token.RBRACE, token.SEMICOLON, token.COLON, token.EOF:
+		case token.COMMA, token.RPAREN, token.RBRACK, token.RBRACE, token.SEMICOLON, token.EOF:
+		case token.COLON:
+			if processor.isArrowResultColon(tokenIndex) {
+				return
+			}
 		default:
 			return
 		}

@@ -534,7 +534,7 @@ const add = (a: int, b: int) => a + b             // add := func(a int, b int) i
 - A function uses one order. If a parameter or the result has a colon, all parameters and named results must have a colon. Write `a: int, b: int`, not `a, b: int`.
 - In that order, the result type comes after `):`, as in `func f(): int`.
 - The receiver can use either order.
-- The rules apply to function declarations, function literals, function types, and interface methods.
+- The rules apply to function declarations, function literals, arrow functions, function types, and interface methods.
 
 ### for...of and for...in
 
@@ -624,6 +624,23 @@ const keys = <K comparable, V>(m map[K]V) => { ... } // func keys[K comparable, 
 - Write the type parameters as in Go, between `<` and `>`. If the last type parameter has no constraint, it gets `any`. So `<K, V>` becomes `[K, V any]`.
 - The parameters must have types.
 - The result type comes from the body. So a generic arrow cannot call itself.
+
+To declare the result types, write them after `):`. Use `name: type` for the parameters, as in [Parameter types](#parameter-types):
+
+```go
+const label = (n: int): string => strconv.Itoa(n)  // func(n int) string { ... }
+const parse = (s: string): (int, error) => {        // func(s string) (int, error) { ... }
+	return strconv.Atoi(s)
+}
+sort.Slice(xs, (i, j): bool => xs[i] < xs[j])      // func(i int, j int) bool { ... }
+```
+
+- A parameter without a type gets its type from the context. So `(i, j): bool` is valid.
+- Give all parameters a type, or give no parameter a type. `(a: int, b): bool` is an error.
+- Go order is an error with a result type. Write `(x: int): string`, not `(x int): string`.
+- The parameters must be in parentheses. Write `(x): int => x`, not `x: int => x`.
+- A declared result type has priority over the body. So `(): any => 1` returns an `any`.
+- In `{f(a): x => x}`, `f(a)` is a call, so `x => x` is an arrow without a result type.
 
 ### Array methods
 
@@ -719,7 +736,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - In a try block, an optional call that returns an error is an error.
 - Unions cannot be generic or be in a `type ( ... )` group.
 - gosling does not check switches in `.go` files.
-- Arrow functions cannot declare a return type. Arrays do not have array methods, only slices.
+- Arrays do not have array methods, only slices.
 - In a `case` expression, a function type or literal cannot use `):`. Use Go order there.
 - VS Code highlights the name in `name: type` parameters as a type.
 - An arrow cannot get a type from the context if a local declaration hides the name of that type. Rename the local declaration.

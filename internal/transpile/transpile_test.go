@@ -444,6 +444,21 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:12: cannot infer the parameter types of this arrow function",
 		},
 		{
+			name: "arrow body that does not match its result type",
+			src:  "package p\nfunc f() {\n\tlet g = (x: int): string => x\n\t_ = g\n}",
+			want: "x.gol:3:30: cannot use x (variable of type int) as string value in return statement",
+		},
+		{
+			name: "go parameter order with arrow result",
+			src:  "package p\nfunc f() {\n\tlet g = (x int): string => \"\"\n\t_ = g\n}",
+			want: "x.gol:3:11: write name: type for every parameter",
+		},
+		{
+			name: "arrow with result type and context with other parameters",
+			src:  "package p\nimport \"sort\"\nfunc f(xs []int) {\n\tsort.Slice(xs, (i): bool => true)\n}",
+			want: "x.gol:4:17: cannot infer the parameter types of this arrow function",
+		},
+		{
 			name: "forEach used as a value",
 			src:  "package p\nfunc f(xs []int) {\n\tlet y = xs.forEach(x => println(x))\n\t_ = y\n}",
 			want: "x.gol:3:10: forEach can only be used as a statement",

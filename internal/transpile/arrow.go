@@ -60,18 +60,22 @@ func (file *file) findArrows() {
 			// its type and body lets the code for literals fill in its result.
 			funcLit, ok = &ast.FuncLit{Type: funcDecl.Type, Body: funcDecl.Body}, true
 		}
-		if !ok || funcLit.Type.Results == nil || len(funcLit.Type.Results.List) != 1 {
+		if !ok {
 			return true
 		}
-		resultIdent, ok := funcLit.Type.Results.List[0].Type.(*ast.Ident)
-		if !ok || resultIdent.Name != preprocess.ResultMarker {
-			return true
-		}
-		arrowFunc := &arrow{funcLit: funcLit, resultPlaceholder: resultIdent}
+		arrowFunc := &arrow{funcLit: funcLit, resultPlaceholder: findResultPlaceholder(funcLit.Type)}
 		for _, field := range funcLit.Type.Params.List {
 			if paramIdent, ok := field.Type.(*ast.Ident); ok && paramIdent.Name == preprocess.UntypedMarker {
 				arrowFunc.untyped = append(arrowFunc.untyped, paramIdent)
 			}
+		}
+		if arrowFunc.resultPlaceholder == nil {
+			// An arrow with written result types needs only its parameter types.
+			arrowFunc.resolved = true
+			if len(arrowFunc.untyped) > 0 {
+				file.arrows = append(file.arrows, arrowFunc)
+			}
+			return true
 		}
 		if returnStmt := file.findBodyReturn(funcLit.Body, isParamStatement); returnStmt != nil && len(returnStmt.Results) > 0 {
 			arrowFunc.bodyReturn = returnStmt
@@ -106,6 +110,18 @@ func (file *file) findBodyReturn(body *ast.BlockStmt, isParamStatement map[int]b
 	}
 	returnStmt, _ := body.List[len(body.List)-1].(*ast.ReturnStmt)
 	return returnStmt
+}
+
+// findResultPlaceholder returns the result placeholder of an arrow, or nil.
+func findResultPlaceholder(funcType *ast.FuncType) *ast.Ident {
+	if funcType.Results == nil || len(funcType.Results.List) != 1 {
+		return nil
+	}
+	resultIdent, ok := funcType.Results.List[0].Type.(*ast.Ident)
+	if !ok || resultIdent.Name != preprocess.ResultMarker {
+		return nil
+	}
+	return resultIdent
 }
 
 func returnsValue(body *ast.BlockStmt) bool {
@@ -503,8 +519,8 @@ func (lowerer *lowerer) lowerArrows() {
 			lowerer.errorf(lowerer.file, arrowFunc.funcLit.Pos(), errNilArrowResult)
 			continue
 		}
-		if !arrowFunc.resolved && !arrowFunc.isVoidBlock {
-			continue // the type checker already reported the error
+		if arrowFunc.resultPlaceholder == nil || (!arrowFunc.resolved && !arrowFunc.isVoidBlock) {
+			continue // the source has the result types, or the type checker reported the error
 		}
 		names := make([]string, len(arrowFunc.results))
 		for resultIndex, resultType := range arrowFunc.results {

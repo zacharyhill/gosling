@@ -8,8 +8,10 @@ import (
 // Arrow functions become function literals with placeholder types. The
 // transpiler replaces them with the types that type checking finds:
 //
-//	x => x * 2         func(x __goslingU) __goslingR { return x * 2 }
-//	(x int) => { ... } func(x int) __goslingR { ... }
+//	x => x * 2                func(x __goslingU) __goslingR { return x * 2 }
+//	(x int) => { ... }        func(x int) __goslingR { ... }
+//	(x): string => f(x)       func(x __goslingU) string { return f(x) }
+//	(x: int): string => f(x)  func(x int) string { return f(x) }
 const (
 	UntypedMarker = "__goslingU"
 	ResultMarker  = "__goslingR"
@@ -20,6 +22,10 @@ func (processor *processor) arrow(tokenIndex int) (int, error) {
 	assign := processor.tokens[tokenIndex]
 	if tokenIndex == 0 {
 		return 0, &Error{assign.offset, "=> must follow a parameter list"}
+	}
+	if closeOffset, isResultArrow := processor.resultArrows[assign.offset]; isResultArrow {
+		resultEnd := processor.tokens[tokenIndex-1].end()
+		return processor.openArrowBody(tokenIndex, resultEnd, "", processor.arrowStatements[closeOffset]), nil
 	}
 	previous := processor.tokens[tokenIndex-1]
 	var statements paramStatements
@@ -38,22 +44,29 @@ func (processor *processor) arrow(tokenIndex int) (int, error) {
 	default:
 		return 0, &Error{assign.offset, "=> must follow a parameter list"}
 	}
+	return processor.openArrowBody(tokenIndex, assign.offset, ResultMarker, statements), nil
+}
+
+// openArrowBody replaces the source from start to the end of the "=>" at token
+// tokenIndex with result, and opens the body. statements declare the names
+// of destructured parameters. It returns the index of the last token it uses.
+func (processor *processor) openArrowBody(tokenIndex, start int, result string, statements paramStatements) int {
 	greater := processor.tokenAt(tokenIndex + 1)
 	if processor.tokenAt(tokenIndex + 2).is(token.LBRACE) {
-		processor.replace(assign.offset, greater.end(), ResultMarker)
+		processor.replace(start, greater.end(), result)
 		if statements.text != "" {
 			processor.bodyStatements[tokenIndex+2] = statements
 		}
-		return tokenIndex + 1, nil
+		return tokenIndex + 1
 	}
-	processor.openExpressionBody(assign, greater, processor.tokenAt(tokenIndex+2), statements)
-	return tokenIndex + 1, nil
+	processor.openExpressionBody(start, greater, processor.tokenAt(tokenIndex+2), result, statements)
+	return tokenIndex + 1
 }
 
-// openExpressionBody replaces the "=>" of an expression-body arrow with the
-// start of a block that returns the body. statements declare the names of
-// destructured parameters. finishClosers closes the block.
-func (processor *processor) openExpressionBody(assign, greater, bodyStart lexeme, statements paramStatements) {
+// openExpressionBody replaces the source from start to the end of the "=>"
+// of an expression-body arrow with result and the start of a block that
+// returns the body. finishClosers closes the block.
+func (processor *processor) openExpressionBody(start int, greater, bodyStart lexeme, result string, statements paramStatements) {
 	isParenthesized := bytes.IndexByte(processor.src[greater.end():bodyStart.offset], '\n') >= 0
 	returnText := " return"
 	switch {
@@ -64,9 +77,9 @@ func (processor *processor) openExpressionBody(assign, greater, bodyStart lexeme
 		returnText += " "
 	}
 	if statements.text == "" {
-		processor.replace(assign.offset, greater.end(), ResultMarker+" {"+returnText)
+		processor.replace(start, greater.end(), result+" {"+returnText)
 	} else {
-		processor.replace(assign.offset, greater.end(), ResultMarker+" {")
+		processor.replace(start, greater.end(), result+" {")
 		processor.insertParamStatements(greater.end(), statements)
 		processor.replace(greater.end(), greater.end(), returnText)
 	}
@@ -83,19 +96,7 @@ func (processor *processor) arrowParams(rparenIndex int) (paramStatements, error
 	if rparenOffset := processor.tokens[rparenIndex].offset; processor.typedArrows[rparenOffset] {
 		return processor.arrowStatements[rparenOffset], nil
 	}
-	lparenIndex, depth := -1, 0
-	for tokenIndex := rparenIndex; tokenIndex >= 0; tokenIndex-- {
-		switch processor.tokens[tokenIndex].kind {
-		case token.RPAREN:
-			depth++
-		case token.LPAREN:
-			depth--
-		}
-		if depth == 0 {
-			lparenIndex = tokenIndex
-			break
-		}
-	}
+	lparenIndex := processor.findMatchingLParen(rparenIndex)
 	if lparenIndex < 0 || processor.tokens[lparenIndex].offset < processor.copiedUpTo {
 		return paramStatements{}, &Error{processor.tokens[rparenIndex].offset, "unsupported arrow function"}
 	}
@@ -187,7 +188,7 @@ func (processor *processor) findTypeParamsEnd(lessIndex int) (int, bool) {
 }
 
 // hasArrowAfter reports whether "=>" follows the parameter list that starts
-// at the ( at token lparenIndex.
+// at the ( at token lparenIndex, maybe after a result type.
 func (processor *processor) hasArrowAfter(lparenIndex int) bool {
 	depth := 0
 	for tokenIndex := lparenIndex; tokenIndex < len(processor.tokens); tokenIndex++ {
@@ -198,7 +199,7 @@ func (processor *processor) hasArrowAfter(lparenIndex int) bool {
 			depth--
 		}
 		if depth == 0 {
-			return processor.tokenAt(tokenIndex+1).is(token.ASSIGN) && processor.tokenAt(tokenIndex+2).is(token.GTR) && processor.touchesNext(tokenIndex+1)
+			return processor.isArrow(tokenIndex+1) || processor.isArrowResultColon(tokenIndex+1)
 		}
 	}
 	return false
@@ -210,4 +211,105 @@ func isOpener(current lexeme) bool {
 
 func isCloser(current lexeme) bool {
 	return current.is(token.RPAREN) || current.is(token.RBRACK) || current.is(token.RBRACE)
+}
+
+// findArrowAfterResult returns the index of the "=>" after the result type that
+// starts at the colon at token colonIndex. The colon must follow a
+// parameter list. A list after an operand is a call, as in {f(a): x => x},
+// and a list after func is a function type.
+func (processor *processor) findArrowAfterResult(colonIndex int) (int, bool) {
+	if !processor.followsParamList(colonIndex) || processor.isFuncTypeColon(colonIndex) {
+		return 0, false
+	}
+	depth := 0
+	for tokenIndex := colonIndex + 1; tokenIndex < len(processor.tokens); tokenIndex++ {
+		current := processor.tokens[tokenIndex]
+		switch {
+		case current.is(token.ASSIGN) && depth == 0:
+			return tokenIndex, tokenIndex > colonIndex+1 && processor.isArrow(tokenIndex)
+		case isOpener(current):
+			depth++
+		case isCloser(current):
+			depth--
+			if depth < 0 {
+				return 0, false
+			}
+		case current.is(token.COLON):
+			// Inside brackets a colon annotates a name. Outside, it starts the
+			// result of a function type, as in (): func(x: int): int => ...
+			if depth == 0 && !processor.isFuncTypeColon(tokenIndex) {
+				return 0, false
+			}
+		case !isTypeToken(current, depth):
+			return 0, false
+		}
+	}
+	return 0, false
+}
+
+// isArrowResultColon reports whether the colon at colonIndex starts the
+// result type of an arrow.
+func (processor *processor) isArrowResultColon(colonIndex int) bool {
+	_, ok := processor.findArrowAfterResult(colonIndex)
+	return ok
+}
+
+// followsParamList reports whether the token at colonIndex is a colon after
+// a parenthesized list that is not a call.
+func (processor *processor) followsParamList(colonIndex int) bool {
+	if colonIndex == 0 || !processor.tokenAt(colonIndex).is(token.COLON) || !processor.tokens[colonIndex-1].is(token.RPAREN) {
+		return false
+	}
+	lparenIndex := processor.findMatchingLParen(colonIndex - 1)
+	return lparenIndex == 0 || (lparenIndex > 0 && !isOperandEnd(processor.tokens[lparenIndex-1]))
+}
+
+// isFuncTypeColon reports whether the colon at colonIndex follows the
+// parameters of a function type, as in func(x: int): int.
+func (processor *processor) isFuncTypeColon(colonIndex int) bool {
+	if colonIndex == 0 || !processor.tokens[colonIndex-1].is(token.RPAREN) {
+		return false
+	}
+	lparenIndex := processor.findMatchingLParen(colonIndex - 1)
+	return lparenIndex > 0 && processor.tokens[lparenIndex-1].is(token.FUNC)
+}
+
+// isTypeToken reports whether current can be part of a type expression at
+// the bracket depth. Commas, semicolons, and tags occur only in brackets.
+func isTypeToken(current lexeme, depth int) bool {
+	switch current.kind {
+	case token.IDENT, token.PERIOD, token.MUL, token.MAP, token.CHAN, token.ARROW, token.FUNC,
+		token.STRUCT, token.INTERFACE, token.INT, token.ELLIPSIS:
+		return true
+	case token.COMMA, token.SEMICOLON, token.STRING:
+		return depth > 0
+	}
+	return false
+}
+
+func isOperandEnd(current lexeme) bool {
+	switch current.kind {
+	case token.IDENT, token.INT, token.FLOAT, token.IMAG, token.CHAR, token.STRING,
+		token.RPAREN, token.RBRACK, token.RBRACE:
+		return true
+	}
+	return false
+}
+
+// findMatchingLParen returns the index of the ( that the ) at token rparenIndex
+// closes, or -1.
+func (processor *processor) findMatchingLParen(rparenIndex int) int {
+	depth := 0
+	for tokenIndex := rparenIndex; tokenIndex >= 0; tokenIndex-- {
+		switch processor.tokens[tokenIndex].kind {
+		case token.RPAREN:
+			depth++
+		case token.LPAREN:
+			depth--
+		}
+		if depth == 0 {
+			return tokenIndex
+		}
+	}
+	return -1
 }
