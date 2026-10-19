@@ -490,6 +490,16 @@ func TestProcess(test *testing.T) {
 			want: "type F func(int, ...string)\nfunc g(...int) {}\nfunc (r R) M(int, ...int) {}\ntype I interface {\n\tM(int, ...string)\n}",
 		},
 		{
+			name: "generic variadic parameter types are not spreads",
+			src:  "func f[T any](...T) {}\nfunc g[K comparable, V any](int, ...V) {}\ntype F[T any] func(...T)\nfunc h[F func(...int)](...F) {}",
+			want: "func f[T any](...T) {}\nfunc g[K comparable, V any](int, ...V) {}\ntype F[T any] func(...T)\nfunc h[F func(...int)](...F) {}",
+		},
+		{
+			name: "spread in a call of an instantiated function",
+			src:  "f[int](...xs)",
+			want: "f[int](xs...)",
+		},
+		{
 			name: "struct spread",
 			src:  "p2 := Point{...p, X: 5}",
 			want: "p2 := Point(__goslingWith(p, __goslingKeys(Point{X: 5})))",
