@@ -29,7 +29,7 @@ Features:
 - `let` and `const` declarations: `let n = 0`, `let names: []string`, `const data = os.ReadFile(path)`
 - Parameter types after a colon: `func f(a: int, b: string): bool`
 - `for (const x of xs)`, `for (const k in m)`, and `for (let i = 0; i < n; i++)`
-- Optional chaining, `??`, and `??=`: `user?.Profile?.Name ?? "anon"`, `cfg.Port ??= new(8080)`
+- Optional chaining, `??`, and `??=`: `user?.Profile?.Name ?? "anon"`, `ports?.[name]`, `onDone?.()`, `cfg.Port ??= new(8080)`
 - Arrow functions: `x => x * 2`, `(a, b) => a + b`
 - Array methods on slices and arrays: `nums.filter(n => n%2 == 0).map(n => n * n)`
 - Map methods: `ages.has(name)`, `ages.get(name) ?? 0`, `ages.keys()`
@@ -609,6 +609,25 @@ A pattern in a `for...in` loop is an error. To read the keys and values of a map
 
 `a?.b` reads `b` only if `a` is not nil. If a link is nil, gosling skips the rest of the chain and gives the zero value. The left side of `?.` must be a pointer or an interface. A type parameter is allowed only if each type in its constraint can be nil, as in `[P *User]`.
 
+`?.[index]` and `?.(args)` are also links:
+
+- `m?.[k]` skips the rest of the chain if the map `m` has no key `k`. A nil map has no keys.
+- `xs?.[i]` skips the rest of the chain if `i` is out of range, as in TypeScript. A nil slice has no elements. The left side can also be a pointer to an array. Then a nil pointer also skips the chain.
+- `f?.(x)` calls `f` only if `f` is not nil.
+- As in Go, a pointer to a slice or a map cannot be indexed.
+- `?.[` cannot start a slice expression. `xs?.[1:]` is an error.
+
+```go
+const port = ports?.[name] ?? 8080
+
+port := func() int {
+	if v, ok := ports[name]; ok {
+		return v
+	}
+	return 8080
+}()
+```
+
 `x ?? d` gives `d` if `x` is nil or its chain was skipped. If `x` is a pointer and `d` has the element type, gosling dereferences `x`. So `cfg.Port ?? 8080` with `Port *int` gives an `int`. This also applies to a type parameter whose types are all pointers to the same type, as in `[P *int]`.
 
 These are errors:
@@ -940,7 +959,6 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - Without `catch panic`, a panic does not run `finally` blocks. A panic in a catch block or in a catch panic block also does not run them.
 - `catch panic` cannot follow a typed catch clause.
 - Object patterns have no rest element.
-- `?.[index]` and `?.(call)` are not supported.
 - In a try block, an optional call that returns an error is an error.
 - gosling does not check switches in `.go` files.
 - In a `case` expression, a function type or literal cannot use `):`. Use Go order there.

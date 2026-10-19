@@ -85,5 +85,32 @@ func main() {
 	users ??= []*User{full}
 	users[0].Profile ??= &Profile{Name: "unused"}
 	fmt.Println(users[0].Profile.Name)
+	let ages = map[string]int{"ada": 36}
+	let noAges: map[string]int
+	fmt.Println(ages?.["ada"] ?? -1, ages?.["bob"] ?? -1, noAges?.["ada"] ?? -2)
+	let usersByName = map[string]*User{"ada": full}
+	fmt.Println(usersByName?.["ada"]?.Profile?.Name ?? "?", usersByName?.["bob"]?.Profile?.Name ?? "?")
+	let letters = []string{"a", "b"}
+	let noLetters: []string
+	let back = -1
+	fmt.Println(letters?.[1] ?? "?", letters?.[2] ?? "?", letters?.[back] ?? "?", noLetters?.[0] ?? "?")
+	let calls = 0
+	let index = () => {
+		calls++
+		return 0
+	}
+	fmt.Println(letters?.[index()] ?? "?", calls)
+	let grid = &[2]int{7, 8}
+	let noGrid: *[2]int
+	fmt.Println(grid?.[1] ?? -1, noGrid?.[1] ?? -1)
+	let double = (n int) => n * 2
+	let noFunc: func(int) int
+	fmt.Println(double?.(4) ?? 0, noFunc?.(4) ?? 0)
+	let say: func(string) = s => fmt.Println("say", s)
+	let silent: func(string)
+	say?.("hi")
+	silent?.("hi")
+	let handlers = map[string]func() string{"a": () => "handled"}
+	fmt.Println(handlers?.["a"]?.() ?? "none", handlers?.["b"]?.() ?? "none")
 	fmt.Println("done")
 }

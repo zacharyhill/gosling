@@ -2,7 +2,8 @@ package preprocess
 
 import "go/token"
 
-// OMarker marks an optional selector. a?.b becomes a.__goslingO.b.
+// OMarker marks an optional link. a?.b becomes a.__goslingO.b, a?.[i]
+// becomes a.__goslingO[i], and f?.(x) becomes f.__goslingO(x).
 const OMarker = "__goslingO"
 
 // questionMark rewrites "??" (nullish coalescing), "??=" (nullish
@@ -20,7 +21,8 @@ func (processor *processor) questionMark(tokenIndex int) (int, error) {
 		return tokenIndex + 1, nil
 	case isAdjacent && next.is(token.PERIOD):
 		if after := processor.tokenAt(tokenIndex + 2); (after.is(token.LBRACK) || after.is(token.LPAREN)) && processor.touchesNext(tokenIndex+1) {
-			return 0, &Error{question.offset, "?.[ and ?.( are not supported"}
+			processor.replace(question.offset, next.end(), "."+OMarker)
+			return tokenIndex + 1, nil
 		}
 		processor.replace(question.offset, next.end(), "."+OMarker+".")
 		return tokenIndex + 1, nil

@@ -71,6 +71,11 @@ func TestProcess(test *testing.T) {
 			assigns: []int{len("cfg.Port ")},
 		},
 		{
+			name: "optional index and call",
+			src:  "x := m?.[k]?.(1)",
+			want: "x := m.__goslingO[k].__goslingO(1)",
+		},
+		{
 			name: "arrow with untyped parameter",
 			src:  "f(x => x * 2, y)",
 			want: "f(func(x __goslingU) __goslingR { return x * 2 }, y)",
@@ -1104,7 +1109,6 @@ func TestProcessErrors(test *testing.T) {
 		{"for in destructuring", "for (const [k, v] in m) { }", "destructuring in a loop needs for...of", len("for (const ")},
 		{"parameter pattern without body", "type F func({X}: P)\n", "a destructured parameter needs a function body", len("type F func(")},
 		{"parameter pattern without type", "func f({X}) {\n}", "a destructured parameter needs a type", len("func f(")},
-		{"optional index", "x := a?.[0]", "?.[ and ?.( are not supported", len("x := a")},
 		{"union inside function", "func f() {\n\ttype S = A | B\n}", "union types must be declared at package level", len("func f() {\n\t")},
 		{"generic union variant without type arguments", "type R[T any] = Ok[T] | Err\n", "union variant Err must have the type arguments [T]", len("type R[T any] = Ok[T] | ")},
 		{"generic union variant with other type arguments", "type R[K, V any] = Ok[V, K] | Err[K, V]\n", "union variant Ok[V, K] must have the type arguments [K, V]", len("type R[K, V any] = ")},
