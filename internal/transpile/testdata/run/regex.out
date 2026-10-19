@@ -3,5 +3,6 @@ Hello word
 a/b other
 [a b c]
 oo
+{ab} "\"}" 2
 5
 false "b:b" [false true]

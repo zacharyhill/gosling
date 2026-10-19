@@ -1301,6 +1301,21 @@ func TestProcess(test *testing.T) {
 			want: "re := __goslingRegexp(\"`\")",
 		},
 		{
+			name: "regex literals with braces and quotes in a template",
+			src:  "s := t`${/}/.FindString(a)} ${/\\{\"}/.FindString(b):q} ${m[\"}\"] / 2}`",
+			want: "s := __goslingT(``, __goslingRegexp(`}`).FindString(a), ` `, __goslingFormat(__goslingRegexp(`\\{\"}`).FindString(b), \"q\"), ` `, m[\"}\"] / 2, ``)",
+		},
+		{
+			name: "regex literal after a keyword in a template",
+			src:  "s := t`${func() bool { return /'}/.MatchString(a) }()}`",
+			want: "s := __goslingT(``, func() bool { return __goslingRegexp(`'}`).MatchString(a) }(), ``)",
+		},
+		{
+			name: "division in a template",
+			src:  "s := t`${a / b} ${(a) / 2 / c} ${xs[0] / 2 / 1.5}`",
+			want: "s := __goslingT(``, a / b, ` `, (a) / 2 / c, ` `, xs[0] / 2 / 1.5, ``)",
+		},
+		{
 			name: "division after closing brackets",
 			src:  "n := (a) / b[0] / T{}.x / 2",
 			want: "n := (a) / b[0] / T{}.x / 2",

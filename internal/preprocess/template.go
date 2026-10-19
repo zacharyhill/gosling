@@ -214,7 +214,7 @@ func findFormatSpec(content string, from, to int) (int, string) {
 }
 
 // exprExtent finds the "}" that closes the interpolation starting at from.
-// It skips nested brackets and quoted strings.
+// It skips nested brackets, quoted strings, and regex literals.
 func exprExtent(content string, from int) (int, bool) {
 	depth := 0
 	for charIndex := from; charIndex < len(content); charIndex++ {
@@ -234,9 +234,40 @@ func exprExtent(content string, from int) (int, bool) {
 				return 0, false
 			}
 			charIndex = end
+		case '/':
+			if !isRegexStart(content, from, charIndex) {
+				continue
+			}
+			if bodyEnd, closed := scanRegexBody([]byte(content), charIndex); closed {
+				charIndex = bodyEnd
+			}
 		}
 	}
 	return 0, false
+}
+
+// operandClosers are the characters that end an operand, other than names.
+const operandClosers = ")]}\"'`"
+
+// isRegexStart reports whether the "/" at slashIndex starts an operand in the
+// interpolation that starts at from. As in JavaScript, a "/" after an operand
+// is a division.
+func isRegexStart(content string, from, slashIndex int) bool {
+	previousEnd := slashIndex
+	for previousEnd > from && strings.ContainsRune(" \t\n", rune(content[previousEnd-1])) {
+		previousEnd--
+	}
+	if previousEnd == from {
+		return true
+	}
+	if previousChar := content[previousEnd-1]; strings.IndexByte(operandClosers, previousChar) >= 0 || previousChar >= utf8.RuneSelf {
+		return false
+	}
+	wordStart := previousEnd
+	for wordStart > from && isIdentByte(content[wordStart-1]) {
+		wordStart--
+	}
+	return wordStart == previousEnd || token.Lookup(content[wordStart:previousEnd]).IsKeyword()
 }
 
 // quoteEnd returns the index of the quote closing the string or rune
