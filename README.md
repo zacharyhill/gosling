@@ -21,7 +21,7 @@ func Load(path string) (Config, error) {
 
 Features:
 
-- `try` / `catch` / `finally` and `throw`
+- `try` / `catch` / `finally` and `throw`, with typed catch clauses: `catch (e: *fs.PathError)`, `catch (e is fs.ErrNotExist)`
 - Template literals: `` t`hello ${name}` ``
 - Destructuring: `const {Name: name, Port} = cfg`, `let [first, ...rest] = xs`
 - `let` and `const` declarations: `let n = 0`, `let names: []string`, `const data = os.ReadFile(path)`
@@ -312,6 +312,30 @@ catch_N:
 end_N:
 }
 ```
+
+### Typed catch
+
+A catch clause can catch only some errors. gosling tests the clauses in order. The first clause that matches runs.
+
+```go
+try {
+	const data = os.ReadFile(path)
+	return parse(data)
+} catch (e: *fs.PathError) {
+	return t`cannot read ${e.Path}`
+} catch (e is fs.ErrNotExist) {
+	return "missing"
+} catch (e) {
+	return e.Error()
+}
+```
+
+- `catch (e: T)` uses `errors.As`. `e` has the type `T`. `T` must implement `error` or be an interface.
+- `catch (e is value)` uses `errors.Is`. `e` is the error.
+- Only the last catch can catch all errors, with `catch (e)` or `catch`. This catch is optional.
+- Without it, an error that no clause matches goes to the outer try. The finally block of this try runs first. If no outer try exists, the function returns the error. Then the last result of the function must be `error`, and the other results get their zero values.
+- Each catch must be on the same line as the closing brace before it.
+- A catch type must be on one line.
 
 ### finally
 

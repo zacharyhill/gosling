@@ -564,6 +564,26 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:8: cannot use 1 (constant of type int) as error value in throw",
 		},
 		{
+			name: "unmatched errors with no outer try in a function without an error result",
+			src:  "package p\nimport \"os\"\nfunc f() {\n\ttry {\n\t\tos.Remove(\"x\")\n\t} catch (e is os.ErrNotExist) {\n\t}\n}",
+			want: "x.gol:4:2: errors that no catch matches need an outer try or a function whose last result is error; add a last catch (e)",
+		},
+		{
+			name: "catch type that is not an error",
+			src:  "package p\nimport \"os\"\nfunc f() {\n\ttry {\n\t\tos.Remove(\"x\")\n\t} catch (e: int) {\n\t} catch {\n\t}\n}",
+			want: "x.gol:6:14: catch type int does not implement error",
+		},
+		{
+			name: "catch value that is not an error",
+			src:  "package p\nimport \"os\"\nfunc f() {\n\ttry {\n\t\tos.Remove(\"x\")\n\t} catch (e is 1) {\n\t} catch {\n\t}\n}",
+			want: "x.gol:6:16: cannot use 1 (constant of type int) as error value in catch",
+		},
+		{
+			name: "typed catch needs errors but the name is taken",
+			src:  "package p\nimport \"os\"\nfunc f(errors int) {\n\ttry {\n\t\tos.Remove(\"x\")\n\t} catch (e is os.ErrNotExist) {\n\t} catch {\n\t}\n}",
+			want: "x.gol:4:2: typed catch needs package errors, but the name errors is already used in this file",
+		},
+		{
 			name: "missing catch",
 			src:  "package p\nfunc f() {\n\ttry { }\n}",
 			want: "x.gol:3:8: try block must be followed by catch",

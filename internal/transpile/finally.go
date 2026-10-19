@@ -233,29 +233,29 @@ func (lowerer *lowerer) lowerExit(stmt ast.Stmt, try *tryContext) bool {
 	if signature == nil {
 		return false
 	}
-	lowerer.returnThroughFinally(stmt, layers, signature, returnStmt.Results[0].Pos(), "")
+	destination, entry := lowerer.prepareFinallyReturn(layers, signature)
+	lowerer.replace(returnStmt.Return, returnStmt.Results[0].Pos(), "{\n"+destination+" = ", line)
+	lowerer.insertAfter(stmt, "", "\n"+entry+"\n}", line)
 	return true
 }
 
-// returnThroughFinally sends a return with values through layers. The
-// values are valuesPrefix and the source text from valuesStart to the end of
-// stmt. The output evaluates them before the finally code runs.
-func (lowerer *lowerer) returnThroughFinally(stmt ast.Stmt, layers []*finallyLayer, signature *types.Signature, valuesStart token.Pos, valuesPrefix string) {
-	line := lowerer.line(stmt.Pos())
+// prepareFinallyReturn registers a return with values that leaves layers. It
+// returns the variables that receive the values, and the code that then
+// runs the finally blocks and returns.
+func (lowerer *lowerer) prepareFinallyReturn(layers []*finallyLayer, signature *types.Signature) (destination, entry string) {
 	for _, layer := range layers {
 		if !layer.terminates {
 			lowerer.ensureReturnVars(layer, signature)
 		}
 	}
 	outermost := layers[len(layers)-1]
-	entry := lowerer.enter(layers, 0, "return "+strings.Join(outermost.returnVars, ", "), true)
-	destination := strings.Join(layers[0].returnVars, ", ")
+	entry = lowerer.enter(layers, 0, "return "+strings.Join(outermost.returnVars, ", "), true)
+	destination = strings.Join(layers[0].returnVars, ", ")
 	if layers[0].terminates {
 		// The output never returns the values but still evaluates them.
 		destination = strings.TrimSuffix(strings.Repeat("_, ", signature.Results().Len()), ", ")
 	}
-	lowerer.replace(stmt.Pos(), valuesStart, "{\n"+destination+" = "+valuesPrefix, line)
-	lowerer.insertAfter(stmt, "", "\n"+entry+"\n}", line)
+	return destination, entry
 }
 
 // jumpOut returns the code for a failure in try that target catches. The
@@ -278,7 +278,7 @@ func (lowerer *lowerer) jumpOut(try, target *tryContext, final string) string {
 // statement with a finally block.
 func (lowerer *lowerer) emitFinally(parts *tryStatement) {
 	stmt, layer := parts.stmt, parts.context.finally
-	hasCatch := parts.catch != nil && !parts.isCatchDropped
+	hasCatch := parts.hasCatch() && !parts.isCatchDropped
 	canTryComplete := !neverCompletes(stmt.Body, neverReturns(lowerer.typeInfo))
 	if hasCatch && canTryComplete {
 		layer.gotos++ // the jump over the catch block
@@ -291,7 +291,7 @@ func (lowerer *lowerer) emitFinally(parts *tryStatement) {
 	lowerer.emitFinallyOpening(parts, hasCatch, canTryComplete)
 	// If no path falls through the try statement, the output must not fall
 	// through. Otherwise Go reports a missing return.
-	isEndUnreachable := !layer.terminates && isTerminating(stmt.Body) && (!hasCatch || isTerminating(parts.catch))
+	isEndUnreachable := !layer.terminates && isTerminating(stmt.Body) && (!hasCatch || isTerminating(parts.catchStmt()))
 	finallyBlock := parts.finallyBlock
 	if isEndUnreachable {
 		lowerer.checkBuiltins(finallyBlock.Rbrace, "finally", "panic")
@@ -337,8 +337,9 @@ func (lowerer *lowerer) emitFinallyOpening(parts *tryStatement, hasCatch, canTry
 		if canTryComplete {
 			middle += "goto " + layer.label + "\n"
 		}
-		lowerer.replaceOffsets(lowerer.offset(stmt.Body.Rbrace), parts.catchEnd, middle+parts.context.catchLabel()+":\n{"+parts.prologue, bodyEnd)
-		lowerer.replace(parts.catch.Rbrace, finallyBlock.Lbrace+1, opening, lowerer.line(parts.catch.Rbrace))
+		lowerer.emitCatches(parts, middle+parts.context.catchLabel()+":\n{")
+		rbrace := parts.lastCatchRbrace()
+		lowerer.replace(rbrace, finallyBlock.Lbrace+1, "}"+parts.chainEnd+"\n"+label+"{", lowerer.line(rbrace))
 	case parts.isCatchDropped:
 		lowerer.drop(stmt.Body.Rbrace, finallyBlock.Lbrace+1, opening, bodyEnd)
 	default:

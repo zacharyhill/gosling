@@ -1,0 +1,10 @@
+ok
+code 7
+missing: wrapped: not found
+temporary true
+rest: other
+ok <nil> [inner finally]
+missing <nil> [inner missing inner finally]
+ other [inner finally]
+done [inner code inner finally]
+done [inner finally outer other]

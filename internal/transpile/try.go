@@ -80,13 +80,17 @@ func (lowerer *lowerer) callSite(stmt ast.Stmt) (callSite, bool) {
 
 // tryStatement holds the pieces of one try statement during lowering.
 type tryStatement struct {
-	stmt           *ast.IfStmt
-	catch          *ast.BlockStmt // nil without a catch clause
-	catchBody      []ast.Stmt     // the user's catch code, without generated lines
-	catchEnd       int            // offset after the generated catch prologue
-	finallyBlock   *ast.BlockStmt // nil without a finally clause
-	context        *tryContext
-	prologue       string // code that starts the catch block
+	stmt         *ast.IfStmt
+	catch        *ast.BlockStmt // nil without a catch clause that catches all errors
+	filters      []*filterClause
+	catchBody    []ast.Stmt     // the user's catch code, without generated lines
+	catchEnd     int            // offset after the generated catch prologue
+	finallyBlock *ast.BlockStmt // nil without a finally clause
+	context      *tryContext
+	prologue     string // code that starts the catch block
+	// chainEnd is the code after the last typed catch clause. It ends the
+	// if chain of the clauses.
+	chainEnd       string
 	isCatchDropped bool
 }
 
@@ -94,8 +98,12 @@ func (lowerer *lowerer) lowerTry(stmt *ast.IfStmt, preprocessedTry preprocess.Tr
 	parts := lowerer.newTryStatement(stmt, preprocessedTry, outerTry)
 	lowerer.walkTryStatement(parts, preprocessedTry.Binding, outerTry)
 	// If nothing in the try can fail, the catch block never runs.
-	parts.isCatchDropped = parts.catch != nil && parts.context.jumps == 0
+	parts.isCatchDropped = parts.hasCatch() && parts.context.jumps == 0
 	parts.prologue = lowerer.catchPrologue(parts)
+	if len(parts.filters) > 0 && !parts.isCatchDropped {
+		// Before the emit, because unmatched errors can add finally state.
+		parts.chainEnd = lowerer.buildCatchChainEnd(parts)
+	}
 	switch {
 	case parts.finallyBlock != nil:
 		lowerer.emitFinally(parts)
@@ -129,6 +137,10 @@ func (lowerer *lowerer) newTryStatement(stmt *ast.IfStmt, preprocessedTry prepro
 			terminates: isTerminating(parts.finallyBlock),
 		}
 	}
+	if len(preprocessedTry.Filters) > 0 {
+		lowerer.addFilters(parts, preprocessedTry)
+		return parts
+	}
 	if preprocessedTry.HasCatch {
 		parts.catch, _ = stmt.Else.(*ast.BlockStmt)
 		parts.catchBody = parts.catch.List
@@ -157,6 +169,10 @@ func (lowerer *lowerer) walkTryStatement(parts *tryStatement, binding string, ou
 		catchContext := &tryContext{catchVar: binding, isCatchBody: true, finally: parts.context.finally, outer: outerTry}
 		lowerer.walkBlock(parts.catchBody, catchContext)
 	}
+	for _, filter := range parts.filters {
+		filterContext := &tryContext{catchVar: filter.binding, isCatchBody: true, finally: parts.context.finally, outer: outerTry}
+		lowerer.walkBlock(filter.body, filterContext)
+	}
 	if parts.finallyBlock != nil {
 		lowerer.walkBlock(parts.finallyBlock.List, outerTry) // the finally code runs outside this try
 	}
@@ -181,7 +197,7 @@ func (lowerer *lowerer) catchPrologue(parts *tryStatement) string {
 func (lowerer *lowerer) emitWithoutCatch(parts *tryStatement) {
 	stmt := parts.stmt
 	lowerer.replace(stmt.Pos(), stmt.Body.Lbrace+1, "{", lowerer.line(stmt.Pos()))
-	lowerer.drop(stmt.Body.Rbrace, parts.catch.Rbrace+1, "}", lowerer.line(stmt.Body.Rbrace))
+	lowerer.drop(stmt.Body.Rbrace, parts.lastCatchRbrace()+1, "}", lowerer.line(stmt.Body.Rbrace))
 }
 
 // emitTry replaces the try/catch markers with labeled blocks:
@@ -205,23 +221,32 @@ func (lowerer *lowerer) emitTry(parts *tryStatement) {
 		fmt.Fprintf(&middle, "goto %s\n", try.endLabel())
 	}
 	fmt.Fprintf(&middle, "%s:\n{", try.catchLabel())
-	middle.WriteString(parts.prologue)
-	lowerer.replaceOffsets(lowerer.offset(stmt.Body.Rbrace), parts.catchEnd, middle.String(), lowerer.line(stmt.Body.Rbrace))
+	lowerer.emitCatches(parts, middle.String())
 
-	tail := "}\n}"
+	tail := "}" + parts.chainEnd + "\n}"
 	if canBodyComplete {
-		tail = fmt.Sprintf("}\n%s:\n}", try.endLabel())
+		tail = fmt.Sprintf("}%s\n%s:\n}", parts.chainEnd, try.endLabel())
 	}
-	lowerer.replace(parts.catch.Rbrace, parts.catch.Rbrace+1, tail, lowerer.line(parts.catch.Rbrace))
+	rbrace := parts.lastCatchRbrace()
+	lowerer.replace(rbrace, rbrace+1, tail, lowerer.line(rbrace))
 }
 
 // findBindingObject returns the catch variable from the declaration that the
 // preprocessor puts first in a catch block with a binding.
 func (lowerer *lowerer) findBindingObject(parts *tryStatement) types.Object {
-	if parts.catch == nil || !parts.context.hasBinding || len(parts.catch.List) == 0 {
+	if parts.catch == nil || !parts.context.hasBinding {
 		return nil
 	}
-	decl, ok := parts.catch.List[0].(*ast.DeclStmt)
+	return lowerer.findFirstDeclared(parts.catch)
+}
+
+// findFirstDeclared returns the variable that the first statement of block
+// declares, or nil.
+func (lowerer *lowerer) findFirstDeclared(block *ast.BlockStmt) types.Object {
+	if len(block.List) == 0 {
+		return nil
+	}
+	decl, ok := block.List[0].(*ast.DeclStmt)
 	if !ok {
 		return nil
 	}
