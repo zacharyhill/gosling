@@ -20,7 +20,8 @@ func (processor *processor) forOf(tokenIndex int) {
 	if keyword.text == "of" {
 		variables = "_, " + name.text
 	}
-	text := variables + " := range "
+	leadingSpace := processor.getSpaceAfterFor(tokenIndex)
+	text := leadingSpace + variables + " := range "
 	// Go requires parentheses around a composite literal in a for header.
 	if hasBrace {
 		text += "("
@@ -29,10 +30,10 @@ func (processor *processor) forOf(tokenIndex int) {
 	}
 	textStart := processor.replace(lparen.offset, processor.tokenAt(tokenIndex+5).offset, text)
 	if keyword.text == "of" {
-		processor.result.ForOfBlanks = append(processor.result.ForOfBlanks, textStart)
+		processor.result.ForOfBlanks = append(processor.result.ForOfBlanks, textStart+len(leadingSpace))
 	}
 	if declaration.is(token.CONST) {
-		processor.result.Consts = append(processor.result.Consts, textStart+len(variables)-len(name.text))
+		processor.result.Consts = append(processor.result.Consts, textStart+len(leadingSpace)+len(variables)-len(name.text))
 	}
 }
 
@@ -58,7 +59,7 @@ func (processor *processor) cStyleFor(tokenIndex int) {
 		return
 	}
 	lparen := processor.tokens[tokenIndex+1]
-	processor.replace(lparen.offset, lparen.end(), "")
+	processor.replace(lparen.offset, lparen.end(), processor.getSpaceAfterFor(tokenIndex))
 	processor.scheduled[rparenIndex] = ""
 }
 
@@ -80,4 +81,13 @@ func (processor *processor) matchParen(lparenIndex int) (int, bool) {
 		}
 	}
 	return -1, false
+}
+
+// getSpaceAfterFor returns the text that replaces the ( after the for at
+// tokenIndex. In "for(", a space keeps the next text apart from the keyword.
+func (processor *processor) getSpaceAfterFor(tokenIndex int) string {
+	if processor.touchesNext(tokenIndex) {
+		return " "
+	}
+	return ""
 }

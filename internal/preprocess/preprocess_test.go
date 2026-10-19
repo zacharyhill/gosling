@@ -71,6 +71,18 @@ func TestProcess(test *testing.T) {
 			want: "f(func(x __goslingU)__goslingR { return x*2 }, func(a __goslingU,b __goslingU)__goslingR { return a+b })",
 		},
 		{
+			name:        "for-of without a space",
+			src:         "for(const x of xs){\n}",
+			want:        "for _, x := range xs{\n}",
+			consts:      []int{len("for _, ")},
+			forOfBlanks: []int{len("for ")},
+		},
+		{
+			name: "c-style for without a space",
+			src:  "for(let i = 0; i < n; i++){\n}",
+			want: "for i := 0; i < n; i++{\n}",
+		},
+		{
 			name: "arrow with untyped parameter list",
 			src:  "xs.reduce((acc, x) => acc + x, 0)",
 			want: "xs.reduce(func(acc __goslingU, x __goslingU) __goslingR { return acc + x }, 0)",
