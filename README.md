@@ -339,14 +339,14 @@ JavaScript escapes work, such as `\n`, `\t`, `\xHH`, `\uHHHH`, and `\u{H...}`. W
 ```go
 const {X, Y: y} = p             // X, y := p.X, p.Y
 const [a, b] = pair             // a, b := pair[0], pair[1]
-let [first, _, ...rest] = xs    // first, _, rest := xs[0], xs[1], xs[2:]
+let [first, _, ...rest] = xs    // first, rest := xs[0], xs[2:]
 const {Name: name} = load(path) // tmp := load(path); name := tmp.Name
 {X, Y} = p                      // X, Y = p.X, p.Y
 ```
 
 `let` and `const` declare new names. Code cannot assign to the names that `const` declares. Without `let` or `const`, the pattern assigns to existing variables. Declare names with a pattern only in functions.
 
-Field names must match exactly. gosling evaluates a complex right side one time, into a temporary. An index past the end of a slice panics, as in Go.
+Field names must match exactly. gosling evaluates a complex right side one time, into a temporary. An index past the end of a slice panics, as in Go. gosling does not read the index of a `_` element, so `const [a, _] = xs` does not panic if `xs` has one element.
 
 ### let and const
 

@@ -240,7 +240,23 @@ func TestProcess(test *testing.T) {
 		{
 			name: "array destructuring with rest",
 			src:  "func f() {\n\t[x, _, ...rest] := xs\n}",
-			want: "func f() {\n\tx, _, rest := xs[0], xs[1], xs[2:]\n}",
+			want: "func f() {\n\tx, rest := xs[0], xs[2:]\n}",
+		},
+		{
+			name: "array destructuring skips blank elements",
+			src:  "func f() {\n\t[_, b, _, ..._] := xs\n}",
+			want: "func f() {\n\tb := xs[1]\n}",
+		},
+		{
+			name: "array destructuring with only blank elements",
+			src:  "func f() {\n\tlet [_, _] = xs\n}",
+			want: "func f() {\n\t_ = xs\n}",
+		},
+		{
+			name:   "array destructuring of a call with only blank elements",
+			src:    "func f() {\n\tconst [_] = load()\n}",
+			want:   "func f() {\n\ttmp := load(); _ = tmp\n}",
+			splits: []int{len("func f() {\n\ttmp := load()")},
 		},
 		{
 			name:   "destructuring temp avoids existing names",
@@ -262,9 +278,9 @@ func TestProcess(test *testing.T) {
 		{
 			name:   "const array destructuring hoists call",
 			src:    "func f() {\n\tconst [x, _, y] = load()\n}",
-			want:   "func f() {\n\ttmp := load(); x, _, y := tmp[0], tmp[1], tmp[2]\n}",
+			want:   "func f() {\n\ttmp := load(); x, y := tmp[0], tmp[2]\n}",
 			splits: []int{len("func f() {\n\ttmp := load()")},
-			consts: []int{len("func f() {\n\ttmp := load(); "), len("func f() {\n\ttmp := load(); x, _, ")},
+			consts: []int{len("func f() {\n\ttmp := load(); "), len("func f() {\n\ttmp := load(); x, ")},
 		},
 		{
 			name: "block statement is not destructuring",
