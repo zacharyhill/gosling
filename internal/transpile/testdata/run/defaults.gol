@@ -1,0 +1,54 @@
+package main
+
+import "fmt"
+
+type Point struct{ X, Y int }
+
+type Config struct {
+	Name    string
+	Port    int64
+	Timeout *int
+	Origin  Point
+	Tags    []string
+	Next    *Config
+}
+
+func counted(calls *int) int {
+	*calls++
+	return 7
+}
+
+func main() {
+	let seconds = 5
+	const full = Config{Name: "full", Port: 9000, Timeout: &seconds, Origin: Point{1, 2}, Tags: []string{"a"}}
+	const {Name = "anon", Port = 8080, Timeout = 30, Origin = Point{3, 4}, Tags = []string{"default"}} = full
+	fmt.Println(Name, Port, Timeout, Origin, Tags)
+
+	const {Name: name = "anon", Port: port = 8080, Timeout: wait = 30, Origin: origin = Point{3, 4}, Tags: tags = []string{"default"}} = Config{}
+	fmt.Println(name, port, wait, origin, tags)
+	fmt.Printf("%T %T\n", port, wait)
+
+	const {Next: next = &full} = Config{}
+	fmt.Println(next.Name)
+
+	const [first = "x", second = "y", third = "z"] = []string{"a", "b"}
+	fmt.Println(first, second, third)
+
+	const [ratio = 1] = []float64{}
+	fmt.Printf("%v %T\n", ratio, ratio)
+
+	let calls = 0
+	const {Port: used = int64(counted(&calls))} = full
+	const [kept = counted(&calls)] = []int{4}
+	fmt.Println(used, kept, calls)
+	const {Port: missing = int64(counted(&calls))} = Config{}
+	fmt.Println(missing, calls)
+
+	const {
+		Next: {Name: nestedName = "none"},
+		Origin: {X = 9},
+	} = Config{Next: &Config{}}
+	fmt.Println(nestedName, X)
+	const [[inner = 5], [_, deep = 6]] = [][]int{{}, {1}}
+	fmt.Println(inner, deep)
+}

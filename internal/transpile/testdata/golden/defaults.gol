@@ -1,0 +1,38 @@
+package defaults
+
+import "os"
+
+type Config struct {
+	Name    string
+	Port    int
+	Timeout *int
+	Next    *Config
+}
+
+func load(path string) (Config, error) {
+	return Config{Name: path}, nil
+}
+
+func fields(cfg Config) (string, int, int) {
+	const {Name: name = "anon", Port = 8080, Timeout = 30} = cfg
+	return name, Port, Timeout
+}
+
+func pointer(cfg Config, fallback *Config) *Config {
+	const {Next = fallback} = cfg
+	return Next
+}
+
+func index(args []string) (string, string) {
+	const [_, first = "-", second = os.Getenv("HOME")] = args
+	return first, second
+}
+
+func loaded(path string) string {
+	try {
+		const {Name = path} = load(path)
+		return Name
+	} catch {
+		return ""
+	}
+}

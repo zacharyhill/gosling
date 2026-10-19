@@ -535,6 +535,7 @@ func markerDecls(packageName string) string {
 		"func " + coalescePtrMarker + "[T any](x *T, d T) T { return d }\n" +
 		hoistMarkerDecls() +
 		spreadMarkerDecls +
+		defaultMarkerDecls +
 		arrayMarkerDecls()
 }
 
@@ -571,6 +572,7 @@ func (transpiler *transpiler) augment(typeInfo *types.Info) bool {
 		changed = transpiler.expandShorthand(file, typeInfo) || changed
 		changed = transpiler.fixArrows(file, typeInfo) || changed
 		changed = usePtrCoalesce(file, typeInfo) || changed
+		changed = useDefaultPtr(file, typeInfo) || changed
 		changed = addBlankForErrors(file, typeInfo) || changed
 		changed = dropForOfBlanks(file, typeInfo) || changed
 	}

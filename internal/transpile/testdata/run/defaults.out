@@ -1,0 +1,10 @@
+full 9000 5 {1 2} [a]
+anon 8080 30 {3 4} [default]
+int64 int
+full
+a b z
+1 float64
+9000 4 0
+7 1
+none 9
+5 6
