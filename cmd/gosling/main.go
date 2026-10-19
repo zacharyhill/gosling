@@ -6,11 +6,13 @@
 //	gosling [-check] [-lines=false] [-v] [dir | dir/...]...
 //	gosling -version
 //	gosling fmt [-l] [-w] [file | dir | dir/...]...
+//	gosling lint command [arg...]
 //	gosling lsp [-gopls path] [-generate-on-save]
 //
 // With no arguments, gosling converts the current directory. To use go
 // generate, add "//go:generate gosling" to a .go file. gosling fmt formats
-// .gol files. gosling lsp runs a language server for editors.
+// .gol files. gosling lint runs a linter and shows its positions in .gol
+// files. gosling lsp runs a language server for editors.
 package main
 
 import (
@@ -37,6 +39,9 @@ func run(args []string, stdout, stderr io.Writer) int {
 	}
 	if len(args) > 0 && args[0] == "fmt" {
 		return runFmt(args[1:], stdout, stderr)
+	}
+	if len(args) > 0 && args[0] == "lint" {
+		return runLint(args[1:], stdout, stderr)
 	}
 	flags := flag.NewFlagSet("gosling", flag.ContinueOnError)
 	flags.SetOutput(stderr)
