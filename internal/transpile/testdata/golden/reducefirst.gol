@@ -1,0 +1,26 @@
+package reducefirst
+
+type Point struct {
+	X, Y int
+}
+
+func sum(nums []int) int {
+	return nums.reduce((acc, n) => acc + n)
+}
+
+func weighted(nums []float64) float64 {
+	return nums.reduce((acc, n, i) => acc + n*float64(i))
+}
+
+func farthest(points []Point) Point {
+	return points.reduce((best, p) => {
+		if p.X > best.X {
+			return p
+		}
+		return best
+	})
+}
+
+func longest(words []string, pick func(string, string) string) string {
+	return words.reduce(pick)
+}
