@@ -678,8 +678,31 @@ evens := func() []int {
 - `keys` returns the indices. `entries` returns a `[]struct{ Index int; Value T }`.
 - `forEach` can only be a statement.
 - `filter` keeps a named slice type. A method of the type with the same name has priority.
-- Each call in a chain is a separate loop.
 - On an array, the result of `filter` is a slice. The loop uses `a[:]`, so `find` points into the array. If the array is not addressable, such as a function result, the loop uses a copy.
+
+A chain of calls becomes one loop if possible. Each `filter` or `map` shares its loop with the next call:
+
+```go
+const names = users.filter(u => u.Age >= 18).map(u => u.Name)
+
+names := func() []string {
+	xs, f1, f2 := users, func(u User) bool { return u.Age >= 18 }, func(u User) string { return u.Name }
+	var out []string
+	for _, x := range xs {
+		if !f1(x) {
+			continue
+		}
+		out = append(out, f2(x))
+	}
+	return out
+}()
+```
+
+- In one loop, the callbacks run element by element: `filter` on the first element, then `map` on it, then `filter` on the second element. Each callback runs on the same elements as in separate loops.
+- `some`, `every`, and `find` stop at the first result. Then the earlier callbacks do not run on the remaining elements.
+- A pointer from `find` at the end of a chain points to a copy of the element, not into the receiver. Separate loops also give a pointer into a new slice.
+- A call starts a new loop if one of its arguments is not a function literal, a declared function, or a constant. So `xs.map(f).filter(pick())` calls `pick()` after the `map` loop, as in separate loops.
+- A callback with an index, `findIndex`, or `indexOf` starts a new loop after a `filter`. Its index counts the elements that `filter` keeps.
 
 ### Map methods
 

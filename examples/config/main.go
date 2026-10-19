@@ -84,19 +84,13 @@ func describe(configs []Config) {
 		}(), /*line main.gol:48*/ port))
 	}
 	publicNames := func() []string {
-		/*line main.gol:50*/ xs, f := /*line main.gol:50*/ func() []Config {
-			/*line main.gol:50*/ xs, f := /*line main.gol:50*/ configs, func(config Config) bool { return config.Port < 10000 }
-			/*line main.gol:50*/ var out []Config
-			for _, x := range xs {
-				if f(x) {
-					out = append(out, x)
-				}
-			}
-			return out
-		}(), /*line main.gol:50*/ func(config Config) string { return config.Name }
-		/*line main.gol:50*/ out := make([]string, 0, len(xs))
+		/*line main.gol:50*/ xs, f1, f2 := /*line main.gol:50*/ configs, func(config Config) bool { return config.Port < 10000 }, func(config Config) string { return config.Name }
+		/*line main.gol:50*/ var out []string
 		for _, x := range xs {
-			out = append(out, f(x))
+			if !f1(x) {
+				continue
+			}
+			out = append(out, f2(x))
 		}
 		return out
 	}()
