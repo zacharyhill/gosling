@@ -286,6 +286,9 @@ func (lowerer *lowerer) emitFinally(parts *tryStatement) {
 	// through. Otherwise Go reports a missing return.
 	isEndUnreachable := !layer.terminates && tryTerminates && (!hasCatch || isTerminating(parts.catch))
 	finallyBlock := parts.finallyBlock
+	if isEndUnreachable {
+		lowerer.checkBuiltins(finallyBlock.Rbrace, "finally", "panic")
+	}
 	lowerer.replace(finallyBlock.Rbrace, finallyBlock.Rbrace+1, finallyTail(layer, isEndUnreachable), lowerer.line(finallyBlock.Rbrace))
 }
 
@@ -297,9 +300,11 @@ func (lowerer *lowerer) finallyHead(parts *tryStatement, hasCatch bool) string {
 	head.WriteString("{\n")
 	if hasCatch && parts.context.needsDecl {
 		fmt.Fprintf(&head, "var %s error\n", parts.context.catchVar)
+		lowerer.checkBuiltins(parts.stmt.Pos(), "try", "error")
 	}
 	if layer.state != "" {
 		fmt.Fprintf(&head, "var %s int\n", layer.state)
+		lowerer.checkBuiltins(parts.stmt.Pos(), "finally", "int")
 	}
 	for varIndex, name := range layer.returnVars {
 		typeText, _ := lowerer.typeName(layer.returnVarTypes[varIndex])

@@ -498,6 +498,31 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:14: cannot use \"x\" (untyped string constant) as int value in argument to ??",
 		},
 		{
+			name: "package function shadows a builtin that an array method needs",
+			src:  "package p\nfunc len(s string) int { return 0 }\nfunc f(xs []int) []int {\n\treturn xs.map(x => x * 2)\n}",
+			want: "x.gol:4:9: map needs the builtin len, but a declaration shadows it here; rename that declaration",
+		},
+		{
+			name: "local variable shadows a builtin that an array method needs",
+			src:  "package p\nfunc f(xs []int) []int {\n\tlet append = 3\n\t_ = append\n\treturn xs.filter(x => x > 1)\n}",
+			want: "x.gol:5:9: filter needs the builtin append, but a declaration shadows it here; rename that declaration",
+		},
+		{
+			name: "parameter shadows a builtin that try needs",
+			src:  "package p\nimport \"os\"\nfunc f(nil int) {\n\ttry {\n\t\tos.Remove(\"x\")\n\t} catch {\n\t}\n}",
+			want: "x.gol:5:3: try needs the builtin nil, but a declaration shadows it here; rename that declaration",
+		},
+		{
+			name: "parameter shadows a builtin that optional chaining needs",
+			src:  "package p\ntype P struct{ X *int }\nfunc f(p *P, nil int) *int {\n\treturn p?.X\n}",
+			want: "x.gol:4:9: optional chain needs the builtin nil, but a declaration shadows it here; rename that declaration",
+		},
+		{
+			name: "parameter shadows a builtin that a template literal needs",
+			src:  "package p\nfunc f(x float32, float64 int) string {\n\treturn t`${x}`\n}",
+			want: "x.gol:3:13: template literal needs the builtin float64, but a declaration shadows it here; rename that declaration",
+		},
+		{
 			name: "missing catch",
 			src:  "package p\nfunc f() {\n\ttry { }\n}",
 			want: "x.gol:3:8: try block must be followed by catch",
@@ -1063,6 +1088,28 @@ func TestCleanMessage(test *testing.T) {
 		if got := cleanMessage(testCase.message); got != testCase.want {
 			test.Errorf("cleanMessage(%q) = %q, want %q", testCase.message, got, testCase.want)
 		}
+	}
+}
+
+func TestShadowedBuiltinInOtherFile(test *testing.T) {
+	inputs := []Input{
+		{Path: "a.gol", Src: []byte("package p\nfunc f(xs []int) []int {\n\treturn xs.map(x => x * 2)\n}\n")},
+		{Path: "b.gol", Src: []byte("package p\nfunc make(n int) int { return n }\n")},
+	}
+	_, err := Transpile(Config{Importer: importer.Default()}, inputs)
+	if err == nil {
+		test.Fatal("expected error")
+	}
+	want := "a.gol:3:9: map needs the builtin make, but a declaration shadows it here; rename that declaration"
+	if !strings.Contains(err.Error(), want) {
+		test.Errorf("error:\n%v\nwant substring:\n%s", err, want)
+	}
+}
+
+func TestBuiltinDeclaredAfterUse(test *testing.T) {
+	src := "package p\nfunc f(xs []int) []int {\n\tlet ys = xs.map(x => x * 2)\n\tlet len = 3\n\t_ = len\n\treturn ys\n}\n"
+	if _, err := Transpile(Config{Importer: importer.Default()}, []Input{{Path: "x.gol", Src: []byte(src)}}); err != nil {
+		test.Fatal(err)
 	}
 }
 

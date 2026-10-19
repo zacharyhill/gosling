@@ -5,6 +5,7 @@ import (
 	"go/parser"
 	"go/token"
 	"go/types"
+	"strings"
 )
 
 func zeroValue(goType types.Type, typeText string) string {
@@ -29,6 +30,16 @@ func zeroValue(goType types.Type, typeText string) string {
 		return typeText + "{}"
 	}
 	return "*new(" + typeText + ")"
+}
+
+func zeroValueBuiltins(zeroText string) []string {
+	switch {
+	case strings.HasPrefix(zeroText, "*new("):
+		return []string{"new"}
+	case zeroText == "false" || zeroText == "nil":
+		return []string{zeroText}
+	}
+	return nil
 }
 
 func nilable(goType types.Type) bool {

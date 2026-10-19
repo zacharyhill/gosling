@@ -18,6 +18,7 @@ type arrayMethod struct {
 	callbackResult string
 	result         string
 	typeParams     string
+	loopBuiltins   []string
 }
 
 func (method arrayMethod) argCount() int {
@@ -29,15 +30,15 @@ func (method arrayMethod) argCount() int {
 }
 
 var arrayMethods = map[string]arrayMethod{
-	"map":       {hasCallback: true, callbackParams: "T", callbackResult: "R", result: "[]R", typeParams: "S ~[]T, T, R any"},
-	"filter":    {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "S", typeParams: "S ~[]T, T any"},
+	"map":       {hasCallback: true, callbackParams: "T", callbackResult: "R", result: "[]R", typeParams: "S ~[]T, T, R any", loopBuiltins: []string{"make", "len", "append"}},
+	"filter":    {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "S", typeParams: "S ~[]T, T any", loopBuiltins: []string{"append"}},
 	"reduce":    {hasCallback: true, extraParams: ", init R", callbackParams: "R, T", callbackResult: "R", result: "R", typeParams: "S ~[]T, T, R any"},
 	"forEach":   {hasCallback: true, callbackParams: "T", typeParams: "S ~[]T, T any"},
-	"find":      {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "T", typeParams: "S ~[]T, T any"},
+	"find":      {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "T", typeParams: "S ~[]T, T any", loopBuiltins: []string{"nil"}},
 	"findIndex": {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "int", typeParams: "S ~[]T, T any"},
-	"some":      {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "bool", typeParams: "S ~[]T, T any"},
-	"every":     {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "bool", typeParams: "S ~[]T, T any"},
-	"includes":  {extraParams: ", x T", result: "bool", typeParams: "S ~[]T, T comparable"},
+	"some":      {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "bool", typeParams: "S ~[]T, T any", loopBuiltins: []string{"true", "false"}},
+	"every":     {hasCallback: true, callbackParams: "T", callbackResult: "bool", result: "bool", typeParams: "S ~[]T, T any", loopBuiltins: []string{"true", "false"}},
+	"includes":  {extraParams: ", x T", result: "bool", typeParams: "S ~[]T, T comparable", loopBuiltins: []string{"true", "false"}},
 	"indexOf":   {extraParams: ", x T", result: "int", typeParams: "S ~[]T, T comparable"},
 }
 
@@ -227,7 +228,7 @@ func (lowerer *lowerer) lowerArrayCall(marker *ast.CallExpr, arrayCall *arrayCal
 	receiver, arguments := arrayCall.receiver, marker.Args[1:]
 	method := arrayMethods[arrayCall.method]
 	typeText, ok := lowerer.checkArrayCall(marker, arrayCall, method)
-	if !ok {
+	if !ok || !lowerer.checkBuiltins(receiver.Pos(), arrayCall.method, method.loopBuiltins...) {
 		return
 	}
 	bindNames, separator := lowerer.arrayBindings(arrayCall, method)

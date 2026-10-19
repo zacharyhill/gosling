@@ -67,7 +67,7 @@ func (lowerer *lowerer) lowerTemplate(call *ast.CallExpr, fmtPrefix string) {
 
 // formatFloat wraps a float argument in strconv.FormatFloat, because %v
 // prints 1e+06 and JavaScript prints 1000000. It reports false if the file
-// cannot use strconv.
+// cannot use strconv or float64.
 func (lowerer *lowerer) formatFloat(arg ast.Expr, bits, line, depth int) bool {
 	strconvName, ok := lowerer.importNameAt(arg.Pos(), "strconv", "strconv")
 	if !ok {
@@ -75,6 +75,9 @@ func (lowerer *lowerer) formatFloat(arg ast.Expr, bits, line, depth int) bool {
 	}
 	openText, closeText := "FormatFloat(", ", 'f', -1, 64)"
 	if bits == 32 {
+		if !lowerer.checkBuiltins(arg.Pos(), "template literal", "float64") {
+			return false
+		}
 		openText, closeText = "FormatFloat(float64(", "), 'f', -1, 32)"
 	}
 	lowerer.insertOrdered(arg.Pos(), qualify(strconvName)+openText, line, depth)

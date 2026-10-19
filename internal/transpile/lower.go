@@ -69,6 +69,7 @@ func (lowerer *lowerer) lowerFile() {
 	lowerer.lowerSpread()
 	lowerer.emitImports()
 	for body := range lowerer.file.panicAtEnd {
+		lowerer.checkBuiltins(body.Rbrace, "try", "panic")
 		lowerer.insert(body.Rbrace, "panic(\"unreachable\")\n", lowerer.line(body.Rbrace))
 	}
 	for _, splitOffset := range lowerer.file.preprocessed.Splits {
