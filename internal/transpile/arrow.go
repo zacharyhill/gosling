@@ -138,7 +138,7 @@ func (transpiler *transpiler) setParams(file *file, arrowFunc *arrow, params []t
 	fields := arrowFunc.funcLit.Type.Params.List
 	typeExprs := make([]ast.Expr, len(params))
 	for paramIndex, param := range params {
-		paramExpr, ok := transpiler.arrowTypeExpr(file, arrowFunc, param, fields[paramIndex].Type.Pos())
+		paramExpr, ok := transpiler.arrowTypeExpr(file, arrowFunc, param, fields[paramIndex].Pos())
 		if !ok {
 			return false
 		}

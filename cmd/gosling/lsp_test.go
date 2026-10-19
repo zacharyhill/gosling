@@ -378,6 +378,7 @@ func TestLSP(test *testing.T) {
 	test.Run("syntax error becomes a diagnostic", session.checkSyntaxError)
 	test.Run("edit after the last good version still maps", session.checkStaleMapping)
 	test.Run("completion in code with a type error", session.checkCompletion)
+	test.Run("arrow parameters map to the gol file", session.checkArrowParams)
 	client.request("shutdown", nil)
 	client.notify("exit", nil)
 	select {
@@ -471,6 +472,20 @@ func (session *lspSession) checkCompletion(test *testing.T) {
 	}
 	if !slices.Contains(labels, "Println") {
 		test.Errorf("completion labels = %v, want Println", labels)
+	}
+}
+
+func (session *lspSession) checkArrowParams(test *testing.T) {
+	edited := lspMain + "\nfunc doubled(counts []int) []int {\n\treturn counts.map(count => count * 2)\n}\n"
+	session.changeMain(edited)
+	locations := session.definition(test, edited, "count * 2")
+	want := positionOf(test, edited, "count =>")
+	if len(locations) != 1 || locations[0].Range.Start != want {
+		test.Errorf("definition = %+v, want %+v", locations, want)
+	}
+	hover := session.client.request("textDocument/hover", textDocumentPosition(session.mainURI, want))
+	if !strings.Contains(string(hover), "count int") {
+		test.Errorf("hover on the parameter = %s, want its type", hover)
 	}
 }
 
