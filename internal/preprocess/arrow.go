@@ -1,6 +1,7 @@
 package preprocess
 
 import (
+	"bytes"
 	"go/token"
 	"strings"
 )
@@ -19,6 +20,9 @@ const (
 // finished.
 type pendingArrow struct {
 	start nesting
+	// isParenthesized is true when the body starts on a later line. A newline
+	// directly after return ends the return statement.
+	isParenthesized bool
 }
 
 // arrow rewrites the arrow function whose "=>" starts at token tokenIndex.
@@ -46,9 +50,20 @@ func (processor *processor) arrow(tokenIndex int) (int, error) {
 		processor.replace(assign.offset, greater.end(), ResultMarker)
 		return tokenIndex + 1, nil
 	}
-	processor.replace(assign.offset, greater.end(), ResultMarker+" { return")
-	processor.pendingArrows = append(processor.pendingArrows, pendingArrow{start: processor.nesting()})
+	processor.openExpressionBody(assign, greater, processor.tokenAt(tokenIndex+2))
 	return tokenIndex + 1, nil
+}
+
+// openExpressionBody replaces the "=>" of an expression-body arrow with the
+// start of a block that returns the body. finishArrows closes the block.
+func (processor *processor) openExpressionBody(assign, greater, bodyStart lexeme) {
+	isParenthesized := bytes.IndexByte(processor.src[greater.end():bodyStart.offset], '\n') >= 0
+	returnText := " { return"
+	if isParenthesized {
+		returnText += " ("
+	}
+	processor.replace(assign.offset, greater.end(), ResultMarker+returnText)
+	processor.pendingArrows = append(processor.pendingArrows, pendingArrow{start: processor.nesting(), isParenthesized: isParenthesized})
 }
 
 // arrowParams rewrites the parameter list closed by the ) at token rparenIndex.
@@ -120,6 +135,10 @@ func (processor *processor) finishArrows(tokenIndex int) {
 		}
 		processor.pendingArrows = processor.pendingArrows[:len(processor.pendingArrows)-1]
 		end := processor.tokenAt(tokenIndex - 1).end()
-		processor.replace(end, end, " }")
+		if pending.isParenthesized {
+			processor.replace(end, end, ") }")
+		} else {
+			processor.replace(end, end, " }")
+		}
 	}
 }

@@ -74,6 +74,11 @@ func TestProcess(test *testing.T) {
 			want: "double := func(x int) __goslingR { return x * 2 }",
 		},
 		{
+			name: "arrow with expression body on the next line",
+			src:  "xs.map(x =>\n\tx * 2,\n)",
+			want: "xs.__goslingMap(func(x __goslingU) __goslingR { return (\n\tx * 2) },\n)",
+		},
+		{
 			name: "arrow with block body",
 			src:  "run(() => {\n\tgo()\n})",
 			want: "run(func() __goslingR {\n\tgo()\n})",

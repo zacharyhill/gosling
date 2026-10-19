@@ -340,7 +340,12 @@ func (lowerer *lowerer) lowerArrows() {
 		}
 		lowerer.replace(arrowFunc.resultPlaceholder.Pos(), arrowFunc.resultPlaceholder.End(), result, 0)
 		if arrowFunc.usedAsStmt {
-			lowerer.replace(arrowFunc.bodyReturn.Return, arrowFunc.bodyReturn.Results[0].Pos(), "", 0)
+			bodyExpr := arrowFunc.bodyReturn.Results[0]
+			if parenExpr, ok := bodyExpr.(*ast.ParenExpr); ok {
+				lowerer.replace(parenExpr.Rparen, parenExpr.Rparen+1, "", 0)
+				bodyExpr = parenExpr.X
+			}
+			lowerer.replace(arrowFunc.bodyReturn.Return, bodyExpr.Pos(), "", 0)
 		}
 	}
 }

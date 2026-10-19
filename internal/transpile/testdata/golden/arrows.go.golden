@@ -140,3 +140,25 @@ func blockWithoutReturnInCall(run func(func(int) error)) {
 		}
 	})
 }
+
+func bodyOnNextLine(xs []int) []int {
+	return func() []int {
+		xs, f := xs, func(x int) int {
+			return (x * 3)
+		}
+		out := make([]int, 0, len(xs))
+		for _, x := range xs {
+			out = append(out, f(x))
+		}
+		return out
+	}()
+}
+
+func statementOnNextLine(names []string) {
+	{
+		xs, f := names, func(n string) { fmt.Println(n) }
+		for _, x := range xs {
+			f(x)
+		}
+	}
+}
