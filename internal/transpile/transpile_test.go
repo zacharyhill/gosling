@@ -128,6 +128,11 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:9: template literal needs package fmt, but the name fmt is already used in this file",
 		},
 		{
+			name: "template literal float needs strconv but the name is taken",
+			src:  "package p\nfunc f(strconv int, x float64) string {\n\treturn t`${x}`\n}",
+			want: "x.gol:3:13: template literal needs package strconv, but the name strconv is already used in this file",
+		},
+		{
 			name: "assignment to a const variable",
 			src:  "package p\nfunc f(n int) int {\n\tconst x = n * 2\n\tx = 3\n\treturn x\n}",
 			want: "x.gol:4:2: cannot assign to x: declared with const",
