@@ -1,0 +1,28 @@
+package nesteddestructure
+
+type Addr struct {
+	Host string
+	Port int
+}
+
+type Config struct {
+	Name string
+	Addr *Addr
+}
+
+func load() []Config { return nil }
+
+func hostPort(cfg Config) (string, int) {
+	const {Addr: {Host, Port: port}} = cfg
+	return Host, port
+}
+
+func pairs(rows [][2]int) int {
+	let [[a, b], [c, _]] = rows
+	return a + b + c
+}
+
+func firstHost() (string, []Config) {
+	const [{Addr: {Host: host}}, ...others] = load()
+	return host, others
+}

@@ -383,6 +383,38 @@ func TestProcess(test *testing.T) {
 			consts: []int{len("func f() {\n\ttmp := load(); "), len("func f() {\n\ttmp := load(); x, ")},
 		},
 		{
+			name: "nested object destructuring",
+			src:  "func f() {\n\tlet {Addr: {Host, Port: port}, Name} = cfg\n}",
+			want: "func f() {\n\tHost, port, Name := cfg.Addr.Host, cfg.Addr.Port, cfg.Name\n}",
+		},
+		{
+			name:   "nested array destructuring hoists call",
+			src:    "func f() {\n\tconst [[a, b], c, [...rest]] = load()\n}",
+			want:   "func f() {\n\ttmp := load(); a, b, c, rest := tmp[0][0], tmp[0][1], tmp[1], tmp[2][0:]\n}",
+			splits: []int{len("func f() {\n\ttmp := load()")},
+			consts: []int{
+				len("func f() {\n\ttmp := load(); "),
+				len("func f() {\n\ttmp := load(); a, "),
+				len("func f() {\n\ttmp := load(); a, b, "),
+				len("func f() {\n\ttmp := load(); a, b, c, "),
+			},
+		},
+		{
+			name: "mixed nested destructuring",
+			src:  "func f() {\n\tlet {Points: [{X}, _, last]} = shape\n}",
+			want: "func f() {\n\tX, last := shape.Points[0].X, shape.Points[2]\n}",
+		},
+		{
+			name: "array of objects destructuring assigns",
+			src:  "func f() {\n\t[{X: x}, {Y: y}] = points\n}",
+			want: "func f() {\n\tx, y = points[0].X, points[1].Y\n}",
+		},
+		{
+			name: "block with labeled block is not destructuring",
+			src:  "func f() {\n\t{L: {x()}}\n}",
+			want: "func f() {\n\t{L: {x()}}\n}",
+		},
+		{
 			name: "block statement is not destructuring",
 			src:  "func f() {\n\t{\n\t\ta()\n\t}\n}",
 			want: "func f() {\n\t{\n\t\ta()\n\t}\n}",
@@ -697,6 +729,7 @@ func TestProcessErrors(test *testing.T) {
 		{"unterminated interpolation", "s := t`a ${x`", "unterminated ${ in template literal", len("s := t`a ")},
 		{"empty interpolation", "s := t`a ${}`", "empty ${} in template literal", len("s := t`a ")},
 		{"object rest", "func f() {\n{a, ...rest} := x\n}", "rest elements are only supported in array destructuring", len("func f() {\n{a, ")},
+		{"nested object rest", "func f() {\n\tlet [{a, ...rest}] = x\n}", "rest elements are only supported in array destructuring", len("func f() {\n\tlet [{a, ")},
 		{"optional index", "x := a?.[0]", "?.[ and ?.( are not supported", len("x := a")},
 		{"nullish assignment", "x ??= 1", "??= is not supported", len("x ")},
 		{"union inside function", "func f() {\n\ttype S = A | B\n}", "union types must be declared at package level", len("func f() {\n\t")},

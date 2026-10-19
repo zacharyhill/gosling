@@ -174,6 +174,11 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:5:2: cannot assign to b: declared with const",
 		},
 		{
+			name: "assignment to a const nested destructured variable",
+			src:  "package p\ntype P struct{ X, Y int }\nfunc f(ps [][]P) int {\n\tconst [[_, {Y}]] = ps\n\tY = 2\n\treturn Y\n}",
+			want: "x.gol:5:2: cannot assign to Y: declared with const",
+		},
+		{
 			name: "assignment to an if const",
 			src:  "package p\nfunc g() int { return 1 }\nfunc f() {\n\tif const x = g(); x > 0 {\n\t\tx = 2\n\t}\n}",
 			want: "x.gol:5:3: cannot assign to x: declared with const",
@@ -216,7 +221,7 @@ func TestErrors(test *testing.T) {
 		{
 			name: "destructuring unknown field",
 			src:  "package p\ntype P struct{ X int }\nfunc f(p P) int {\n\tlet {Z} = p\n\treturn Z\n}",
-			want: "x.gol:4:6: p.Z undefined",
+			want: "x.gol:4:13: p.Z undefined",
 		},
 		{
 			name: "nullish coalescing on a value that is never nil",

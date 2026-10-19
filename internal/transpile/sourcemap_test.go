@@ -146,3 +146,20 @@ func TestSourceMapGeneratedTextHasNoSource(test *testing.T) {
 		test.Errorf("GolOffsetNear(goto) = %d, %v, want %d, the end of the token before it", nearOffset, ok, wantNear)
 	}
 }
+
+func TestSourceMapDestructuredNames(test *testing.T) {
+	src := "package p\n\ntype Addr struct{ Host string }\n\ntype Config struct{ Addr Addr }\n\nfunc host(cfg Config) string {\n\tconst {Addr: {Host: name}} = cfg\n\treturn name\n}\n"
+	output := transpileWithMap(test, "x.gol", []byte(src), false)
+	generated := string(output.Src)
+	for _, name := range []string{"name}", "cfg\n"} {
+		golOffset := strings.Index(src, name)
+		goOffset, ok := output.SourceMap.GoOffset(golOffset)
+		if !ok {
+			test.Errorf("GoOffset(%q) not found\n%s", name, generated)
+			continue
+		}
+		if want := strings.TrimRight(name, "}\n"); !strings.HasPrefix(generated[goOffset:], want) {
+			test.Errorf("GoOffset(%q) points at %q", name, generated[goOffset:min(goOffset+20, len(generated))])
+		}
+	}
+}
