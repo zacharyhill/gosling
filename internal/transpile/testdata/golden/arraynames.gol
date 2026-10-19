@@ -1,0 +1,23 @@
+package arraynames
+
+type f int
+
+type xs []int
+
+type out struct{ value int }
+
+func toF(nums []int) []f {
+	return nums.map(n => f(n))
+}
+
+func positive(values xs) xs {
+	return values.filter(n => n > 0)
+}
+
+func wrap(nums []int) []out {
+	return nums.map((n, index) => out{n + index})
+}
+
+func firstF(values []f) *f {
+	return values.find(value => value > 0)
+}

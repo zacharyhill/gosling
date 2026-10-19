@@ -3,8 +3,10 @@ package transpile
 import (
 	"fmt"
 	"go/ast"
+	"go/token"
 	"go/types"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/zacharyhill/gosling/internal/preprocess"
@@ -231,7 +233,8 @@ func (lowerer *lowerer) lowerArrayCall(marker *ast.CallExpr, arrayCall *arrayCal
 	if !ok || !lowerer.checkBuiltins(receiver.Pos(), arrayCall.method, method.loopBuiltins...) {
 		return
 	}
-	bindNames, separator := lowerer.arrayBindings(arrayCall, method)
+	names := pickArrayNames(typeText)
+	bindNames, separator := lowerer.arrayBindings(arrayCall, method, names)
 	open := "func() " + typeText + " {\n" + bindNames + " := "
 	if method.result == "" {
 		open = "{\n" + bindNames + " := "
@@ -239,7 +242,7 @@ func (lowerer *lowerer) lowerArrayCall(marker *ast.CallExpr, arrayCall *arrayCal
 	line, depth := lowerer.line(receiver.Pos()), lowerer.depth(marker)
 	lowerer.insertOrdered(receiver.Pos(), open, line, depth)
 	lowerer.replace(receiver.End(), arguments[0].Pos(), separator, line)
-	tail := arrayLoop(arrayCall, typeText)
+	tail := arrayLoop(arrayCall, typeText, names)
 	if !method.hasCallback {
 		tail = ")" + tail
 	}
@@ -278,51 +281,96 @@ func (lowerer *lowerer) checkArrayCall(marker *ast.CallExpr, arrayCall *arrayCal
 	return typeText, true
 }
 
+// arrayNames holds the names of the locals in a lowered array method call.
+type arrayNames struct {
+	slice, callback, accumulator, value, element, index, out string
+}
+
+// pickArrayNames picks the local names for an array method call. The result
+// type text comes after the bindings, so no name may occur in it.
+func pickArrayNames(typeText string) arrayNames {
+	reserved := collectIdentifiers(typeText)
+	pickName := func(base string) string {
+		name := base
+		for suffix := 2; reserved[name]; suffix++ {
+			name = base + strconv.Itoa(suffix)
+		}
+		reserved[name] = true
+		return name
+	}
+	return arrayNames{
+		slice:       pickName("xs"),
+		callback:    pickName("f"),
+		accumulator: pickName("acc"),
+		value:       pickName("v"),
+		element:     pickName("x"),
+		index:       pickName("i"),
+		out:         pickName("out"),
+	}
+}
+
+// collectIdentifiers returns the set of identifiers in source.
+func collectIdentifiers(source string) map[string]bool {
+	identifiers := map[string]bool{}
+	sourceScanner, _ := newScanner([]byte(source), 0)
+	for {
+		_, kind, identText := sourceScanner.Scan()
+		if kind == token.EOF {
+			return identifiers
+		}
+		if kind == token.IDENT {
+			identifiers[identText] = true
+		}
+	}
+}
+
 // arrayBindings returns the names for the receiver and arguments, and the
 // text between the receiver and the first argument.
-func (lowerer *lowerer) arrayBindings(arrayCall *arrayCall, method arrayMethod) (string, string) {
+func (lowerer *lowerer) arrayBindings(arrayCall *arrayCall, method arrayMethod, names arrayNames) (string, string) {
 	switch {
 	case arrayCall.method == "reduce":
-		return "xs, f, acc", ", "
+		return names.slice + ", " + names.callback + ", " + names.accumulator, ", "
 	case !method.hasCallback:
 		slice, _ := underlyingSlice(lowerer.typeInfo.Types[arrayCall.receiver].Type)
 		elementType, _ := lowerer.typeName(slice.Elem())
-		return "xs, v", ", " + elementType + "("
+		return names.slice + ", " + names.value, ", " + elementType + "("
 	}
-	return "xs, f", ", "
+	return names.slice + ", " + names.callback, ", "
 }
 
 // arrayLoop returns the code after the bindings for each method.
-func arrayLoop(arrayCall *arrayCall, typeText string) string {
-	loop, call := "for _, x := range xs", "f(x)"
+func arrayLoop(arrayCall *arrayCall, typeText string, names arrayNames) string {
+	loop := fmt.Sprintf("for _, %s := range %s", names.element, names.slice)
+	call := fmt.Sprintf("%s(%s)", names.callback, names.element)
+	indexedLoop := fmt.Sprintf("for %s, %s := range %s", names.index, names.element, names.slice)
 	if arrayCall.indexed {
-		loop, call = "for i, x := range xs", "f(x, i)"
+		loop, call = indexedLoop, fmt.Sprintf("%s(%s, %s)", names.callback, names.element, names.index)
 	}
 	switch arrayCall.method {
 	case "map":
-		return fmt.Sprintf("\nout := make(%s, 0, len(xs))\n%s {\nout = append(out, %s)\n}\nreturn out\n}()", typeText, loop, call)
+		return fmt.Sprintf("\n%[1]s := make(%[2]s, 0, len(%[3]s))\n%[4]s {\n%[1]s = append(%[1]s, %[5]s)\n}\nreturn %[1]s\n}()", names.out, typeText, names.slice, loop, call)
 	case "filter":
-		return fmt.Sprintf("\nvar out %s\n%s {\nif %s {\nout = append(out, x)\n}\n}\nreturn out\n}()", typeText, loop, call)
+		return fmt.Sprintf("\nvar %[1]s %[2]s\n%[3]s {\nif %[4]s {\n%[1]s = append(%[1]s, %[5]s)\n}\n}\nreturn %[1]s\n}()", names.out, typeText, loop, call, names.element)
 	case "reduce":
-		call = strings.Replace(call, "f(", "f(acc, ", 1)
-		return fmt.Sprintf("\n%s {\nacc = %s\n}\nreturn acc\n}()", loop, call)
+		call = strings.Replace(call, names.callback+"(", names.callback+"("+names.accumulator+", ", 1)
+		return fmt.Sprintf("\n%[1]s {\n%[2]s = %[3]s\n}\nreturn %[2]s\n}()", loop, names.accumulator, call)
 	case "forEach":
 		return fmt.Sprintf("\n%s {\n%s\n}\n}", loop, call)
 	case "find":
 		if arrayCall.returnsPointer {
-			return fmt.Sprintf("\nfor i, x := range xs {\nif %s {\nreturn &xs[i]\n}\n}\nreturn nil\n}()", call)
+			return fmt.Sprintf("\n%[1]s {\nif %[2]s {\nreturn &%[3]s[%[4]s]\n}\n}\nreturn nil\n}()", indexedLoop, call, names.slice, names.index)
 		}
-		return fmt.Sprintf("\n%s {\nif %s {\nreturn x\n}\n}\nreturn nil\n}()", loop, call)
+		return fmt.Sprintf("\n%s {\nif %s {\nreturn %s\n}\n}\nreturn nil\n}()", loop, call, names.element)
 	case "findIndex":
-		return fmt.Sprintf("\nfor i, x := range xs {\nif %s {\nreturn i\n}\n}\nreturn -1\n}()", call)
+		return fmt.Sprintf("\n%s {\nif %s {\nreturn %s\n}\n}\nreturn -1\n}()", indexedLoop, call, names.index)
 	case "some":
 		return fmt.Sprintf("\n%s {\nif %s {\nreturn true\n}\n}\nreturn false\n}()", loop, call)
 	case "every":
 		return fmt.Sprintf("\n%s {\nif !%s {\nreturn false\n}\n}\nreturn true\n}()", loop, call)
 	case "includes":
-		return "\nfor _, x := range xs {\nif x == v {\nreturn true\n}\n}\nreturn false\n}()"
+		return fmt.Sprintf("\nfor _, %[1]s := range %[2]s {\nif %[1]s == %[3]s {\nreturn true\n}\n}\nreturn false\n}()", names.element, names.slice, names.value)
 	case "indexOf":
-		return "\nfor i, x := range xs {\nif x == v {\nreturn i\n}\n}\nreturn -1\n}()"
+		return fmt.Sprintf("\n%s {\nif %s == %s {\nreturn %s\n}\n}\nreturn -1\n}()", indexedLoop, names.element, names.value, names.index)
 	}
 	return ""
 }
