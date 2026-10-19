@@ -202,14 +202,27 @@ type hoistSite struct {
 	offset int
 	// bound is the node whose expressions the site hoists.
 	bound ast.Node
-	// New error variables must not clash with names in [from, end). With a
-	// scope, the top level of the site uses the rules of pickErrorVar
-	// instead. Then it can reuse an error variable of the scope.
+	// scope is nil if gosling adds the block of the site. Then new error
+	// variables must not clash with names in [from, end).
 	scope    *types.Scope
 	from     token.Pos
 	end      token.Pos
 	priority int // sorts the site before other insertions at its offset
 	pieces   []hoistPiece
+	// blockScope stands for the scope of the block that gosling adds for a
+	// site without a scope. It holds the error variables of the block.
+	blockScope *types.Scope
+}
+
+// errorScope returns the scope where := declares the error variables of the site.
+func (site *hoistSite) errorScope() *types.Scope {
+	if site.scope != nil {
+		return site.scope
+	}
+	if site.blockScope == nil {
+		site.blockScope = types.NewScope(nil, site.from, site.end, "hoist site")
+	}
+	return site.blockScope
 }
 
 // hoistPiece is hoisted code: text, or text around a moved expression.
@@ -256,7 +269,7 @@ func (lowerer *lowerer) hoistInto(site *hoistSite, try *tryContext, exprs ...ast
 	if len(root.items) == 0 {
 		return false
 	}
-	lowerer.hoistScopeItems(site, root, try, false)
+	lowerer.hoistScopeItems(site, root, try, site.errorScope())
 	return true
 }
 
@@ -286,7 +299,7 @@ func (lowerer *lowerer) addToScope(root *hoistScope, marker *ast.CallExpr, bound
 
 // hoistScopeItems adds the items of scope to site in evaluation order. An item
 // runs after the items inside it, and after the items to its left.
-func (lowerer *lowerer) hoistScopeItems(site *hoistSite, scope *hoistScope, try *tryContext, isNested bool) {
+func (lowerer *lowerer) hoistScopeItems(site *hoistSite, scope *hoistScope, try *tryContext, errorScope *types.Scope) {
 	slices.SortStableFunc(scope.items, func(left, right ast.Expr) int {
 		if left.End() != right.End() {
 			return int(left.End()) - int(right.End())
@@ -296,7 +309,7 @@ func (lowerer *lowerer) hoistScopeItems(site *hoistSite, scope *hoistScope, try 
 	for _, item := range scope.items {
 		switch item := item.(type) {
 		case *ast.CallExpr:
-			lowerer.hoistCall(site, item, try, isNested)
+			lowerer.hoistCall(site, item, try, errorScope)
 		case *ast.BinaryExpr:
 			lowerer.hoistSplit(site, item, scope.children[item], try)
 		}
@@ -304,15 +317,11 @@ func (lowerer *lowerer) hoistScopeItems(site *hoistSite, scope *hoistScope, try 
 }
 
 // hoistCall moves the call that marker wraps into a checked statement.
-func (lowerer *lowerer) hoistCall(site *hoistSite, marker *ast.CallExpr, try *tryContext, isNested bool) {
+func (lowerer *lowerer) hoistCall(site *hoistSite, marker *ast.CallExpr, try *tryContext, errorScope *types.Scope) {
 	call := lowerer.file.hoisted[marker]
 	target := try.target()
 	valueVars := lowerer.pickValueVars(call)
-	scope, end := site.scope, token.NoPos
-	if isNested || scope == nil {
-		scope, end = nil, site.end
-	}
-	errVar := lowerer.pickErrorVar(try, scope, site.from, end, lastResultType(lowerer.typeInfo, call))
+	errVar := lowerer.pickErrorVar(try, errorScope, site.from, token.NoPos, lastResultType(lowerer.typeInfo, call))
 	target.jumps++
 	site.add(hoistPiece{
 		before: valueVars + ", " + errVar + " := ",
@@ -341,7 +350,7 @@ func (lowerer *lowerer) hoistSplit(site *hoistSite, split *ast.BinaryExpr, scope
 	}
 	line := lowerer.line(split.Pos())
 	site.add(lowerer.operandPiece(lowerer.condDecl(split, condVar), split.X, "\nif "+condTest+" {\n", line))
-	lowerer.hoistScopeItems(site, scope, try, true)
+	lowerer.hoistScopeItems(site, scope, try, types.NewScope(nil, site.from, site.end, "hoist split"))
 	site.add(lowerer.operandPiece(condVar+" = ", split.Y, "\n}\n", line))
 	lowerer.replaceHoisted(split, condVar)
 }
