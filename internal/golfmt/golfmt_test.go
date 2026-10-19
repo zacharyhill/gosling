@@ -88,6 +88,31 @@ func TestSource(test *testing.T) {
 			want: "package p\n\nfunc f(s string) {\n\tg(s, /a/, /b/)\n\tg(/d/)\n\tconst r = /c/\n\t_ = r\n}\n",
 		},
 		{
+			name: "let spacing in a function",
+			src:  "package p\n\nfunc f() {\n\tlet r=1\n\tlet a,b=1,2\n\tlet x: int=1\n\tconst c=1\n\t_, _, _, _, _ = r, a, b, x, c\n}\n",
+			want: "package p\n\nfunc f() {\n\tlet r = 1\n\tlet a, b = 1, 2\n\tlet x: int = 1\n\tconst c = 1\n\t_, _, _, _, _ = r, a, b, x, c\n}\n",
+		},
+		{
+			name: "let spacing at package level",
+			src:  "package p\n\nlet r=1\nlet x: int=1\n",
+			want: "package p\n\nlet r = 1\nlet x: int = 1\n",
+		},
+		{
+			name: "let and const spacing in headers",
+			src:  "package p\n\nfunc f() {\n\tif let x=g(); x>0 {\n\t}\n\tif const y=g(); y>0 {\n\t}\n\tif let z: int=g(); z>0 {\n\t}\n\tfor let i=0; i<3; i++ {\n\t}\n}\n\nfunc g() int { return 1 }\n",
+			want: "package p\n\nfunc f() {\n\tif let x = g(); x > 0 {\n\t}\n\tif const y = g(); y > 0 {\n\t}\n\tif let z: int = g(); z > 0 {\n\t}\n\tfor let i = 0; i < 3; i++ {\n\t}\n}\n\nfunc g() int { return 1 }\n",
+		},
+		{
+			name: "grouped let",
+			src:  "package p\n\nlet (\n\ta=1\n\tbb: int=2\n\tccc: string\n)\n\nlet (\n\tx: int = 1\n\tlonger: string = \"s\"\n)\n",
+			want: "package p\n\nlet (\n\ta        = 1\n\tbb:  int = 2\n\tccc: string\n)\n\nlet (\n\tx:      int    = 1\n\tlonger: string = \"s\"\n)\n",
+		},
+		{
+			name: "grouped let with comments",
+			src:  "package p\n\nlet (\n\tx: int=1 // a\n\tname: string // b\n)\n",
+			want: "package p\n\nlet (\n\tx:    int = 1 // a\n\tname: string  // b\n)\n",
+		},
+		{
 			name: "nullish assignment",
 			src:  "package p\n\nfunc f(p *int, q *int) {\np ??= q\n}\n",
 			want: "package p\n\nfunc f(p *int, q *int) {\n\tp ??= q\n}\n",
