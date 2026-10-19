@@ -584,6 +584,8 @@ const [n, name] = parse(s) // n, name := parse(s), with parse returning (int, st
 
 In a try block, gosling checks the error. A `_` element skips a result. A pattern with a rest element, a nested pattern, or a default cannot take results.
 
+A pattern with two elements also takes the value and the ok result of a map index. This applies only if you cannot index the map value. So `const [n, ok] = counts[key]` becomes `n, ok := counts[key]`, but `const [a, b] = pairs[key]` with `[]int` values reads two elements.
+
 A parameter can also be a pattern. gosling gives the parameter a name and declares the names at the start of the body:
 
 ```go
@@ -728,6 +730,7 @@ If `xs` is an `iter.Seq`, `for (const x of xs)` becomes `for x := range xs`. For
 - `f?.(x)` calls `f` only if `f` is not nil.
 - As in Go, a pointer to a slice or a map cannot be indexed.
 - `?.[` cannot start a slice expression. `xs?.[1:]` is an error.
+- A map index can end a chain with two results, as in `const v, ok = box?.Items[key]` or `const v, ok = m?.[key]`. If gosling skips the chain, `v` gets the zero value and `ok` is `false`.
 
 ```go
 const port = ports?.[name] ?? 8080

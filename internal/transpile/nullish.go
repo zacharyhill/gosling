@@ -554,6 +554,10 @@ func (lowerer *lowerer) lowerChain(root ast.Expr) {
 		lowerer.lowerCommaOkChain(root, links, tempVar, assertedType)
 		return
 	}
+	if valueType, ok := lowerer.getCommaOkMapType(root, resultType); ok {
+		lowerer.lowerCommaOkChain(root, links, tempVar, valueType)
+		return
+	}
 	if _, isTuple := resultType.(*types.Tuple); isTuple || resultType == nil {
 		lowerer.errorf(lowerer.file, root.Pos(), "an optional call with zero or multiple results can only be used as a statement")
 		return
@@ -584,27 +588,48 @@ func getCommaOkAssertType(root ast.Expr, resultType types.Type) (types.Type, boo
 	return tuple.At(0).Type(), true
 }
 
-// lowerCommaOkChain lowers `v, ok := a?.b.(T)`. A skipped chain gives zero and false.
+// getCommaOkMapType returns V if root is a map index m[k] that gives a value
+// of type V and an ok result.
+func (lowerer *lowerer) getCommaOkMapType(root ast.Expr, resultType types.Type) (types.Type, bool) {
+	tuple, isTuple := resultType.(*types.Tuple)
+	indexExpr, isIndex := root.(*ast.IndexExpr)
+	if !isTuple || tuple.Len() != 2 || !isIndex || !lowerer.isMap(indexExpr.X) {
+		return nil, false
+	}
+	return tuple.At(0).Type(), true
+}
+
+// lowerCommaOkChain lowers `v, ok := a?.b.(T)` and `v, ok := a?.b[k]`. A skipped chain gives zero and false.
 // Go allows comma-ok only in an assignment, so the last link assigns before it returns.
-func (lowerer *lowerer) lowerCommaOkChain(root ast.Expr, links []ast.Expr, tempVar string, assertedType types.Type) {
-	typeText, ok := lowerer.typeName(assertedType)
+func (lowerer *lowerer) lowerCommaOkChain(root ast.Expr, links []ast.Expr, tempVar string, valueType types.Type) {
+	typeText, ok := lowerer.typeName(valueType)
 	if !ok {
 		lowerer.typeNameTakenError(root.Pos(), "optional chain", typeText)
 		return
 	}
-	if lowerer.reportHiddenType(assertedType, typeText, root.Pos()) {
+	if lowerer.reportHiddenType(valueType, typeText, root.Pos()) {
 		return
 	}
-	zeroText := zeroValue(assertedType, typeText)
+	zeroText := zeroValue(valueType, typeText)
+	isOptionalIndex := lowerer.file.optional[root]
 	builtins := append([]string{"bool", "false"}, zeroValueBuiltins(zeroText)...)
+	if isOptionalIndex {
+		builtins = append(builtins, "true")
+	}
 	if !lowerer.checkBuiltins(root.Pos(), "optional chain", builtins...) {
+		return
+	}
+	openText, skippedText := "func() ("+typeText+", bool) {\n", "\nreturn "+zeroText+", false\n}()"
+	// The guard of a last `?.[k]` link already checks the key.
+	if isOptionalIndex {
+		closing := lowerer.guards(root, openText, links, tempVar, "return ")
+		lowerer.insertOrdered(root.End(), ", true"+closing+skippedText, lowerer.line(root.Pos()), -lowerer.depth(root))
 		return
 	}
 	okName := lowerer.pickName("ok", root.Pos(), root.End())
 	resultNames := tempVar + ", " + okName
-	closing := lowerer.guards(root, "func() ("+typeText+", bool) {\n", links, tempVar, resultNames+" := ")
-	closingText := "\nreturn " + resultNames + closing + "\nreturn " + zeroText + ", false\n}()"
-	lowerer.insertOrdered(root.End(), closingText, lowerer.line(root.Pos()), -lowerer.depth(root))
+	closing := lowerer.guards(root, openText, links, tempVar, resultNames+" := ")
+	lowerer.insertOrdered(root.End(), "\nreturn "+resultNames+closing+skippedText, lowerer.line(root.Pos()), -lowerer.depth(root))
 }
 
 func isAddressOf(node ast.Node) bool {

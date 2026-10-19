@@ -1,0 +1,47 @@
+package main
+
+import "fmt"
+
+type Box struct {
+	Items map[string]int
+	Inner *Box
+}
+
+func main() {
+	let box: *Box = &Box{Items: map[string]int{"a": 1}}
+	let empty: *Box
+	const count, hasCount = box?.Items["a"]
+	const missing, hasMissing = box?.Items["b"]
+	const skipped, hasSkipped = empty?.Items["a"]
+	fmt.Println(count, hasCount, missing, hasMissing, skipped, hasSkipped)
+	const [first, hasFirst] = box?.Items["a"]
+	const [none, hasNone] = empty?.Items["a"]
+	fmt.Println(first, hasFirst, none, hasNone)
+	if const found, ok = box?.Items["a"]; ok {
+		fmt.Println("found", found)
+	}
+	let deep: int
+	let hasDeep: bool
+	deep, hasDeep = box?.Inner?.Items["a"]
+	fmt.Println(deep, hasDeep)
+	const boxes = map[string]*Box{"a": box}
+	const [boxed, hasBoxed] = boxes?.["a"]?.Items["a"]
+	const [unboxed, hasUnboxed] = boxes?.["b"]?.Items["a"]
+	fmt.Println(boxed, hasBoxed, unboxed, hasUnboxed)
+	const counts = map[string]int{"a": 1}
+	const direct, hasDirect = counts?.["a"]
+	const absent, hasAbsent = counts?.["b"]
+	fmt.Println(direct, hasDirect, absent, hasAbsent)
+	const [plain, hasPlain] = counts["a"]
+	const [_, hasOther] = counts["b"]
+	fmt.Println(plain, hasPlain, hasOther)
+	const pairs = map[string][]int{"a": {3, 4}}
+	const [left, right] = pairs["a"]
+	const pairBox = &PairBox{Pairs: pairs}
+	const [chainedLeft, chainedRight] = pairBox?.Pairs["a"]
+	fmt.Println(left, right, chainedLeft, chainedRight)
+}
+
+type PairBox struct {
+	Pairs map[string][]int
+}
