@@ -157,6 +157,11 @@ func TestProcess(test *testing.T) {
 			want: "p2 := Point(__goslingWith(p,\nPoint{}))",
 		},
 		{
+			name: "address of struct spread",
+			src:  "p2 := &geo.Point{...p, X: 5}",
+			want: "p2 := __goslingAddr(geo.Point(__goslingWith(p, geo.Point{ X: 5})))",
+		},
+		{
 			name: "generic struct spread",
 			src:  "b := Box[int]{...b0, V: f(x)}",
 			want: "b := Box[int](__goslingWith(b0, Box[int]{ V: f(x)}))",
