@@ -37,15 +37,19 @@ type gap struct {
 // gaps[i] comes before tokens[i]. The last gap ends the file.
 type layout struct {
 	src         []byte
+	original    []byte
 	tokens      []sourceToken
 	gaps        []gap
 	gapsByStart map[int]int
 	gapsByEnd   map[int]int
 }
 
-func newLayout(src []byte) *layout {
+// newLayout scans original with each regex literal masked, so a regex
+// literal is one token.
+func newLayout(original []byte) *layout {
+	src := preprocess.MaskRegexes(original)
 	tokens := scanTokens(src, false)
-	layout := &layout{src: src, tokens: tokens, gapsByStart: map[int]int{}, gapsByEnd: map[int]int{}}
+	layout := &layout{src: src, original: original, tokens: tokens, gapsByStart: map[int]int{}, gapsByEnd: map[int]int{}}
 	previousEnd := 0
 	for _, current := range append(tokens, sourceToken{start: len(src), end: len(src)}) {
 		layout.gapsByStart[previousEnd] = len(layout.gaps)
@@ -126,10 +130,22 @@ func tokenAt(tokens []sourceToken, tokenIndex int) sourceToken {
 }
 
 // hasSameNeighbors reports whether the tokens around a gap have the text of the
-// preprocessed tokens left and right.
+// preprocessed tokens left and right. A regex literal becomes a
+// preprocess.RegexMarker call, so it starts with the marker and ends with ")".
 func (layout *layout) hasSameNeighbors(gapIndex int, left, right sourceToken) bool {
-	sourceLeft, sourceRight := tokenAt(layout.tokens, gapIndex-1), tokenAt(layout.tokens, gapIndex)
-	return sourceLeft.text == left.text && sourceRight.text == right.text
+	isLeftSame := left.text == tokenAt(layout.tokens, gapIndex-1).text ||
+		layout.isRegex(gapIndex-1) && left.text == ")"
+	isRightSame := right.text == tokenAt(layout.tokens, gapIndex).text ||
+		layout.isRegex(gapIndex) && right.text == preprocess.RegexMarker
+	return isLeftSame && isRightSame
+}
+
+// isRegex reports whether the token at tokenIndex is a masked regex literal.
+// Masking changes the first "/" of the literal into a string or a number.
+func (layout *layout) isRegex(tokenIndex int) bool {
+	current := tokenAt(layout.tokens, tokenIndex)
+	isMasked := current.kind == token.STRING || current.kind == token.INT
+	return isMasked && layout.original[current.start] == '/'
 }
 
 // copyIndents records the gofmt indentation of each token that starts a
@@ -419,6 +435,10 @@ func (layout *layout) needsSpace(gapIndex int) bool {
 	if spacedPairs[[2]string{left.text, right.text}] {
 		return true
 	}
+	// Preprocessing adds this space, so gofmt does not format this gap.
+	if layout.isRegex(gapIndex) && isIdentByte(layout.src[left.end-1]) {
+		return true
+	}
 	if layout.isInNullishAssign(gapIndex) {
 		return false
 	}
@@ -442,6 +462,10 @@ func (layout *layout) startsOperator(tokenIndex int) bool {
 func (layout *layout) endsOperator(tokenIndex int) bool {
 	first, second := tokenAt(layout.tokens, tokenIndex-1), tokenAt(layout.tokens, tokenIndex)
 	return first.end == second.start && isTwoTokenOperator(first.text, second.text)
+}
+
+func isIdentByte(char byte) bool {
+	return char == '_' || '0' <= char && char <= '9' || 'a' <= char && char <= 'z' || 'A' <= char && char <= 'Z'
 }
 
 func isTwoTokenOperator(first, second string) bool {

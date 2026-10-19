@@ -44,8 +44,7 @@ func Edits(src []byte) ([]Edit, error) {
 	if err != nil {
 		return nil, mapSourceError(src, preprocessed, err)
 	}
-	// A regex literal is one token. Its text keeps its space.
-	layout := newLayout(preprocess.MaskRegexes(src))
+	layout := newLayout(src)
 	layout.copyGaps(newGofmtResult(preprocessed, formatted))
 	layout.cleanKeptGaps()
 	layout.alignComments(formatted)
