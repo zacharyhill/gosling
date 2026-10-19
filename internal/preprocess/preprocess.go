@@ -29,6 +29,8 @@ type Result struct {
 	Unions []Union
 	// Coalesce holds the offsets of the "||" operators that replace "??".
 	Coalesce []int
+	// NullishAssigns holds the offsets of the "=" operators that replace "??=".
+	NullishAssigns []int
 	// Splits holds the offsets of added "; " separators. The statements on
 	// each side belong on separate lines.
 	Splits []int

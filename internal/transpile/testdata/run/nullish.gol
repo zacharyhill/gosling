@@ -64,5 +64,26 @@ func main() {
 	fmt.Println(orOne[*int](nil), orOne(&seven), firstOrTwo[*int](nil, nil), firstOrTwo(nil, &seven))
 	let sb: *strings.Builder
 	sb?.WriteString("ignored")
+	let cfg = Config{}
+	cfg.Port ??= &port
+	cfg.Port ??= new(1)
+	fmt.Println(*cfg.Port, cfg.Port == &port)
+	let present = "here"
+	let names = map[string]*string{"a": &present, "b": nil}
+	let keys = []string{"a", "b", "c"}
+	let lookups = 0
+	let key = (i int) => {
+		lookups++
+		return keys[i]
+	}
+	for (let i = 0; i < 3; i++) {
+		let fallback = t`default ${i}`
+		names[key(i)] ??= &fallback
+	}
+	fmt.Println(*names["a"], *names["b"], *names["c"], lookups)
+	let users: []*User
+	users ??= []*User{full}
+	users[0].Profile ??= &Profile{Name: "unused"}
+	fmt.Println(users[0].Profile.Name)
 	fmt.Println("done")
 }

@@ -168,10 +168,15 @@ func isVarOfType(object types.Object, varType types.Type) bool {
 // pickTempVar returns a temporary name not referenced in [from, to) and
 // not declared at package level.
 func (lowerer *lowerer) pickTempVar(from, to token.Pos) string {
+	return lowerer.pickName("v", from, to)
+}
+
+// pickName returns base, or base with a number, not referenced in [from, to).
+func (lowerer *lowerer) pickName(base string, from, to token.Pos) string {
 	for attempt := 1; ; attempt++ {
-		name := "v"
+		name := base
 		if attempt > 1 {
-			name = "v" + strconv.Itoa(attempt)
+			name = base + strconv.Itoa(attempt)
 		}
 		if _, used := lowerer.usedIn(name, from, to); !used && !lowerer.isPackageLevelName(name) {
 			return name

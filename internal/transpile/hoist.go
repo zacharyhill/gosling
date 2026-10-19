@@ -453,8 +453,11 @@ func (lowerer *lowerer) markersIn(nodes ...ast.Node) []*ast.CallExpr {
 
 // isConditional reports whether marker runs only on some paths through bound
 // that gosling cannot rewrite: as a ?? or destructuring default, as a try
-// expression fallback, or after a ?. link.
+// expression fallback, after a ?. link, or on the right of ??=.
 func (lowerer *lowerer) isConditional(marker ast.Node, bound ast.Node) bool {
+	if assign, ok := bound.(*ast.AssignStmt); ok && lowerer.file.nullishAssigns[assign] && marker.Pos() >= assign.Rhs[0].Pos() {
+		return true
+	}
 	child := marker
 	for ancestor := lowerer.parents[marker]; ancestor != nil && ancestor != bound; child, ancestor = ancestor, lowerer.parents[ancestor] {
 		if call, ok := ancestor.(*ast.CallExpr); ok && lowerer.isFallbackOf(call, child) {

@@ -21,6 +21,7 @@ func TestProcess(test *testing.T) {
 		newlines    [][2]int
 		arrayTemps  []ArrayTemp
 		params      []int
+		assigns     []int
 	}{
 		{
 			name: "try catch with binding",
@@ -62,6 +63,12 @@ func TestProcess(test *testing.T) {
 			name: "optional method call",
 			src:  "x := a?.Get(1)",
 			want: "x := a.__goslingO.Get(1)",
+		},
+		{
+			name:    "nullish assignment",
+			src:     "cfg.Port ??= &port",
+			want:    "cfg.Port = &port",
+			assigns: []int{len("cfg.Port ")},
 		},
 		{
 			name: "arrow with untyped parameter",
@@ -1043,6 +1050,9 @@ func TestProcess(test *testing.T) {
 			if !slices.Equal(result.Coalesce, testCase.coalesce) {
 				test.Errorf("coalesce %v, want %v", result.Coalesce, testCase.coalesce)
 			}
+			if !slices.Equal(result.NullishAssigns, testCase.assigns) {
+				test.Errorf("nullish assigns %v, want %v", result.NullishAssigns, testCase.assigns)
+			}
 			if !slices.Equal(result.Consts, testCase.consts) {
 				test.Errorf("consts %v, want %v", result.Consts, testCase.consts)
 			}
@@ -1095,7 +1105,6 @@ func TestProcessErrors(test *testing.T) {
 		{"parameter pattern without body", "type F func({X}: P)\n", "a destructured parameter needs a function body", len("type F func(")},
 		{"parameter pattern without type", "func f({X}) {\n}", "a destructured parameter needs a type", len("func f(")},
 		{"optional index", "x := a?.[0]", "?.[ and ?.( are not supported", len("x := a")},
-		{"nullish assignment", "x ??= 1", "??= is not supported", len("x ")},
 		{"union inside function", "func f() {\n\ttype S = A | B\n}", "union types must be declared at package level", len("func f() {\n\t")},
 		{"generic union variant without type arguments", "type R[T any] = Ok[T] | Err\n", "union variant Err must have the type arguments [T]", len("type R[T any] = Ok[T] | ")},
 		{"generic union variant with other type arguments", "type R[K, V any] = Ok[V, K] | Err[K, V]\n", "union variant Ok[V, K] must have the type arguments [K, V]", len("type R[K, V any] = ")},

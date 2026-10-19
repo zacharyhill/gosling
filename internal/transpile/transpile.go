@@ -95,9 +95,11 @@ type file struct {
 	// optional holds selectors written with ?. instead of a plain dot.
 	optional map[*ast.SelectorExpr]bool
 	// coalesce maps each ?? marker call to the expression it replaced.
-	coalesce   map[*ast.CallExpr]*ast.BinaryExpr
-	arrows     []*arrow
-	arrayCalls map[*ast.CallExpr]*arrayCall
+	coalesce map[*ast.CallExpr]*ast.BinaryExpr
+	// nullishAssigns holds the assignments written with ??= instead of =.
+	nullishAssigns map[*ast.AssignStmt]bool
+	arrows         []*arrow
+	arrayCalls     map[*ast.CallExpr]*arrayCall
 	// lengths maps each len call that replaced x.length to the selector.
 	lengths map[*ast.CallExpr]*ast.SelectorExpr
 	// identNames holds every identifier name in the source. Added imports
@@ -318,28 +320,29 @@ func (transpiler *transpiler) reportGoDeclarations(input Input) {
 
 func newFile(input Input, preprocessed *preprocess.Result) *file {
 	return &file{
-		path:          input.Path,
-		original:      input.Src,
-		preprocessed:  preprocessed,
-		tries:         map[int]preprocess.Try{},
-		augmented:     map[*ast.AssignStmt]int{},
-		optional:      map[*ast.SelectorExpr]bool{},
-		coalesce:      map[*ast.CallExpr]*ast.BinaryExpr{},
-		arrayCalls:    map[*ast.CallExpr]*arrayCall{},
-		lengths:       map[*ast.CallExpr]*ast.SelectorExpr{},
-		identNames:    map[string]bool{},
-		added:         map[string]string{},
-		aliased:       map[string]bool{},
-		finallyOf:     map[*ast.IfStmt]*ast.BlockStmt{},
-		finallyBlocks: map[*ast.BlockStmt]bool{},
-		hoisted:       map[*ast.CallExpr]*ast.CallExpr{},
-		shorthand:     map[*ast.KeyValueExpr]*ast.Ident{},
-		badSpreads:    map[*ast.CompositeLit]bool{},
-		panicAtEnd:    map[*ast.BlockStmt]bool{},
-		constVars:     map[*ast.Ident]bool{},
-		constDecls:    map[*ast.GenDecl]*ast.AssignStmt{},
-		forOfBlanks:   map[*ast.RangeStmt]*ast.Ident{},
-		tuples:        map[*ast.AssignStmt]*tupleDestructure{},
+		path:           input.Path,
+		original:       input.Src,
+		preprocessed:   preprocessed,
+		tries:          map[int]preprocess.Try{},
+		augmented:      map[*ast.AssignStmt]int{},
+		optional:       map[*ast.SelectorExpr]bool{},
+		coalesce:       map[*ast.CallExpr]*ast.BinaryExpr{},
+		nullishAssigns: map[*ast.AssignStmt]bool{},
+		arrayCalls:     map[*ast.CallExpr]*arrayCall{},
+		lengths:        map[*ast.CallExpr]*ast.SelectorExpr{},
+		identNames:     map[string]bool{},
+		added:          map[string]string{},
+		aliased:        map[string]bool{},
+		finallyOf:      map[*ast.IfStmt]*ast.BlockStmt{},
+		finallyBlocks:  map[*ast.BlockStmt]bool{},
+		hoisted:        map[*ast.CallExpr]*ast.CallExpr{},
+		shorthand:      map[*ast.KeyValueExpr]*ast.Ident{},
+		badSpreads:     map[*ast.CompositeLit]bool{},
+		panicAtEnd:     map[*ast.BlockStmt]bool{},
+		constVars:      map[*ast.Ident]bool{},
+		constDecls:     map[*ast.GenDecl]*ast.AssignStmt{},
+		forOfBlanks:    map[*ast.RangeStmt]*ast.Ident{},
+		tuples:         map[*ast.AssignStmt]*tupleDestructure{},
 	}
 }
 
@@ -364,11 +367,15 @@ func (transpiler *transpiler) addParseErrors(file *file, err error) {
 }
 
 // stripMarkers changes optional selectors and ?? operators back into plain
-// Go so the AST type-checks. It records the changed nodes.
+// Go so the AST type-checks. It records the changed nodes, and the
+// assignments that ??= became.
 func (file *file) stripMarkers() {
-	coalesceAt := map[int]bool{}
+	coalesceAt, nullishAssignAt := map[int]bool{}, map[int]bool{}
 	for _, offset := range file.preprocessed.Coalesce {
 		coalesceAt[offset] = true
+	}
+	for _, offset := range file.preprocessed.NullishAssigns {
+		nullishAssignAt[offset] = true
 	}
 	astutil.Apply(file.ast, nil, func(cursor *astutil.Cursor) bool {
 		switch node := cursor.Node().(type) {
@@ -379,6 +386,10 @@ func (file *file) stripMarkers() {
 		case *ast.BinaryExpr:
 			if node.Op == token.LOR && coalesceAt[file.tokenFile.Offset(node.OpPos)] {
 				file.stripCoalesceMarker(cursor, node)
+			}
+		case *ast.AssignStmt:
+			if node.Tok == token.ASSIGN && nullishAssignAt[file.tokenFile.Offset(node.TokPos)] {
+				file.nullishAssigns[node] = true
 			}
 		}
 		return true
