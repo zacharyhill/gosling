@@ -40,6 +40,23 @@ func terminates(stmt ast.Stmt, noReturn func(*ast.CallExpr) bool) bool {
 	return false
 }
 
+// neverCompletes reports whether control never reaches the end of stmt. Unlike terminates, it
+// counts break and continue, but only through blocks, ifs, and labels, where they leave stmt.
+func neverCompletes(stmt ast.Stmt, noReturn func(*ast.CallExpr) bool) bool {
+	switch stmt := stmt.(type) {
+	case *ast.BranchStmt:
+		return stmt.Tok != token.FALLTHROUGH
+	case *ast.BlockStmt:
+		last := lastStmt(stmt.List)
+		return last != nil && neverCompletes(last, noReturn)
+	case *ast.IfStmt:
+		return stmt.Else != nil && neverCompletes(stmt.Body, noReturn) && neverCompletes(stmt.Else, noReturn)
+	case *ast.LabeledStmt:
+		return neverCompletes(stmt.Stmt, noReturn)
+	}
+	return terminates(stmt, noReturn)
+}
+
 func isPanic(call *ast.CallExpr) bool {
 	ident, ok := ast.Unparen(call.Fun).(*ast.Ident)
 	return ok && ident.Name == "panic"

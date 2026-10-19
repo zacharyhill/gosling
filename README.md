@@ -288,7 +288,8 @@ Rules:
 - Only a last `error` result counts. A call such as `func f() (error, int)` used as a statement is an error.
 - `catch { ... }` without a variable is allowed.
 - Try blocks can be nested. A failure in a catch block goes to the outer try.
-- If the try block always returns, gosling does not add a jump over the catch block. Then a function whose try and catch both return needs no last `return`.
+- If the try block always ends in `return`, `break`, `continue`, `goto`, `panic`, or a call that never returns, gosling does not add a jump over the catch block.
+- A function whose try and catch both return needs no last `return`.
 - Some calls never return: `t.Fatal`, `t.FailNow`, `t.Skip`, `os.Exit`, `runtime.Goexit`, `log.Fatal`, and `log.Panic`, with their variants. When a function ends in a try, these calls end it.
 - If no call in the try block can fail, gosling removes the catch block.
 - The catch variable can have the same name as a variable in the try block.

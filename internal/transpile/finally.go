@@ -272,8 +272,8 @@ func (lowerer *lowerer) jumpOut(try, target *tryContext, final string) string {
 func (lowerer *lowerer) emitFinally(parts *tryStatement) {
 	stmt, layer := parts.stmt, parts.context.finally
 	hasCatch := parts.catch != nil && !parts.isCatchDropped
-	tryTerminates := isTerminating(stmt.Body)
-	if hasCatch && !tryTerminates {
+	canTryComplete := !neverCompletes(stmt.Body, neverReturns(lowerer.typeInfo))
+	if hasCatch && canTryComplete {
 		layer.gotos++ // the jump over the catch block
 	}
 	for _, returnType := range layer.returnVarTypes {
@@ -281,10 +281,10 @@ func (lowerer *lowerer) emitFinally(parts *tryStatement) {
 		lowerer.reportHiddenType(returnType, typeText, stmt.Pos())
 	}
 	lowerer.replace(stmt.Pos(), stmt.Body.Lbrace+1, lowerer.finallyHead(parts, hasCatch), lowerer.line(stmt.Pos()))
-	lowerer.emitFinallyOpening(parts, hasCatch, tryTerminates)
+	lowerer.emitFinallyOpening(parts, hasCatch, canTryComplete)
 	// If no path falls through the try statement, the output must not fall
 	// through. Otherwise Go reports a missing return.
-	isEndUnreachable := !layer.terminates && tryTerminates && (!hasCatch || isTerminating(parts.catch))
+	isEndUnreachable := !layer.terminates && isTerminating(stmt.Body) && (!hasCatch || isTerminating(parts.catch))
 	finallyBlock := parts.finallyBlock
 	if isEndUnreachable {
 		lowerer.checkBuiltins(finallyBlock.Rbrace, "finally", "panic")
@@ -316,7 +316,7 @@ func (lowerer *lowerer) finallyHead(parts *tryStatement, hasCatch bool) string {
 
 // emitFinallyOpening rewrites the text between the try body and the finally
 // body. This text holds the catch block, if kept, and the finally label.
-func (lowerer *lowerer) emitFinallyOpening(parts *tryStatement, hasCatch, tryTerminates bool) {
+func (lowerer *lowerer) emitFinallyOpening(parts *tryStatement, hasCatch, canTryComplete bool) {
 	stmt, layer, finallyBlock := parts.stmt, parts.context.finally, parts.finallyBlock
 	label := ""
 	if layer.gotos > 0 {
@@ -327,7 +327,7 @@ func (lowerer *lowerer) emitFinallyOpening(parts *tryStatement, hasCatch, tryTer
 	switch {
 	case hasCatch:
 		middle := "}\n"
-		if !tryTerminates {
+		if canTryComplete {
 			middle += "goto " + layer.label + "\n"
 		}
 		lowerer.replaceOffsets(lowerer.offset(stmt.Body.Rbrace), parts.catchEnd, middle+parts.context.catchLabel()+":\n{"+parts.prologue, bodyEnd)
