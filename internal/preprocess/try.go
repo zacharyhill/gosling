@@ -14,6 +14,11 @@ type Try struct {
 	// catch that catches all errors. It is 0 if each catch has a filter.
 	CatchEnd int
 	Binding  string // catch variable name, empty for a bare catch
+	// HasPanic is true for a catch panic clause. Its block is the last else
+	// branch. With a catch block too, the catch becomes "else if true {".
+	HasPanic     bool
+	PanicEnd     int    // offset directly after the generated catch panic prologue
+	PanicBinding string // catch panic variable name, empty without one
 	// Finally is the offset of the opening brace of the finally block, or 0.
 	// "finally" becomes ";", so the block is a separate statement after the try.
 	Finally int
@@ -49,6 +54,9 @@ func (processor *processor) closeBrace(tokenIndex int) (int, error) {
 		if processor.tokenAt(tokenIndex + 1).isIdent("finally") {
 			return processor.finally(tokenIndex, tryStatement)
 		}
+		if processor.isPanicCatch(tokenIndex + 1) {
+			return processor.catchPanic(tokenIndex, closedFrame.tryIndex)
+		}
 		next, err := processor.catch(tokenIndex, tryStatement)
 		if err != nil {
 			return 0, err
@@ -57,10 +65,10 @@ func (processor *processor) closeBrace(tokenIndex int) (int, error) {
 		return next, nil
 	case frameCatch:
 		tryStatement := &processor.result.Tries[closedFrame.tryIndex]
-		switch next := processor.tokenAt(tokenIndex + 1); {
-		case next.isIdent("finally"):
-			return processor.finally(tokenIndex, tryStatement)
-		case next.isIdent("catch"):
+		if processor.isPanicCatch(tokenIndex + 1) {
+			return processor.catchPanic(tokenIndex, closedFrame.tryIndex)
+		}
+		if next := processor.tokenAt(tokenIndex + 1); next.isIdent("catch") {
 			if tryStatement.CatchEnd != 0 {
 				return 0, &Error{next.offset, "only the last catch can catch all errors"}
 			}
@@ -71,11 +79,74 @@ func (processor *processor) closeBrace(tokenIndex int) (int, error) {
 			processor.braceStack = append(processor.braceStack, closedFrame)
 			return lbraceIndex, nil
 		}
-		if after := processor.tokenAt(tokenIndex + 2); processor.tokenAt(tokenIndex+1).is(token.SEMICOLON) && (after.isIdent("finally") || after.isIdent("catch")) {
-			return 0, &Error{after.offset, after.text + " must be on the same line as the closing brace before it"}
+		return processor.rewriteAfterHandler(tokenIndex, closedFrame)
+	case framePanic:
+		if processor.tokenAt(tokenIndex + 1).isIdent("catch") {
+			return 0, &Error{processor.tokenAt(tokenIndex + 1).offset, "catch panic must be the last catch clause"}
 		}
+		return processor.rewriteAfterHandler(tokenIndex, closedFrame)
 	}
 	return tokenIndex, nil
+}
+
+// rewriteAfterHandler rewrites a finally clause after the closing brace of a
+// catch or catch panic block at token tokenIndex. A finally or catch on the
+// next line is an error.
+func (processor *processor) rewriteAfterHandler(tokenIndex int, closedFrame frame) (int, error) {
+	if processor.tokenAt(tokenIndex + 1).isIdent("finally") {
+		return processor.finally(tokenIndex, &processor.result.Tries[closedFrame.tryIndex])
+	}
+	if next := processor.tokenAt(tokenIndex + 2); processor.tokenAt(tokenIndex+1).is(token.SEMICOLON) && (next.isIdent("finally") || next.isIdent("catch")) {
+		return 0, &Error{next.offset, next.text + " must be on the same line as the closing brace before it"}
+	}
+	return tokenIndex, nil
+}
+
+func (processor *processor) isPanicCatch(tokenIndex int) bool {
+	return processor.tokenAt(tokenIndex).isIdent("catch") && processor.tokenAt(tokenIndex+1).isIdent("panic")
+}
+
+// isPanicCatchAfter reports whether a catch panic clause follows the block
+// that opens at token lbraceIndex.
+func (processor *processor) isPanicCatchAfter(lbraceIndex int) bool {
+	depth := 0
+	for tokenIndex := lbraceIndex; tokenIndex < len(processor.tokens); tokenIndex++ {
+		switch processor.tokens[tokenIndex].kind {
+		case token.LBRACE:
+			depth++
+		case token.RBRACE:
+			depth--
+			if depth == 0 {
+				return processor.isPanicCatch(tokenIndex + 1)
+			}
+		}
+	}
+	return false
+}
+
+// catchPanic rewrites the catch panic clause after the block that closes at
+// token tokenIndex. It returns the index of the opening brace of its block.
+func (processor *processor) catchPanic(tokenIndex, tryIndex int) (int, error) {
+	tryStatement := &processor.result.Tries[tryIndex]
+	keyword := processor.tokenAt(tokenIndex + 1)
+	if len(tryStatement.Filters) > 0 {
+		return 0, &Error{keyword.offset, "catch panic cannot follow a typed catch clause"}
+	}
+	tryStatement.HasPanic = true
+	lbraceIndex := tokenIndex + 3
+	prologueText := "else {"
+	if !processor.tokenAt(tokenIndex + 3).is(token.LBRACE) {
+		lparen, name, rparen := processor.tokenAt(tokenIndex+3), processor.tokenAt(tokenIndex+4), processor.tokenAt(tokenIndex+5)
+		lbraceIndex = tokenIndex + 6
+		if !lparen.is(token.LPAREN) || !name.is(token.IDENT) || !rparen.is(token.RPAREN) || !processor.tokenAt(lbraceIndex).is(token.LBRACE) {
+			return 0, &Error{keyword.offset, "expected catch panic (name) or catch panic"}
+		}
+		prologueText = fmt.Sprintf("else { var %s any; _ = %s;", name.text, name.text)
+		tryStatement.PanicBinding = name.text
+	}
+	tryStatement.PanicEnd = len(prologueText) + processor.replace(keyword.offset, processor.tokenAt(lbraceIndex).end(), prologueText)
+	processor.braceStack = append(processor.braceStack, frame{kind: framePanic, tryIndex: tryIndex})
+	return lbraceIndex, nil
 }
 
 // finally rewrites the "finally {" after the brace at token tokenIndex into
@@ -101,8 +172,14 @@ func (processor *processor) catch(tokenIndex int, tryStatement *Try) (int, error
 		return 0, &Error{processor.tokens[tokenIndex].offset, "try block must be followed by catch or finally"}
 	}
 	tryStatement.HasCatch = true
+	// With a catch panic clause, the catch block is the middle branch of
+	// an if-else chain. Then go/types sees which branches terminate.
+	elseText := "else {"
 	if lbrace := processor.tokenAt(tokenIndex + 2); lbrace.is(token.LBRACE) {
-		tryStatement.CatchEnd = len("else {") + processor.replace(keyword.offset, lbrace.end(), "else {")
+		if processor.isPanicCatchAfter(tokenIndex + 2) {
+			elseText = "else if true {"
+		}
+		tryStatement.CatchEnd = len(elseText) + processor.replace(keyword.offset, lbrace.end(), elseText)
 		return tokenIndex + 2, nil
 	}
 	lparen, name, rparen, lbrace := processor.tokenAt(tokenIndex+2), processor.tokenAt(tokenIndex+3), processor.tokenAt(tokenIndex+4), processor.tokenAt(tokenIndex+5)
@@ -114,7 +191,10 @@ func (processor *processor) catch(tokenIndex int, tryStatement *Try) (int, error
 	}
 	// The declaration gives the catch variable a type for go/types. The
 	// blank assignment stops go/types from reporting it as unused.
-	text := fmt.Sprintf("else { var %s error; _ = %s;", name.text, name.text)
+	if processor.isPanicCatchAfter(tokenIndex + 5) {
+		elseText = "else if true {"
+	}
+	text := fmt.Sprintf("%s var %s error; _ = %s;", elseText, name.text, name.text)
 	tryStatement.CatchEnd = len(text) + processor.replace(keyword.offset, lbrace.end(), text)
 	tryStatement.Binding = name.text
 	return tokenIndex + 5, nil

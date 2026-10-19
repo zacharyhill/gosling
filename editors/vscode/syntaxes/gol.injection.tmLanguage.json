@@ -106,24 +106,27 @@
       ]
     },
     "catch": {
-      "match": "\\b(catch)\\s*(\\()\\s*(\\w+)\\s*(?:(\\))|(:)|(is)\\b)",
+      "match": "\\b(catch)(?:\\s+(panic)\\b)?(?:\\s*(\\()\\s*(\\w+)\\s*(?:(\\))|(:)|(is)\\b))?",
       "captures": {
         "1": {
           "name": "keyword.control.exception.gol"
         },
         "2": {
-          "name": "punctuation.definition.begin.bracket.round.gol"
+          "name": "keyword.control.exception.gol"
         },
         "3": {
-          "name": "variable.parameter.gol"
+          "name": "punctuation.definition.begin.bracket.round.gol"
         },
         "4": {
-          "name": "punctuation.definition.end.bracket.round.gol"
+          "name": "variable.parameter.gol"
         },
         "5": {
-          "name": "punctuation.separator.type.gol"
+          "name": "punctuation.definition.end.bracket.round.gol"
         },
         "6": {
+          "name": "punctuation.separator.type.gol"
+        },
+        "7": {
           "name": "keyword.operator.is.gol"
         }
       }

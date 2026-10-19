@@ -1,0 +1,14 @@
+recovered
+[body caught boom finally]
+7 -1 -2
+[finally error finally panic finally]
+10
+[finally]
+[body 0 finally 0 finally 1 panic 2 finally 2 finally 3]
+[00 10 20]
+[finally done]
+true
+[inner finally outer caught]
+[inner first outer again first]
+0 true
+5

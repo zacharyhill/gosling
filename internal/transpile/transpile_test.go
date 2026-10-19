@@ -409,6 +409,16 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:5:15: this call can fail but only runs conditionally here, so its error cannot be checked; move it into its own statement",
 		},
 		{
+			name: "defer in a try block with catch panic",
+			src:  "package p\nfunc f(g func()) {\n\ttry {\n\t\tdefer g()\n\t} catch panic {\n\t}\n}",
+			want: "x.gol:4:3: defer cannot be used directly in a try block with catch panic; it would run when the try block ends",
+		},
+		{
+			name: "catch panic with an unused panic value",
+			src:  "package p\nfunc f(g func()) int {\n\ttry {\n\t\tg()\n\t\treturn 1\n\t} catch panic (p) {\n\t\tprintln(\"x\")\n\t}\n}",
+			want: "x.gol:9:1: missing return",
+		},
+		{
 			name: "fallible call in a for post statement",
 			src:  "package p\nimport \"strconv\"\nfunc f() {\n\ttry {\n\t\tfor (let i = 0; i < 3; i = strconv.Atoi(\"1\") + 1) {\n\t\t}\n\t} catch {\n\t}\n}",
 			want: "x.gol:5:30: this call can fail, but its error cannot be checked here; move it into its own statement",

@@ -36,6 +36,9 @@ type finallyLayer struct {
 	// no exit resumes after it.
 	terminates bool
 	start, end token.Pos // the whole try statement, finally block included
+	// A guard layer has no finally body. Its exits return from the function
+	// literal of a guarded try body. Its start and end are the try body.
+	isGuard bool
 }
 
 // prepareFinally moves each finally block in front of its try statement in
@@ -89,7 +92,9 @@ func (file *file) moveFinallyBlocks(list []ast.Stmt, finallyToTry map[int]int) {
 }
 
 func (lowerer *lowerer) stateVar(layer *finallyLayer) string {
-	if layer.state == "" {
+	if layer.state == "" && layer.isGuard {
+		layer.state = lowerer.fresh("exit")
+	} else if layer.state == "" {
 		layer.state = lowerer.fresh("fin")
 	}
 	return layer.state
@@ -127,6 +132,9 @@ func (lowerer *lowerer) enter(layers []*finallyLayer, layerIndex int, final stri
 	if caseNumber == 0 {
 		layer.cases = append(layer.cases, body)
 		caseNumber = len(layer.cases)
+	}
+	if layer.isGuard {
+		return fmt.Sprintf("%s = %d\nreturn", lowerer.stateVar(layer), caseNumber)
 	}
 	layer.gotos++
 	return fmt.Sprintf("%s = %d\ngoto %s", lowerer.stateVar(layer), caseNumber, layer.label)
@@ -278,20 +286,18 @@ func (lowerer *lowerer) jumpOut(try, target *tryContext, final string) string {
 // statement with a finally block.
 func (lowerer *lowerer) emitFinally(parts *tryStatement) {
 	stmt, layer := parts.stmt, parts.context.finally
-	hasCatch := parts.hasCatch() && !parts.isCatchDropped
-	canTryComplete := !neverCompletes(stmt.Body, neverReturns(lowerer.typeInfo))
-	if hasCatch && canTryComplete {
-		layer.gotos++ // the jump over the catch block
-	}
 	for _, returnType := range layer.returnVarTypes {
 		typeText, _ := lowerer.typeName(returnType)
 		lowerer.reportHiddenType(returnType, typeText, stmt.Pos())
 	}
-	lowerer.replace(stmt.Pos(), stmt.Body.Lbrace+1, lowerer.finallyHead(parts, hasCatch), lowerer.line(stmt.Pos()))
-	lowerer.emitFinallyOpening(parts, hasCatch, canTryComplete)
+	lowerer.replace(stmt.Pos(), stmt.Body.Lbrace+1, lowerer.finallyHead(parts), lowerer.line(stmt.Pos()))
+	lowerer.emitFinallyOpening(parts)
 	// If no path falls through the try statement, the output must not fall
 	// through. Otherwise Go reports a missing return.
-	isEndUnreachable := !layer.terminates && isTerminating(stmt.Body) && (!hasCatch || isTerminating(parts.catchStmt()))
+	isEndUnreachable := !layer.terminates && isTerminating(stmt.Body)
+	for _, current := range parts.collectHandlers() {
+		isEndUnreachable = isEndUnreachable && isTerminating(current.stmt)
+	}
 	finallyBlock := parts.finallyBlock
 	if isEndUnreachable {
 		lowerer.checkBuiltins(finallyBlock.Rbrace, "finally", "panic")
@@ -301,62 +307,71 @@ func (lowerer *lowerer) emitFinally(parts *tryStatement) {
 
 // finallyHead declares the catch variable, the pending-exit state, and the
 // saved return values before the try body.
-func (lowerer *lowerer) finallyHead(parts *tryStatement, hasCatch bool) string {
+func (lowerer *lowerer) finallyHead(parts *tryStatement) string {
 	layer := parts.context.finally
 	var head strings.Builder
 	head.WriteString("{\n")
-	if hasCatch && parts.context.needsDecl {
+	if parts.hasCatch() && !parts.isCatchDropped && parts.context.needsDecl {
 		fmt.Fprintf(&head, "var %s error\n", parts.context.catchVar)
 		lowerer.checkBuiltins(parts.stmt.Pos(), "try", "error")
 	}
 	if layer.state != "" {
-		fmt.Fprintf(&head, "var %s int\n", layer.state)
 		lowerer.checkBuiltins(parts.stmt.Pos(), "finally", "int")
 	}
-	for varIndex, name := range layer.returnVars {
-		typeText, _ := lowerer.typeName(layer.returnVarTypes[varIndex])
-		fmt.Fprintf(&head, "var %s %s\n", name, typeText)
-	}
-	head.WriteString("{")
+	lowerer.writeLayerDecls(&head, layer)
+	head.WriteString(lowerer.guardDecls(parts))
+	head.WriteString(lowerer.bodyOpen(parts))
 	return head.String()
 }
 
+// writeLayerDecls declares the state and the saved return values of layer.
+func (lowerer *lowerer) writeLayerDecls(decls *strings.Builder, layer *finallyLayer) {
+	if layer.state != "" {
+		fmt.Fprintf(decls, "var %s int\n", layer.state)
+	}
+	for varIndex, name := range layer.returnVars {
+		typeText, _ := lowerer.typeName(layer.returnVarTypes[varIndex])
+		fmt.Fprintf(decls, "var %s %s\n", name, typeText)
+	}
+}
+
 // emitFinallyOpening rewrites the text between the try body and the finally
-// body. This text holds the catch block, if kept, and the finally label.
-func (lowerer *lowerer) emitFinallyOpening(parts *tryStatement, hasCatch, canTryComplete bool) {
+// body. This text holds the handlers, if kept, and the finally label.
+func (lowerer *lowerer) emitFinallyOpening(parts *tryStatement) {
 	stmt, layer, finallyBlock := parts.stmt, parts.context.finally, parts.finallyBlock
-	label := ""
+	from := stmt.Body.Rbrace
+	hasHandlers := len(parts.collectHandlers()) > 0
+	if hasHandlers {
+		jumps, lastRbrace := lowerer.emitHandlers(parts, layer.label)
+		layer.gotos += jumps
+		from = lastRbrace
+	}
+	opening := "}" + parts.chainEnd + "\n{"
 	if layer.gotos > 0 {
-		label = layer.label + ":\n"
+		opening = "}" + parts.chainEnd + "\n" + layer.label + ":\n{"
 	}
-	opening := "}\n" + label + "{"
-	bodyEnd := lowerer.line(stmt.Body.Rbrace)
-	switch {
-	case hasCatch:
-		middle := "}\n"
-		if canTryComplete {
-			middle += "goto " + layer.label + "\n"
-		}
-		lowerer.emitCatches(parts, middle+parts.context.catchLabel()+":\n{")
-		rbrace := parts.lastCatchRbrace()
-		lowerer.replace(rbrace, finallyBlock.Lbrace+1, "}"+parts.chainEnd+"\n"+label+"{", lowerer.line(rbrace))
-	case parts.isCatchDropped:
-		lowerer.drop(stmt.Body.Rbrace, finallyBlock.Lbrace+1, opening, bodyEnd)
-	default:
-		lowerer.replace(stmt.Body.Rbrace, finallyBlock.Lbrace+1, opening, bodyEnd)
+	if !hasHandlers && parts.isCatchDropped {
+		lowerer.drop(from, finallyBlock.Lbrace+1, opening, lowerer.line(from))
+		return
 	}
+	lowerer.replace(from, finallyBlock.Lbrace+1, opening, lowerer.line(from))
 }
 
 // finallyTail resumes each pending exit after the finally body.
 func finallyTail(layer *finallyLayer, isEndUnreachable bool) string {
 	var tail strings.Builder
 	tail.WriteString("}\n")
-	for caseIndex, caseCode := range layer.cases {
-		fmt.Fprintf(&tail, "if %s == %d {\n%s\n}\n", layer.state, caseIndex+1, caseCode)
-	}
+	writeExitCases(&tail, layer)
 	if isEndUnreachable {
 		tail.WriteString("panic(\"unreachable\")\n")
 	}
 	tail.WriteString("}")
 	return tail.String()
+}
+
+// writeExitCases writes the code that resumes each pending exit of layer.
+func writeExitCases(code *strings.Builder, layer *finallyLayer) {
+	for caseIndex, caseCode := range layer.cases {
+		fmt.Fprintf(code, "if %s == %d {\n%s\n}\n", layer.state, caseIndex+1, caseCode)
+	}
 }

@@ -1,0 +1,44 @@
+package catchpanic
+
+import (
+	"fmt"
+	"strconv"
+)
+
+func parse(s string) int {
+	try {
+		const n = strconv.Atoi(s)
+		return n
+	} catch (e) {
+		fmt.Println(e)
+		return -1
+	} catch panic (p) {
+		fmt.Println(p)
+		return -2
+	}
+}
+
+func cleanup(xs []int) {
+	for (const x of xs) {
+		try {
+			if x < 0 {
+				break
+			}
+			fmt.Println(10 / x)
+		} catch panic {
+			continue
+		} finally {
+			fmt.Println("done")
+		}
+	}
+}
+
+func onlyPanic(f func()) (ok bool) {
+	try {
+		f()
+		ok = true
+	} catch panic {
+		ok = false
+	}
+	return
+}

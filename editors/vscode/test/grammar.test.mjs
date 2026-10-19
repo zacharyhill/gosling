@@ -63,6 +63,14 @@ test("catch without a variable", () => {
   assertScope(inFunctionBody("\t} catch {"), "catch", "keyword.control.exception.gol");
 });
 
+test("catch panic is a keyword pair", () => {
+  const source = inFunctionBody("\t} catch panic (r) {\n\t\th(r)\n\t}");
+  assertScope(source, "catch", "keyword.control.exception.gol");
+  assertScope(source, "panic", "keyword.control.exception.gol");
+  assertScope(source, "r", "variable.parameter.gol");
+  assertScope(inFunctionBody("\t} catch panic {"), "panic", "keyword.control.exception.gol");
+});
+
 test("keywords inside strings and comments stay plain", () => {
   assertNoScope(inFunctionBody('\ts := "try catch"'), "try catch", "keyword");
   assertNoScope(inFunctionBody("\t// let try"), "let try", "keyword");
