@@ -1,0 +1,63 @@
+package ifinit
+
+import (
+	"os"
+	"strconv"
+)
+
+func positive(s string) bool {
+	try {
+		if let n = strconv.Atoi(s); n > 0 {
+			return true
+		}
+		return false
+	} catch {
+		return false
+	}
+}
+
+func elseIf(s, fallback string) int {
+	try {
+		if s == "" {
+			return 0
+		} else if const n = strconv.Atoi(fallback); n > 0 {
+			return n
+		} else {
+			return -n
+		}
+	} catch {
+		return -1
+	}
+}
+
+func assign(s string) (n int) {
+	try {
+		if n = strconv.Atoi(s); n < 0 {
+			n = 0
+		}
+	} catch (e) {
+		println(e.Error())
+	}
+	return n
+}
+
+func bare(path string) bool {
+	try {
+		if os.Remove(path); path != "" {
+			return true
+		}
+	} catch {
+	}
+	return false
+}
+
+func shadow(s string) int {
+	let err = 0
+	try {
+		if let n = strconv.Atoi(s); n > err {
+			return n
+		}
+	} catch {
+	}
+	return err
+}

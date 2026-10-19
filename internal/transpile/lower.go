@@ -194,6 +194,7 @@ func (lowerer *lowerer) walkIf(stmt *ast.IfStmt, try *tryContext) {
 	} else if !lowerer.hoistAfterInit(stmt, try, stmt.Init, "if ", stmt.Cond) {
 		lowerer.hoist(stmt, try, stmt.Init, stmt.Cond)
 	}
+	lowerer.lowerInit(stmt, try)
 	lowerer.walkExprs(stmt.Init, stmt.Cond)
 	lowerer.walkBlock(stmt.Body.List, try)
 	if stmt.Else != nil {
@@ -201,8 +202,9 @@ func (lowerer *lowerer) walkIf(stmt *ast.IfStmt, try *tryContext) {
 	}
 }
 
-// lowerInit checks a call in the init statement of a switch or for. A new block holds the init,
-// the check, and the statement. The labels move into the block, so break and continue still work.
+// lowerInit checks a call in the init statement of an if, switch, or for. A new block holds the
+// init, the check, and the statement. The labels move into the block, so break and continue
+// still work. In an else-if, the block becomes the else branch, so the call runs only on that path.
 func (lowerer *lowerer) lowerInit(stmt ast.Stmt, try *tryContext) {
 	init, newHeader, keptHeaderStart := lowerer.splitHeader(stmt)
 	if init == nil || !lowerer.lowerTryStmt(init, try) || lowerer.wrappedHeaders[stmt] {
@@ -253,6 +255,8 @@ func (lowerer *lowerer) buildLabelPrefix(stmt ast.Stmt) string {
 // replaces the init statement, and the position where the kept header starts.
 func (lowerer *lowerer) splitHeader(stmt ast.Stmt) (init ast.Stmt, newHeader string, keptHeaderStart token.Pos) {
 	switch stmt := stmt.(type) {
+	case *ast.IfStmt:
+		return stmt.Init, "if ", stmt.Cond.Pos()
 	case *ast.ForStmt:
 		if stmt.Init == nil {
 			return nil, "", token.NoPos
