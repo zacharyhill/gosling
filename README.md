@@ -516,7 +516,7 @@ const q = sql`select * from users where id = ${id}` // sql([]string{"select * fr
 - gosling decodes the escapes in the text pieces. A tag can also be a qualified name, such as `` db.SQL`...` ``.
 - `t` is the built-in tag. A function with the name `t` cannot be a tag.
 - In a struct, a raw string directly after a field type is a field tag, not a template literal. The same applies to an import path.
-- Only a `t` template can contain an escaped backtick. A tagged template cannot have a format, such as `${x:.2f}`.
+- A tagged template cannot have a format, such as `${x:.2f}`.
 
 ### Regex literals
 

@@ -32,4 +32,5 @@ func main() {
 line \u{41} ${"z"}
 end`)
 	fmt.Println(t`built-in ${id}`)
+	fmt.Println(upper`quoted \`${"name"}\` here`, sql`\``.Text)
 }
