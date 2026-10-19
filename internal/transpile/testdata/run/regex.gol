@@ -18,6 +18,7 @@ func main() {
 	}
 	fmt.Println(/[\/,]/.Split("a/b,c", -1))
 	fmt.Println(t`${/o+/.FindString("foo")}`)
+	fmt.Println(t`${/\{[a-z]+}/.FindString("x{ab}y")} ${/["}]+/.FindString("a\"}b"):q} ${len("abcd") / 2}`)
 	const half = 10 / 2
 	fmt.Println(half)
 	const strict = half > 3

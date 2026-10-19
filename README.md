@@ -1383,7 +1383,6 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - Only a package-level `const` with one name can hold a generic arrow. Go function literals cannot have type parameters.
 - Only composite literals in the same package take a `T` value for an optional field. Other packages see a plain `*T` field. An assignment also needs a pointer: `cfg.Host = &host`.
 - Regex literals do not support JavaScript-only syntax, such as lookahead `(?=...)` and backreferences `\1`. RE2 does not have them.
-- In a template literal, a regex literal cannot contain `}`.
 - Default values are not supported in generic functions, variadic functions, function literals, arrow functions, and interface methods.
 - A default value must be plain Go. It cannot use gosling syntax, such as a template literal.
 - A `yield` statement must be directly in a generator body, not in a function literal in it. Arrow functions cannot be generators.

@@ -259,6 +259,13 @@ test("regex literals", () => {
   assertScope(inFunctionBody("\tf(s => /x/.MatchString(s))"), "x", "string.regexp.gol");
 });
 
+test("regex literal with a brace in a template expression", () => {
+  const source = inFunctionBody("\ts := t`${/}/.FindString(a)} tail`");
+  assertScope(source, "}", "string.regexp.gol");
+  assertScope(source, "}", "punctuation.definition.template-expression.end.gol", 1);
+  assertScope(source, "tail", "string.template.gol");
+});
+
 test("division is not a regex literal", () => {
   assertNoScope(inFunctionBody("\tn := a / b / c"), "b", "string.regexp");
   assertNoScope(inFunctionBody("\tn := f(x) / 2 / y"), "2", "string.regexp");
