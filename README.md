@@ -344,7 +344,7 @@ const {Name: name} = load(path) // tmp := load(path); name := tmp.Name
 {X, Y} = p                      // X, Y = p.X, p.Y
 ```
 
-`let` and `const` declare new names. Code cannot assign to the names that `const` declares. Without `let` or `const`, the pattern assigns to existing variables. Declare names with a pattern only in functions.
+`let` and `const` declare new names. Code cannot assign to the names that `const` declares. Without `let` or `const`, the pattern assigns to existing variables. Declare names with a pattern only in functions. A pattern can use more than one line and can have a trailing comma.
 
 Field names must match exactly. gosling evaluates a complex right side one time, into a temporary. An index past the end of a slice panics, as in Go. gosling does not read the index of a `_` element, so `const [a, _] = xs` does not panic if `xs` has one element.
 

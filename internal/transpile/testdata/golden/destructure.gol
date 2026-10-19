@@ -56,3 +56,20 @@ func reassign(p Point) (int, int) {
 	{X: x, Y: y} = p
 	return x, y
 }
+
+func multiline(path string, xs []int) (string, int, int) {
+	try {
+		const {
+			Name: name,
+			Port,
+		} = load(path)
+		let [
+			first,
+			second,
+			...rest
+		] = xs
+		return name, Port + first + second, len(rest)
+	} catch {
+		return "", 0, 0
+	}
+}

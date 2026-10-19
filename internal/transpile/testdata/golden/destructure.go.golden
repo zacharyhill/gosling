@@ -89,3 +89,21 @@ func reassign(p Point) (int, int) {
 	x, y = p.X, p.Y
 	return x, y
 }
+
+func multiline(path string, xs []int) (string, int, int) {
+	{
+		{
+			tmp3, err := load(path)
+			if err != nil {
+				goto catch_4
+			}
+			name, Port := tmp3.Name, tmp3.Port
+			first, second, rest := xs[0], xs[1], xs[2:]
+			return name, Port + first + second, len(rest)
+		}
+	catch_4:
+		{
+			return "", 0, 0
+		}
+	}
+}
