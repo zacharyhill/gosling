@@ -303,6 +303,36 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:8:8: the inferred type item cannot be written here, because a local declaration hides the name; rename the local declaration",
 		},
 		{
+			name: "arrow that only returns nil",
+			src:  "package p\nfunc f() {\n\tlet g = (x int) => nil\n\t_ = g\n}",
+			want: "x.gol:3:10: " + errNilArrowResult,
+		},
+		{
+			name: "arrow block that only returns nil",
+			src:  "package p\nfunc f(c bool) {\n\tlet g = () => {\n\t\tif c {\n\t\t\treturn nil\n\t\t}\n\t\treturn nil\n\t}\n\t_ = g\n}",
+			want: "x.gol:3:10: " + errNilArrowResult,
+		},
+		{
+			name: "arrow with one result that is always nil",
+			src:  "package p\nfunc f() {\n\tlet g = (c bool) => {\n\t\tif c {\n\t\t\treturn nil, nil\n\t\t}\n\t\treturn nil, 1\n\t}\n\t_ = g\n}",
+			want: "x.gol:3:10: " + errNilArrowResult,
+		},
+		{
+			name: "arrow returning an arrow without parameter types",
+			src:  "package p\nfunc f() {\n\tlet g = () => (x) => x\n\t_ = g\n}",
+			want: "x.gol:3:16: cannot infer the parameter types of this arrow function",
+		},
+		{
+			name: "arrow returning an arrow that only returns nil",
+			src:  "package p\nfunc f() {\n\tlet g = () => () => nil\n\t_ = g\n}",
+			want: "x.gol:3:16: " + errNilArrowResult,
+		},
+		{
+			name: "map callback that only returns nil",
+			src:  "package p\nfunc f(xs []int) {\n\tlet ys = xs.map(x => nil)\n\t_ = ys\n}",
+			want: "x.gol:3:18: " + errNilArrowResult,
+		},
+		{
 			name: "forEach used as a value",
 			src:  "package p\nfunc f(xs []int) {\n\tlet y = xs.forEach(x => println(x))\n\t_ = y\n}",
 			want: "x.gol:3:10: forEach can only be used as a statement",

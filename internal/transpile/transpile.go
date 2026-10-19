@@ -527,7 +527,7 @@ func cleanMessage(message string) string {
 func (transpiler *transpiler) unresolvedArrows() bool {
 	for _, file := range transpiler.files {
 		for _, arrowFunc := range file.arrows {
-			if arrowFunc.nilStandIn != nil {
+			if arrowFunc.nilStandIn != nil || arrowFunc.hasNilResult {
 				return true
 			}
 		}
