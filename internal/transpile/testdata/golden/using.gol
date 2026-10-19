@@ -1,0 +1,38 @@
+package using
+
+import (
+	"io"
+	"os"
+)
+
+type lock struct{}
+
+func (*lock) Close() {}
+
+func acquire() *lock { return &lock{} }
+
+func head(path string) ([]byte, error) {
+	using held = acquire()
+	_ = held
+	try {
+		using file = os.Open(path)
+		const buffer = make([]byte, 16)
+		const count = io.ReadFull(file, buffer)
+		return buffer[:count], nil
+	} catch (failure) {
+		return nil, failure
+	}
+}
+
+func each(paths []string, visit func(io.Reader)) {
+	for (const path of paths) {
+		const open = () => {
+			try {
+				using file = os.Open(path) // closed when this function returns
+				visit(file)
+			} catch {
+			}
+		}
+		open()
+	}
+}

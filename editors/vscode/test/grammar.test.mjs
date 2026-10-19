@@ -174,6 +174,13 @@ test("generators and yield", () => {
   assertNoScope(inFunctionBody("\tyieldCount := 1"), "yieldCount", "keyword");
 });
 
+test("using declarations", () => {
+  const source = inFunctionBody("\tusing file = os.Open(path)");
+  assertScope(source, "using", "keyword.using.gol");
+  assertScope(source, "file", "variable.other.declaration.gol");
+  assertNoScope(inFunctionBody("\tusing = 2"), "using", "keyword");
+});
+
 test("optional chaining and nullish coalescing", () => {
   const source = inFunctionBody('\tname := user?.Profile?.Name ?? "anon"');
   assertScope(source, "?.", "punctuation.accessor.optional.gol");

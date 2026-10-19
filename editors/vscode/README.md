@@ -2,7 +2,7 @@
 
 Syntax highlighting and a language server for gosling `.gol` files.
 
-The extension uses the Go grammar that ships with VS Code, then adds the gosling syntax: `try` / `catch` / `finally`, `let`, `for...of`, template literals, regex literals, arrow functions, `?.`, `??`, union types, and generators with `func*` and `yield`.
+The extension uses the Go grammar that ships with VS Code, then adds the gosling syntax: `try` / `catch` / `finally`, `let`, `for...of`, template literals, regex literals, arrow functions, `?.`, `??`, union types, generators with `func*` and `yield`, and `using`.
 
 The extension gives a separate `gol` language ID to `.gol` files. Thus the Go extension does not open them.
 

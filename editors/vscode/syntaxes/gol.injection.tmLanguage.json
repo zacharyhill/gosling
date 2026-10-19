@@ -25,6 +25,9 @@
       "include": "#for-of-in"
     },
     {
+      "include": "#using"
+    },
+    {
       "include": "#let"
     },
     {
@@ -237,6 +240,17 @@
         },
         "7": {
           "name": "keyword.operator.in.gol"
+        }
+      }
+    },
+    "using": {
+      "match": "^\\s*(using)\\s+(\\w+)\\s*(?==[^=])",
+      "captures": {
+        "1": {
+          "name": "keyword.using.gol"
+        },
+        "2": {
+          "name": "variable.other.declaration.gol"
         }
       }
     },

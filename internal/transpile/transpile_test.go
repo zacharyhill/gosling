@@ -1029,6 +1029,26 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:5:3: yield must be directly in a generator body, not in a nested function",
 		},
 		{
+			name: "using with a fallible call outside try",
+			src:  "package p\nimport \"os\"\nfunc f(p string) {\n\tusing file = os.Open(p)\n\t_ = file\n}",
+			want: "x.gol:4:8: using with a call that can fail must be in a try block",
+		},
+		{
+			name: "using in a loop",
+			src:  "package p\nimport \"os\"\nfunc f(paths []string) {\n\tfor (const p of paths) {\n\t\ttry {\n\t\t\tusing file = os.Open(p)\n\t\t\t_ = file\n\t\t} catch {\n\t\t}\n\t}\n}",
+			want: "x.gol:6:10: using is not allowed in a loop, because Close runs only when the function returns; move the loop body into a function",
+		},
+		{
+			name: "assignment to a using variable",
+			src:  "package p\ntype R struct{}\nfunc (R) Close() {}\nfunc f() {\n\tusing r = R{}\n\tr = R{}\n}",
+			want: "x.gol:6:2: cannot assign to r: declared with const",
+		},
+		{
+			name: "using a value without Close",
+			src:  "package p\nfunc f() {\n\tusing n = 1\n\t_ = n\n}",
+			want: "n.Close undefined (type int has no field or method Close)",
+		},
+		{
 			name: "parse error positions map to source",
 			src:  "package p\nfunc f() {\n\ttry { let x = } catch (e) {}\n}",
 			want: "x.gol:3:16: expected operand",

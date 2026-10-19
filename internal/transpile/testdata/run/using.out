@@ -1,0 +1,8 @@
+open a
+open b
+use a b
+close b
+close a
+open a
+error: empty name
+close a
