@@ -169,3 +169,18 @@ func bareReturn() func() {
 	}
 	return stop
 }
+
+type handlers struct {
+	check  func(string) bool
+	format func(int) string
+}
+
+func fromCompositeLiterals() {
+	checks := []func(string) bool{func(s string) bool { return s != "" }, func(s string) bool { return len(s) < 10 }}
+	byName := map[string]func(int) int{"double": func(n int) int { return n * 2 }}
+	named := handlers{check: func(s string) bool { return s == "ok" }, format: func(n int) string { return strconv.Itoa(n) }}
+	positional := handlers{func(s string) bool { return s != "" }, func(n int) string { return fmt.Sprint(n) }}
+	indexed := [2]func(int) bool{1: func(n int) bool { return n > 0 }}
+	nested := [][]func(int) int{{func(n int) int { return n + 1 }}}
+	fmt.Println(len(checks), len(byName), named.check("ok"), positional.format(1), indexed[1](1), nested[0][0](1))
+}

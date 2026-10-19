@@ -313,8 +313,49 @@ func (transpiler *transpiler) arrowContext(file *file, typeInfo *types.Info, par
 				return expectFunc(signature.Results().At(resultIndex).Type())
 			}
 		}
+	case *ast.CompositeLit:
+		for elementIndex, element := range parentNode.Elts {
+			if element == arrowExpr {
+				return expectFunc(getElementType(typeInfo.TypeOf(parentNode), elementIndex, nil))
+			}
+		}
+	case *ast.KeyValueExpr:
+		compositeLit, ok := parentOf[parentNode].(*ast.CompositeLit)
+		if ok && parentNode.Value == arrowExpr {
+			return expectFunc(getElementType(typeInfo.TypeOf(compositeLit), -1, parentNode.Key))
+		}
 	}
 	return funcContext{}, false
+}
+
+// getElementType returns the type of an element in a composite literal of
+// literalType. A struct field comes from key if it is set, or else from
+// position.
+func getElementType(literalType types.Type, position int, key ast.Expr) types.Type {
+	if literalType == nil {
+		return nil
+	}
+	switch underlying := literalType.Underlying().(type) {
+	case *types.Slice:
+		return underlying.Elem()
+	case *types.Array:
+		return underlying.Elem()
+	case *types.Map:
+		return underlying.Elem()
+	case *types.Struct:
+		if fieldIdent, ok := key.(*ast.Ident); ok {
+			for field := range underlying.Fields() {
+				if field.Name() == fieldIdent.Name {
+					return field.Type()
+				}
+			}
+			return nil
+		}
+		if key == nil && position >= 0 && position < underlying.NumFields() {
+			return underlying.Field(position).Type()
+		}
+	}
+	return nil
 }
 
 func expectFunc(goType types.Type) (funcContext, bool) {
