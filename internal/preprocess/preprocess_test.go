@@ -1247,6 +1247,43 @@ func TestProcess(test *testing.T) {
 			src:  "var f = func(a int) { a = 2 }",
 			want: "var f = func(a int) { a = 2 }",
 		},
+		{
+			name: "impl block with methods",
+			src:  "impl User {\n\tfunc Name() string { return this.name }\n}",
+			want: "\n\tfunc (this *User) Name() string { return this.name }\n",
+		},
+		{
+			name: "impl block with constructor",
+			src:  "impl User {\n\tconstructor(name string) {\n\t\tthis.name = name\n\t}\n}",
+			want: "\n\tfunc NewUser(name string) *User { this := &User{}\n\t\tthis.name = name\n\treturn this }\n",
+		},
+		{
+			name:   "one-line constructor",
+			src:    "impl User { constructor(name string) { this.name = name } }",
+			want:   " func NewUser(name string) *User { this := &User{};  this.name = name ; return this } ",
+			splits: []int{len(" func NewUser(name string) *User { this := &User{}"), len(" func NewUser(name string) *User { this := &User{};  this.name = name ")},
+		},
+		{
+			name: "constructor with results",
+			src:  "impl config {\n\tconstructor(path string) (*config, error) { return load(path) }\n}",
+			want: "\n\tfunc newConfig(path string) (*config, error) { return load(path) }\n",
+		},
+		{
+			name:   "impl block with implements",
+			src:    "impl User implements fmt.Stringer, Namer {\n}",
+			want:   "var _ fmt.Stringer = (*User)(nil); var _ Namer = (*User)(nil); \n",
+			splits: []int{len("var _ fmt.Stringer = (*User)(nil)"), len("var _ fmt.Stringer = (*User)(nil); var _ Namer = (*User)(nil)")},
+		},
+		{
+			name: "generic impl block",
+			src:  "impl Stack[T] { func Push(v T) { this.items = append(this.items, v) } }",
+			want: " func (this *Stack[T]) Push(v T) { this.items = append(this.items, v) } ",
+		},
+		{
+			name: "impl as identifier",
+			src:  "func f() {\n\timpl := 1\n\t_ = impl\n}",
+			want: "func f() {\n\timpl := 1\n\t_ = impl\n}",
+		},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {
@@ -1405,6 +1442,13 @@ func TestProcessErrors(test *testing.T) {
 		{"missing default value", "func f(a int =) {}", "missing default value", len("func f(a int ")},
 		{"optional with default", "func f(a? int = 1) {}", "an optional parameter cannot also have a default value", len("func f(")},
 		{"default with gosling syntax", "func f(a: int = c ? 1 : 2) {}", "a default value must be plain Go; use a constant or a function", len("func f(a: int = c ")},
+		{"impl member that is not a method", "impl User {\n\tname string\n}", "an impl block can only contain methods and a constructor", len("impl User {\n\t")},
+		{"impl method with receiver", "impl User {\n\tfunc (u User) Name() {}\n}", "a method in an impl block cannot have a receiver", len("impl User {\n\t")},
+		{"two constructors", "impl User {\n\tconstructor() {}\n\tconstructor() {}\n}", "an impl block can have only one constructor", len("impl User {\n\tconstructor() {}\n\t")},
+		{"generic constructor", "impl Stack[T] {\n\tconstructor() {}\n}", "a generic impl block cannot have a constructor", len("impl Stack[T] {\n\t")},
+		{"generic implements", "impl Stack[T] implements Pusher {\n}", "a generic impl block cannot use implements", 0},
+		{"impl without block", "impl User\n", "expected { after impl User", 0},
+		{"unclosed impl", "impl User {\n\tfunc A() {}\n", "impl block is not closed", len("impl User ")},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {

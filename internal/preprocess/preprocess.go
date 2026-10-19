@@ -190,6 +190,8 @@ type processor struct {
 	// removals maps the first token of a default value or an optional
 	// marker to its last token.
 	removals map[int]int
+	// currentImpl is the impl block that the scan is in, or nil.
+	currentImpl *implBlock
 }
 
 // Process rewrites the gosling syntax in src into Go source with marker
@@ -309,11 +311,14 @@ func (processor *processor) startScan(tokens []lexeme) (restore func()) {
 	savedDestructures, savedClosers, savedSpreads := processor.pendingDestructures, processor.pendingClosers, processor.spreadBraces
 	savedBodies, savedStatements, savedRenames := processor.bodyDestructures, processor.bodyStatements, processor.paramRenames
 	savedTernaryEnds, savedTernaryParts, savedTernaryStarts := processor.ternaryEnds, processor.ternaryParts, processor.ternaryStarts
+	savedImpl := processor.currentImpl
 	processor.tokens, processor.scheduled, processor.inserts, processor.removals = tokens, map[int]string{}, map[int]string{}, map[int]int{}
 	processor.pendingDestructures, processor.pendingClosers, processor.spreadBraces = nil, nil, findSpreadBraces(tokens)
 	processor.bodyDestructures, processor.bodyStatements, processor.paramRenames = map[int]*destructure{}, map[int]paramStatements{}, map[int]paramRename{}
 	processor.resetTernaries()
+	processor.currentImpl = nil
 	return func() {
+		processor.currentImpl = savedImpl
 		processor.tokens, processor.scheduled, processor.inserts, processor.removals = savedTokens, savedScheduled, savedInserts, savedRemovals
 		processor.pendingDestructures, processor.pendingClosers, processor.spreadBraces = savedDestructures, savedClosers, savedSpreads
 		processor.bodyDestructures, processor.bodyStatements, processor.paramRenames = savedBodies, savedStatements, savedRenames
@@ -370,6 +375,10 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		return processor.removeMarked(tokenIndex, lastIndex), nil
 	}
 	switch {
+	case processor.currentImpl != nil && processor.currentImpl.rewrites(tokenIndex):
+		return processor.rewriteImplToken(tokenIndex, pendingTry)
+	case processor.isImpl(tokenIndex):
+		return processor.rewriteImplHeader(tokenIndex)
 	case current.isIdent("try") && processor.tokenAt(tokenIndex+1).is(token.LBRACE) && processor.atStmtStart(tokenIndex):
 		processor.result.Tries = append(processor.result.Tries, Try{If: processor.replace(current.offset, current.end(), "if true")})
 		*pendingTry = len(processor.result.Tries) - 1
@@ -419,6 +428,9 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		}
 		processor.openBracket(current, pendingTry)
 	case current.is(token.FUNC):
+		if processor.currentImpl != nil && processor.currentImpl.funcKeywordIndexes[tokenIndex] {
+			processor.addImplReceiver(current)
+		}
 		isFuncDecl := len(processor.braceStack) == 0 && processor.parens == 0 && processor.atStmtStart(tokenIndex)
 		if isFuncDecl {
 			if err := processor.findDefaults(tokenIndex); err != nil {

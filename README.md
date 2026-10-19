@@ -42,6 +42,7 @@ Features:
 - Struct shorthand and spread: `User{name, age}`, `[...a, ...b]`, `Point{...p, X: 5}`, `{...defaults, ...overrides}`, `f(...xs)`
 - Optional struct fields: `Host? string`
 - Default and optional parameters: `func Dial(addr: string, timeout: time.Duration = 5*time.Second, port?: int)`
+- Method blocks: `impl User { func Greet() string { ... } }`
 
 ## Why
 
@@ -278,6 +279,7 @@ To highlight `.gol` files, add the VS Code extension folder as a TextMate bundle
 - After a syntax error, the server uses the last version that parsed, with the changed lines that still parse. The lines that do not parse get no results until the file parses again. Type errors do not have this problem.
 - gopls uses only the build configuration of your system. A `.gol` file for another system or with a build tag gets no results from gopls.
 - A default value has no hover or definition. The outline also shows its helper function.
+- A rename of `this` or of a constructor fails. gosling generates their declarations.
 
 ## Language
 
@@ -1191,6 +1193,45 @@ The Go signature keeps all parameters. A call in a `.gol` file of the same packa
 - With parameter types after a colon, write `timeout: time.Duration = time.Second` and `port?: int`.
 - A call through a function value or an interface must give all arguments.
 - Calls in `.go` files and in other packages must give all arguments.
+
+### impl blocks
+
+An `impl` block groups the methods of a type. The fields stay in the `type` declaration.
+
+```go
+type User struct{ Name string }
+
+impl User implements fmt.Stringer {
+	constructor(name string) {
+		this.Name = name
+	}
+
+	func String() string { return this.Name }
+}
+```
+
+becomes:
+
+```go
+var _ fmt.Stringer = (*User)(nil)
+
+func NewUser(name string) *User {
+	this := &User{}
+	this.Name = name
+	return this
+}
+
+func (this *User) String() string { return this.Name }
+```
+
+- Each method gets the pointer receiver `this`. For a value receiver, write a plain Go method outside the block.
+- `constructor` becomes `NewUser`, or `newUser` for an unexported type `user`. Without result types, the constructor makes `this` and returns it. Do not use `return` in it.
+- A constructor with result types, such as `constructor(path string) (*Config, error)`, is a plain function. It has no `this`.
+- Methods and the constructor can use `name: type` parameters and destructured parameters. Methods can have default values. A constructor cannot.
+- `implements A, B` adds a compile-time check for each interface.
+- A block can only contain methods and one constructor. Declare it at package level.
+- `impl Stack[T]` works for generic types. A generic block cannot have a constructor or `implements`.
+- There is no `extends`. Embed a type in the struct instead, as in Go. This is composition, not inheritance. The methods of the embedded type get the embedded value, not the outer value.
 
 ### Imports and generated names
 

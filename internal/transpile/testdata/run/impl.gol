@@ -1,0 +1,59 @@
+package main
+
+import "fmt"
+
+type Animal struct{ Name string }
+
+impl Animal {
+	constructor(name string) { this.Name = name }
+
+	func Describe() string { return t`${this.Name} the animal` }
+}
+
+// Dog embeds Animal. Animal's methods see only the Animal.
+type Dog struct {
+	*Animal
+	Tricks []string
+}
+
+impl Dog implements fmt.Stringer {
+	constructor(name string) {
+		this.Animal = NewAnimal(name)
+	}
+
+	func Learn(trick string) {
+		this.Tricks = append(this.Tricks, trick)
+	}
+
+	func String() string {
+		return t`${this.Describe()} knows ${len(this.Tricks)} tricks`
+	}
+}
+
+type Point struct{ X, Y int }
+
+type Shape struct {
+	Origin Point
+	Label  string
+}
+
+impl Shape {
+	constructor({X, Y}: Point, label: string) {
+		this.Origin = Point{X, Y}
+		this.Label = label
+	}
+
+	func Move(dx: int, dy?: int): Point {
+		return Point{this.Origin.X + dx, this.Origin.Y + dy}
+	}
+}
+
+func main() {
+	let shape = NewShape(Point{1, 2}, "box")
+	fmt.Println(shape.Label, shape.Move(3), shape.Move(3, 4))
+	let dog = NewDog("Rex")
+	dog.Learn("sit")
+	dog.Learn("roll")
+	fmt.Println(dog)
+	fmt.Println(dog.Name)
+}

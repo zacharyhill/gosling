@@ -43,6 +43,7 @@ func load(path: string): (string, error) {
 }
 
 func main() {
+	(&counter{}).bump()
 	try {
 		const text = load("config.txt")
 		fmt.Println(t` + "`got ${text} ${helperName()}`" + `)
@@ -57,6 +58,15 @@ const lspHelper = `package main
 func helperName() string {
 	const name = "helper"
 	return name
+}
+
+type counter struct{ n int }
+
+impl counter {
+	func bump() int {
+		this.n++
+		return this.n
+	}
 }
 `
 
@@ -372,6 +382,8 @@ func TestLSP(test *testing.T) {
 	test.Run("rename across gol files", session.checkRename)
 	test.Run("rename of a name in generated code", session.checkRenameInGeneratedCode)
 	test.Run("rename at a catch variable", session.checkRenameAtCatchVariable)
+	test.Run("rename of an impl method", session.checkImplMethodRename)
+	test.Run("outline lists impl methods", session.checkImplOutline)
 	test.Run("save writes generated files", session.checkGenerateOnSave)
 	test.Run("save with errors writes nothing", session.checkSaveWithErrors)
 	test.Run("server asks for gol file renames and deletes", session.checkFileOperationCapability)
@@ -586,6 +598,42 @@ func (session *lspSession) checkRenameAtCatchVariable(test *testing.T) {
 	if len(counts) != 1 || counts[session.mainURI] != 2 {
 		test.Errorf("edits by file = %v, want two in main.gol", counts)
 	}
+}
+
+func (session *lspSession) checkImplMethodRename(test *testing.T) {
+	response := session.rename(test, "bump", "increment")
+	if response.Error != nil {
+		test.Fatalf("rename failed: %s", response.Error)
+	}
+	counts := editCountsByURI(test, response.Result)
+	helperURI := fileURI(filepath.Join(session.dir, "helper.gol"))
+	if len(counts) != 2 || counts[session.mainURI] != 1 || counts[helperURI] != 1 {
+		test.Errorf("edits by file = %v, want one in main.gol and one in helper.gol", counts)
+	}
+}
+
+// checkImplOutline checks that the outline range of an impl method starts
+// at its func keyword. gosling adds the receiver after that keyword.
+func (session *lspSession) checkImplOutline(test *testing.T) {
+	helperURI := fileURI(filepath.Join(session.dir, "helper.gol"))
+	raw := session.client.request("textDocument/documentSymbol", map[string]any{"textDocument": map[string]any{"uri": helperURI}})
+	var symbols []struct {
+		Name     string      `json:"name"`
+		Location lspLocation `json:"location"`
+	}
+	if err := json.Unmarshal(raw, &symbols); err != nil {
+		test.Fatalf("decode %s: %v", raw, err)
+	}
+	want := positionOf(test, lspHelper, "func bump")
+	for _, symbol := range symbols {
+		if strings.Contains(symbol.Name, "bump") {
+			if symbol.Location.Range.Start != want {
+				test.Errorf("%s starts at %+v, want %+v", symbol.Name, symbol.Location.Range.Start, want)
+			}
+			return
+		}
+	}
+	test.Errorf("outline %s has no bump method", raw)
 }
 
 func (session *lspSession) checkGenerateOnSave(test *testing.T) {
