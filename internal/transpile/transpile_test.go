@@ -164,6 +164,11 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:4:3: cannot assign to i: declared with const",
 		},
 		{
+			name: "assignment to a const for-of destructured variable",
+			src:  "package p\ntype P struct{ X int }\nfunc f(ps []P) {\n\tfor (const {X} of ps) {\n\t\tX = 1\n\t\t_ = X\n\t}\n}",
+			want: "x.gol:5:3: cannot assign to X: declared with const",
+		},
+		{
 			name: "assignment to a const destructured variable",
 			src:  "package p\ntype P struct{ X int }\nfunc f(p P) int {\n\tconst {X} = p\n\tX++\n\treturn X\n}",
 			want: "x.gol:5:2: cannot assign to X: declared with const",

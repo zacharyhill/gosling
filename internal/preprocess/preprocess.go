@@ -139,6 +139,9 @@ type processor struct {
 	// typedArrows holds the offsets of the ")" that close arrow parameter
 	// lists that already have "func" in front.
 	typedArrows map[int]bool
+	// bodyDestructures maps the index of a { token to the destructuring to
+	// add after it.
+	bodyDestructures map[int]*destructure
 }
 
 // Process rewrites the gosling syntax in src into Go source with marker
@@ -158,6 +161,8 @@ func ProcessReserving(src []byte, reservedNames map[string]bool) (*Result, error
 		scheduled:   map[int]string{},
 		inserts:     map[int]string{},
 		typedArrows: map[int]bool{},
+
+		bodyDestructures: map[int]*destructure{},
 	}
 	for _, current := range processor.tokens {
 		if current.kind == token.IDENT {
@@ -244,12 +249,12 @@ func interpolationTokens(src []byte, from, to int) []lexeme {
 // the outer scan. The output and the bracket depth stay shared.
 func (processor *processor) startScan(tokens []lexeme) (restore func()) {
 	savedTokens, savedScheduled, savedInserts := processor.tokens, processor.scheduled, processor.inserts
-	savedDestructures, savedClosers := processor.pendingDestructures, processor.pendingClosers
+	savedDestructures, savedClosers, savedBodies := processor.pendingDestructures, processor.pendingClosers, processor.bodyDestructures
 	processor.tokens, processor.scheduled, processor.inserts = tokens, map[int]string{}, map[int]string{}
-	processor.pendingDestructures, processor.pendingClosers = nil, nil
+	processor.pendingDestructures, processor.pendingClosers, processor.bodyDestructures = nil, nil, map[int]*destructure{}
 	return func() {
 		processor.tokens, processor.scheduled, processor.inserts = savedTokens, savedScheduled, savedInserts
-		processor.pendingDestructures, processor.pendingClosers = savedDestructures, savedClosers
+		processor.pendingDestructures, processor.pendingClosers, processor.bodyDestructures = savedDestructures, savedClosers, savedBodies
 	}
 }
 
@@ -264,6 +269,11 @@ func (processor *processor) rewriteTokens() error {
 		if text, ok := processor.scheduled[tokenIndex]; ok {
 			processor.replace(current.offset, current.end(), text)
 			delete(processor.scheduled, tokenIndex)
+		}
+		if statement, ok := processor.bodyDestructures[tokenIndex]; ok {
+			insertedAt := processor.replace(current.end(), current.end(), statement.text)
+			processor.recordConsts(insertedAt+len(" "), statement.constBindings)
+			delete(processor.bodyDestructures, tokenIndex)
 		}
 		processor.finishClosers(tokenIndex)
 		if err := processor.finishDestructure(tokenIndex); err != nil {
@@ -304,7 +314,7 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 	case current.isIdent("t") && processor.isRawString(tokenIndex+1) && processor.touchesNext(tokenIndex):
 		return tokenIndex + 1, processor.template(current, processor.tokens[tokenIndex+1])
 	case current.is(token.FOR) && processor.tokenAt(tokenIndex+1).is(token.LPAREN):
-		processor.forOf(tokenIndex)
+		return processor.forOf(tokenIndex)
 	case current.is(token.LBRACK) && processor.tokenAt(tokenIndex+1).is(token.ELLIPSIS) && !processor.tokenAt(tokenIndex+2).is(token.RBRACK):
 		return processor.sliceSpread(tokenIndex)
 	case current.is(token.LBRACE) && processor.tokenAt(tokenIndex+1).is(token.ELLIPSIS):

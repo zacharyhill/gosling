@@ -67,16 +67,11 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 	if !operator.is(token.DEFINE) && !operator.is(token.ASSIGN) {
 		return tokenIndex, false, nil
 	}
-	for _, elementBinding := range bindings {
-		if elementBinding.defaultOffset >= 0 {
-			return tokenIndex, false, &Error{elementBinding.defaultOffset, "a destructuring default must be plain Go; assign the value to a variable first"}
-		}
+	if err := checkDefaults(bindings); err != nil {
+		return tokenIndex, false, err
 	}
 	elementNames := listFlatElementNames(bindings)
-	// A blank element reads no index, so it cannot panic.
-	bindings = slices.DeleteFunc(bindings, func(elementBinding binding) bool {
-		return elementBinding.name == "_" && strings.HasSuffix(elementBinding.path, "]")
-	})
+	bindings = removeBlankElements(bindings)
 	operatorText := operator.kind.String()
 	var constBindings []binding
 	if keyword != nil {
@@ -136,6 +131,24 @@ func (processor *processor) assignFromSimpleExpr(patternStart int, bindings []bi
 	pathAt := processor.replace(rightSideEnd, rightSideEnd, lastBinding.path+newlines)
 	processor.recordNewlines(pathAt+len(lastBinding.path), newlines)
 	processor.recordConsts(namesAt, constBindings)
+}
+
+// checkDefaults reports a default value that holds gosling syntax.
+func checkDefaults(bindings []binding) error {
+	for _, elementBinding := range bindings {
+		if elementBinding.defaultOffset >= 0 {
+			return &Error{elementBinding.defaultOffset, "a destructuring default must be plain Go; assign the value to a variable first"}
+		}
+	}
+	return nil
+}
+
+// removeBlankElements removes the blank elements of array patterns. A blank
+// element reads no index, so it cannot panic.
+func removeBlankElements(bindings []binding) []binding {
+	return slices.DeleteFunc(bindings, func(elementBinding binding) bool {
+		return elementBinding.name == "_" && strings.HasSuffix(elementBinding.path, "]")
+	})
 }
 
 func hasDefault(bindings []binding) bool {
