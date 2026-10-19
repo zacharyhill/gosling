@@ -1,0 +1,60 @@
+package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+func parse(s string) (any, error) { return strconv.Atoi(s) }
+
+func describe(s string) string {
+	try {
+		switch let n = strconv.Atoi(s); n {
+		case 1:
+			return "one"
+		default:
+			return t`other ${n}`
+		}
+	} catch (e) {
+		return t`error: ${e}`
+	}
+}
+
+func kind(s string) string {
+	try {
+		switch let v = parse(s); v.(type) {
+		case int:
+			return "int"
+		default:
+			return "?"
+		}
+	} catch {
+		return "bad"
+	}
+}
+
+func loop(s string) []int {
+	let funcs: []func() int
+	try {
+		for let i = strconv.Atoi(s); i < 3; i++ {
+			funcs = append(funcs, () => i)
+		}
+	} catch (e) {
+		fmt.Println("caught:", e)
+	}
+	let values: []int
+	for (const f of funcs) {
+		values = append(values, f())
+	}
+	return values
+}
+
+func main() {
+	fmt.Println(describe("1"))
+	fmt.Println(describe("7"))
+	fmt.Println(describe("x"))
+	fmt.Println(kind("3"))
+	fmt.Println(kind("y"))
+	fmt.Println(loop("0"))
+	fmt.Println(loop("z"))
+}

@@ -281,6 +281,8 @@ These calls are errors:
 Rules:
 
 - Checks apply in nested `if`, `for`, `switch`, and `select` bodies. They do not apply in function literals.
+- gosling also checks a call in the init statement of a `switch` or `for`, such as `switch let n = f(); n {`. The output puts the init statement, its check, and the statement in a new block.
+- Outside a try block, an assignment such as `x = f()` must receive the error, as in Go. Otherwise gosling reports an error.
 - gosling does not change a call that already receives its error, such as `const n, err = f()`.
 - gosling checks all calls that return an error, including `Close()` and `fmt.Fprintf`. To skip a check, write `_ = c.Close()`.
 - Only a last `error` result counts. A call such as `func f() (error, int)` used as a statement is an error.
@@ -528,7 +530,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 
 ## Limitations
 
-- gosling does not check calls in `if let x = f(); ...` initializers.
+- gosling does not check calls in `if let x = f(); ...` initializers. These calls are errors.
 - gosling checks calls that return `(A, B, error)` only as statements.
 - Only the type `error` counts. A last result of type `*MyError` does not.
 - A panic does not run `finally` blocks.

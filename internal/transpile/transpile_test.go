@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -280,6 +281,16 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:7:3: a case with a call that can fail must come before the default case",
 		},
 		{
+			name: "fallible call in switch initializer outside try",
+			src:  "package p\nimport \"strconv\"\nfunc f(s string) int {\n\tswitch let n = strconv.Atoi(s); n {\n\tcase 1:\n\t\treturn 1\n\t}\n\treturn 0\n}",
+			want: "x.gol:4:17: strconv.Atoi returns an error that is not checked here; assign the error, or move the call into its own statement in a try block",
+		},
+		{
+			name: "fallible call in for initializer in a function literal",
+			src:  "package p\nimport \"strconv\"\nfunc f(s string) {\n\ttry {\n\t\tfunc() {\n\t\t\tfor let i = strconv.Atoi(s); i < 3; i++ {\n\t\t\t}\n\t\t}()\n\t} catch {\n\t}\n}",
+			want: "x.gol:6:16: strconv.Atoi returns an error that is not checked here; assign the error, or move the call into its own statement in a try block",
+		},
+		{
 			name: "positional field in struct spread",
 			src:  "package p\ntype P struct{ X, Y int }\nfunc f(p P) P {\n\treturn P{...p, 1}\n}",
 			want: "x.gol:4:17: fields after a struct spread must be named",
@@ -370,6 +381,32 @@ func TestArrowTypeErrorPositions(test *testing.T) {
 type importerFunc func(path string) (*types.Package, error)
 
 func (importFunc importerFunc) Import(path string) (*types.Package, error) { return importFunc(path) }
+
+// TestUncheckedAssignsInSourceOrder reads the lowering errors before
+// Transpile sorts them, so it catches an order that changes between runs.
+func TestUncheckedAssignsInSourceOrder(test *testing.T) {
+	src := "package p\nimport \"strconv\"\nfunc f(s string) {\n" +
+		"\tlet a = strconv.Atoi(s)\n\tlet b = strconv.Atoi(s)\n\tlet c = strconv.Atoi(s)\n" +
+		"\tlet d = strconv.Atoi(s)\n\tlet e = strconv.Atoi(s)\n\tlet g = strconv.Atoi(s)\n" +
+		"\tprintln(a, b, c, d, e, g)\n}"
+	session := &transpiler{config: Config{Importer: importer.Default()}, fileSet: token.NewFileSet()}
+	if err := session.parse([]Input{{Path: "x.gol", Src: []byte(src)}}); err != nil {
+		test.Fatal(err)
+	}
+	typeInfo := session.check()
+	if err := session.diagnostics.Err(); err != nil {
+		test.Fatal(err)
+	}
+	newLowerer(session, session.files[0], typeInfo).lowerFile()
+	var gotLines []int
+	for _, diagnostic := range session.diagnostics {
+		gotLines = append(gotLines, diagnostic.Pos.Line)
+	}
+	wantLines := []int{4, 5, 6, 7, 8, 9}
+	if !slices.Equal(gotLines, wantLines) {
+		test.Errorf("error lines = %v, want %v\n%v", gotLines, wantLines, session.diagnostics)
+	}
+}
 
 // TestRun builds and runs each program in testdata/run. It compares the
 // output with the matching .out file.

@@ -1,0 +1,8 @@
+one
+other 7
+error: strconv.Atoi: parsing "x": invalid syntax
+int
+bad
+[0 1 2]
+caught: strconv.Atoi: parsing "z": invalid syntax
+[]
