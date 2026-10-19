@@ -1,0 +1,16 @@
+{
+  "id": "gosling",
+  "name": "gosling",
+  "programArgs": {
+    "default": "gosling lsp -generate-on-save"
+  },
+  "fileTypeMappings": [
+    {
+      "fileType": {
+        "name": "gosling",
+        "patterns": ["*.gol"]
+      },
+      "languageId": "gol"
+    }
+  ]
+}

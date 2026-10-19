@@ -104,7 +104,7 @@ If you rename or delete `foo.gol`, gosling deletes the old `foo.go` on the next 
 
 ## Editor support
 
-`editors/vscode` has a VS Code extension. It highlights `.gol` files and starts the gosling language server. It also gives `.gol` files their own language ID, so the Go extension does not report errors in them.
+`editors/vscode` has a VS Code extension. It highlights `.gol` files and starts the gosling language server. It also gives `.gol` files their own language ID, so the Go extension does not report errors in them. Other editors can also use the language server. See [Other editors](#other-editors).
 
 The language server is `gosling lsp`. It runs gopls on the generated code and maps each position back to the `.gol` file. It supports:
 
@@ -149,6 +149,75 @@ If VS Code cannot find `gosling` or `gopls`, set `gosling.path` and `gosling.gop
 The first requests can be slow. gopls loads and type-checks the workspace when it starts. After that, requests are fast.
 
 If the server does not start, open the Output panel (Ctrl+Shift+U) and select **gosling**. The panel shows the server errors.
+
+### Other editors
+
+An editor with an LSP client can run `gosling lsp`. The server uses standard input and output. It finds `gopls` in your `PATH`. These flags are available:
+
+- `-gopls path` sets the gopls command.
+- `-generate-on-save` writes the generated `.go` files of a package when you save one of its `.gol` files.
+
+Give `.gol` files their own file type, not the Go file type. Otherwise a Go plugin reports errors in the gosling syntax.
+
+#### Neovim
+
+Neovim 0.11 and later have the LSP configuration built in. Add this to your `init.lua`:
+
+```lua
+vim.filetype.add({ extension = { gol = "gol" } })
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "gol",
+  callback = function(args)
+    vim.bo[args.buf].commentstring = "// %s"
+  end,
+})
+
+vim.lsp.config("gosling", {
+  cmd = { "gosling", "lsp", "-generate-on-save" },
+  filetypes = { "gol" },
+  root_markers = { "go.mod", ".git" },
+})
+vim.lsp.enable("gosling")
+```
+
+To highlight `.gol` files as Go, create the file `~/.config/nvim/syntax/gol.vim` with this line:
+
+```vim
+runtime! syntax/go.vim
+```
+
+With Neovim 0.10, use [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig). Replace the `vim.lsp.config` and `vim.lsp.enable` lines with:
+
+```lua
+local configs = require("lspconfig.configs")
+if not configs.gosling then
+  configs.gosling = {
+    default_config = {
+      cmd = { "gosling", "lsp", "-generate-on-save" },
+      filetypes = { "gol" },
+      root_dir = require("lspconfig.util").root_pattern("go.mod", ".git"),
+    },
+  }
+end
+require("lspconfig").gosling.setup({})
+```
+
+Most Neovim commands that rename or delete a file do not tell the server. After such a change, run `gosling ./...` to remove the old `.go` file.
+
+#### JetBrains IDEs
+
+Use the [LSP4IJ](https://plugins.jetbrains.com/plugin/23257-lsp4ij) plugin in GoLand, IntelliJ IDEA, or another JetBrains IDE:
+
+1. Install LSP4IJ from the Marketplace.
+2. Open **Settings > Languages & Frameworks > Language Servers** and click **+**.
+3. In **Template**, select **Import from custom template...**. Then select the `editors/jetbrains` folder of this repository. The template runs `gosling lsp -generate-on-save` for `*.gol` files.
+4. Click **OK**.
+
+If you do not have a clone of this repository, enter the values yourself. On the **Server** tab, set the command to `gosling lsp -generate-on-save`. On the **Mappings** tab, add the file name pattern `*.gol` with the language ID `gol`.
+
+If the IDE cannot find `gosling`, use its full path in the command, such as `/home/me/go/bin/gosling lsp -generate-on-save`.
+
+To highlight `.gol` files, add the VS Code extension folder as a TextMate bundle. Open **Settings > Editor > TextMate Bundles**, click **+**, and select the `editors/vscode` folder.
 
 ### Language server limitations
 
