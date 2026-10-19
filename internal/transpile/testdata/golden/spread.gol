@@ -79,3 +79,26 @@ type ID int64
 func typedConstants(ids []ID, waits []time.Duration) ([]ID, []time.Duration) {
 	return [...ids, 1, ...ids, 2], [...waits, 5, time.Second]
 }
+
+type Counts map[string]int
+
+func mergeMaps(defaults, overrides Counts, n int) Counts {
+	return Counts{...defaults, ...overrides, "n": n}
+}
+
+func mergeLiteral(a map[string][]int) map[string][]int {
+	return map[string][]int{"first": {1}, ...a}
+}
+
+func mergeUntyped(a, b map[string]Point) map[string]Point {
+	let m = {...a, "origin": {0, 0}, ...b}
+	return m
+}
+
+func untypedStruct(p Point) Point {
+	return {...p, Y: 1}
+}
+
+func mergePointers(a map[Point]*Point) map[Point]*Point {
+	return map[Point]*Point{...a, {1, 2}: {3, 4}}
+}

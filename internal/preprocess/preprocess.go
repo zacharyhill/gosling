@@ -165,6 +165,8 @@ type processor struct {
 	// type to the offset of the ")" of its parameters. The scan already
 	// rewrote their parameters and colon.
 	resultArrows map[int]int
+	// spreadBraces holds the indexes of the { tokens with a spread element.
+	spreadBraces map[int]bool
 }
 
 // Process rewrites the gosling syntax in src into Go source with marker
@@ -193,6 +195,7 @@ func ProcessReserving(src []byte, reservedNames map[string]bool) (*Result, error
 		arrowStatements:  map[int]paramStatements{},
 		resultArrows:     map[int]int{},
 	}
+	processor.spreadBraces = findSpreadBraces(processor.tokens)
 	for _, current := range processor.tokens {
 		if current.kind == token.IDENT {
 			processor.identifiers[current.text] = true
@@ -278,14 +281,14 @@ func interpolationTokens(src []byte, from, to int) []lexeme {
 // the outer scan. The output and the bracket depth stay shared.
 func (processor *processor) startScan(tokens []lexeme) (restore func()) {
 	savedTokens, savedScheduled, savedInserts := processor.tokens, processor.scheduled, processor.inserts
-	savedDestructures, savedClosers := processor.pendingDestructures, processor.pendingClosers
+	savedDestructures, savedClosers, savedSpreads := processor.pendingDestructures, processor.pendingClosers, processor.spreadBraces
 	savedBodies, savedStatements, savedRenames := processor.bodyDestructures, processor.bodyStatements, processor.paramRenames
 	processor.tokens, processor.scheduled, processor.inserts = tokens, map[int]string{}, map[int]string{}
-	processor.pendingDestructures, processor.pendingClosers = nil, nil
+	processor.pendingDestructures, processor.pendingClosers, processor.spreadBraces = nil, nil, findSpreadBraces(tokens)
 	processor.bodyDestructures, processor.bodyStatements, processor.paramRenames = map[int]*destructure{}, map[int]paramStatements{}, map[int]paramRename{}
 	return func() {
 		processor.tokens, processor.scheduled, processor.inserts = savedTokens, savedScheduled, savedInserts
-		processor.pendingDestructures, processor.pendingClosers = savedDestructures, savedClosers
+		processor.pendingDestructures, processor.pendingClosers, processor.spreadBraces = savedDestructures, savedClosers, savedSpreads
 		processor.bodyDestructures, processor.bodyStatements, processor.paramRenames = savedBodies, savedStatements, savedRenames
 	}
 }
@@ -358,10 +361,8 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		return processor.forOf(tokenIndex)
 	case current.is(token.LBRACK) && processor.tokenAt(tokenIndex+1).is(token.ELLIPSIS) && !processor.tokenAt(tokenIndex+2).is(token.RBRACK):
 		return processor.sliceSpread(tokenIndex)
-	case current.is(token.LBRACE) && processor.tokenAt(tokenIndex+1).is(token.ELLIPSIS):
-		return processor.structSpread(tokenIndex)
-	case current.is(token.ELLIPSIS) && processor.spreadInBraces(tokenIndex):
-		return 0, &Error{current.offset, "struct spread must be the first element"}
+	case current.is(token.LBRACE) && processor.spreadBraces[tokenIndex]:
+		return processor.braceSpread(tokenIndex)
 	case (current.is(token.LBRACE) || current.is(token.LBRACK)) && processor.atStmtStart(tokenIndex):
 		if next, ok, err := processor.destructure(tokenIndex, nil); ok || err != nil {
 			return next, err

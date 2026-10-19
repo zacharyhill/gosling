@@ -4,6 +4,8 @@ import "fmt"
 
 type Point struct{ X, Y int }
 
+type Counts map[string]int
+
 type User struct {
 	name string
 	age  int
@@ -27,4 +29,15 @@ func main() {
 	let big = []int64{1}
 	let halves = [...[]float32{0.5}, 2]
 	fmt.Println([...big, 2, 3], [...big, 4, ...big], halves)
+	let defaults = map[string]int{"a": 1, "b": 2}
+	let merged = {...defaults, "b": 20, "c": 30}
+	merged["a"] = 100
+	fmt.Println(defaults, merged, Counts{"a": 5, ...defaults})
+	let none: map[string]int
+	fmt.Println(len({...none}), {...none} != nil, {...p, X: 7})
+	let counts = &Counts{
+		...defaults, // base
+		"z": 26,
+	}
+	fmt.Println((*counts)["z"], len(*counts))
 }

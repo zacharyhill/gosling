@@ -35,7 +35,7 @@ Features:
 - Map methods: `ages.has(name)`, `ages.get(name) ?? 0`, `ages.keys()`
 - `.length`: `xs.length` becomes `len(xs)`
 - Union types with exhaustive switches: `type Shape = Circle | Square`, `type Method = "GET" | "POST"`
-- Struct shorthand and spread: `User{name, age}`, `[...a, ...b]`, `Point{...p, X: 5}`
+- Struct shorthand and spread: `User{name, age}`, `[...a, ...b]`, `Point{...p, X: 5}`, `{...defaults, ...overrides}`
 
 ## Why
 
@@ -848,6 +848,19 @@ The marker method takes the type parameters. So `Ok[string]` is not a `Result[in
 const u = User{name, age}    // User{name: name, age: age}
 const all = [...a, x, ...b]  // slices.Concat(a, []int{x}, b)
 const p2 = Point{...p, X: 5} // func() Point { v := p; v.X = 5; return v }()
+const m = Counts{...a, "n": 1, ...b}
+```
+
+The map spread becomes:
+
+```go
+m := func() Counts {
+	v := Counts{}
+	maps.Copy(v, a)
+	v["n"] = 1
+	maps.Copy(v, b)
+	return v
+}()
 ```
 
 - Shorthand applies only if a positional literal is not valid. So `Point{y, x}` sets `X` to `y`, as in Go.
@@ -855,6 +868,10 @@ const p2 = Point{...p, X: 5} // func() Point { v := p; v.X = 5; return v }()
 - In a slice spread, untyped constants get the element type of the spread slices. So `[...int64s, 1]` is a `[]int64`.
 - In a struct spread, the spread comes first. Name all fields after it. For a pointer, write `...*p`.
 - `&Point{...p, X: 5}` gives a pointer to the new value.
+- A map spread always makes a new map. Spreads and entries can come in any order. Later entries win, as in JavaScript.
+- The type before `{` can be a name or a map type, such as `map[string]int{...a}`.
+- Without a type, `{...a, "k": 1}` gets the type of its first spread. This also works for structs: `{...p, X: 5}`.
+- For slices, write `[...a]`, not `[]int{...a}`.
 
 ### Imports and generated names
 

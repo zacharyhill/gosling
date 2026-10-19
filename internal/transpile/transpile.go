@@ -576,6 +576,7 @@ func (transpiler *transpiler) augment(typeInfo *types.Info) bool {
 		changed = transpiler.rewriteArrayCalls(file, typeInfo) || changed
 		changed = transpiler.rewriteLengths(file, typeInfo) || changed
 		changed = transpiler.wrapNested(file, typeInfo) || changed
+		changed = transpiler.typeUntypedSpreads(file, typeInfo) || changed
 		changed = transpiler.expandShorthand(file, typeInfo) || changed
 		changed = transpiler.typeSpreadConstants(file, typeInfo) || changed
 		changed = transpiler.fixArrows(file, typeInfo) || changed
