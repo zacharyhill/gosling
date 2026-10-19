@@ -148,6 +148,10 @@ type file struct {
 	// enumSelectors maps each enum constant that replaced a selector, such
 	// as Color.Red, to the selector.
 	enumSelectors map[*ast.ParenExpr]*ast.SelectorExpr
+	// optionalFields holds the names of the struct fields declared with ?.
+	optionalFields []*ast.Ident
+	// addressed holds the address markers around values of optional fields.
+	addressed map[*ast.CallExpr]bool
 }
 
 // position maps a position in the preprocessed file to the original source.
@@ -305,6 +309,7 @@ func (transpiler *transpiler) buildFile(input Input, reservedNames map[string]bo
 	golFile.recordIdentNames()
 	golFile.recordConstNames()
 	golFile.recordForOfBlanks()
+	golFile.recordOptionalFields()
 	for _, preprocessedTry := range preprocessed.Tries {
 		golFile.tries[preprocessedTry.If] = preprocessedTry
 	}
@@ -375,6 +380,7 @@ func newFile(input Input, preprocessed *preprocess.Result) *file {
 		ternaryStmts:   map[*ast.IfStmt]*ast.CallExpr{},
 		enumSelectors:  map[*ast.ParenExpr]*ast.SelectorExpr{},
 		stringCalls:    map[*ast.CallExpr]*stringCall{},
+		addressed:      map[*ast.CallExpr]bool{},
 	}
 }
 
@@ -625,9 +631,11 @@ func (transpiler *transpiler) fmtUsedByTemplates(typeError types.Error) bool {
 // reports whether the AST changed. A change needs another pass.
 func (transpiler *transpiler) augment(typeInfo *types.Info) bool {
 	changed := false
+	optionalFieldVars := transpiler.collectOptionalFieldVars(typeInfo)
 	for _, file := range transpiler.files {
 		changed = convertConsts(file, typeInfo) || changed
 		changed = destructureTuples(file, typeInfo) || changed
+		changed = transpiler.addressOptionalValues(file, typeInfo, optionalFieldVars) || changed
 		changed = transpiler.rewriteArrayCalls(file, typeInfo) || changed
 		changed = transpiler.rewriteLengths(file, typeInfo) || changed
 		changed = transpiler.rewriteStringCalls(file, typeInfo) || changed

@@ -23,6 +23,7 @@ func TestProcess(test *testing.T) {
 		params      []int
 		assigns     []int
 		enums       []Enum
+		optionals   []int
 	}{
 		{
 			name: "try catch with binding",
@@ -1028,6 +1029,18 @@ func TestProcess(test *testing.T) {
 			want: "const x = 1\nconst (\n\ty = 2\n)",
 		},
 		{
+			name:      "optional field",
+			src:       "type C struct {\n\tHost? string `json:\"host\"`\n\tPort int\n}",
+			want:      "type C struct {\n\tHost *string `json:\"host\"`\n\tPort int\n}",
+			optionals: []int{len("type C struct {\n\t")},
+		},
+		{
+			name:      "optional field in nested struct",
+			src:       "type C struct { A struct { B?  []int }; N? int }",
+			want:      "type C struct { A struct { B *[]int }; N *int }",
+			optionals: []int{len("type C struct { A struct { "), len("type C struct { A struct { B *[]int }; ")},
+		},
+		{
 			name: "let as identifier",
 			src:  "let := 1\nx := let + 2",
 			want: "let := 1\nx := let + 2",
@@ -1210,6 +1223,9 @@ func TestProcess(test *testing.T) {
 			if !reflect.DeepEqual(result.Enums, testCase.enums) {
 				test.Errorf("enums %+v, want %+v", result.Enums, testCase.enums)
 			}
+			if !slices.Equal(result.Optionals, testCase.optionals) {
+				test.Errorf("optionals %v, want %v", result.Optionals, testCase.optionals)
+			}
 			if !slices.Equal(result.Splits, testCase.splits) {
 				test.Errorf("splits %v, want %v", result.Splits, testCase.splits)
 			}
@@ -1304,6 +1320,11 @@ func TestProcessErrors(test *testing.T) {
 		{"typed header with two names", "if let a, b: int = 1, 2; a > b { }", "let with a type in a header can declare only one name", len("if ")},
 		{"typed header with range", "for let k: string = range m { }", "let with range cannot have a type", len("for ")},
 		{"typed header without value", "if let x: int; x > 0 { }", "let x needs a value", len("if ")},
+		{"optional field with colon", "type C struct { Host?: string }", "write Host? type, not Host?: type", len("type C struct { Host")},
+		{"optional field with pointer type", "type C struct { P? *int }", "optional field P already has a pointer type", len("type C struct { P")},
+		{"optional field in name list", "type C struct { A, B? int }", "declare optional field B on its own line", len("type C struct { A, B")},
+		{"optional embedded field", "type C struct { B? }", "optional field B needs a type", len("type C struct { B")},
+		{"question mark in interface", "type I interface { M?() }", "the ? operator is not supported", len("type I interface { M")},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {
