@@ -1,0 +1,28 @@
+no yes error
+[atoi 5 atoi x]
+true true false
+[atoi 7 atoi x]
+true
+[left atoi 1 middle]
+true
+[left atoi 0 atoi 2]
+false
+[left atoi 0 atoi x caught]
+3
+[atoi 1 atoi 2]
+2 1 -1
+[atoi 1 atoi 2 atoi 0 atoi 1 atoi 1 atoi x]
+3 -1
+[atoi 1 atoi 1 atoi 1 atoi 0 atoi x]
+empty big big times ten small error
+[atoi 20 atoi 2 atoi 20 atoi 1 atoi 10 atoi x]
+empty big big times ten small error
+[atoi 20 atoi 2 atoi 20 atoi 1 atoi 10 atoi x]
+zero a error b none error
+[atoi 4 atoi x atoi 1 atoi 10 atoi 1 atoi 1 atoi 1 atoi x]
+length other error
+[atoi 1 atoi 3 atoi x]
+same different error
+[atoi 1 atoi 1 atoi 1 atoi 2 atoi x]
+skipped start positive error true
+[atoi 5 atoi 3 atoi x]

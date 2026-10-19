@@ -1,0 +1,213 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+)
+
+var log []string
+
+func flush() {
+	fmt.Println(log)
+	log = nil
+}
+
+func atoi(s string) (int, error) {
+	log = append(log, "atoi "+s)
+	return strconv.Atoi(s)
+}
+
+func flag(name string, value bool) bool {
+	log = append(log, name)
+	return value
+}
+
+func and(ok bool, s string) string {
+	try {
+		if ok && atoi(s) > 0 {
+			return "yes"
+		}
+		return "no"
+	} catch {
+		return "error"
+	}
+}
+
+func or(ok bool, s string) bool {
+	try {
+		return ok || atoi(s) > 0
+	} catch {
+		return false
+	}
+}
+
+func chain(a, b string) bool {
+	try {
+		const result = flag("left", true) && atoi(a) > 0 && flag("middle", true) || atoi(b) > 0
+		return result
+	} catch {
+		log = append(log, "caught")
+		return false
+	}
+}
+
+func order(a, b string) int {
+	try {
+		return atoi(a) + atoi(b)
+	} catch {
+		return -1
+	}
+}
+
+func loop(xs []string) int {
+	let i = 0
+	try {
+		for i < len(xs) && atoi(xs[i]) != 0 {
+			i++
+		}
+		return i
+	} catch {
+		return -1
+	}
+}
+
+func loopWithPost(xs []string) int {
+	let count = 0
+	try {
+		for (let i = 0; atoi(xs[i]) > 0; i++) {
+			count++
+			if i == 1 {
+				continue
+			}
+		}
+		return count
+	} catch {
+		return -1
+	}
+}
+
+func elseIf(s string) string {
+	try {
+		if s == "" {
+			return "empty"
+		} else if atoi(s) > 10 {
+			return "big"
+		} else if atoi(s+"0") > 10 {
+			return "big times ten"
+		} else {
+			return "small"
+		}
+	} catch {
+		return "error"
+	}
+}
+
+func tagless(s string) string {
+	try {
+		switch {
+		case s == "":
+			return "empty"
+		case atoi(s) > 10:
+			return "big"
+		case atoi(s+"0") > 10:
+			return "big times ten"
+		default:
+			return "small"
+		}
+	} catch {
+		return "error"
+	}
+}
+
+func tagged(n int, a, b string) string {
+	try {
+		switch n * 2 {
+		case 0:
+			return "zero"
+		case atoi(a):
+			return "a"
+		case 6, 8:
+			return "six or eight"
+		case atoi(b):
+			return "b"
+		}
+		return "none"
+	} catch {
+		return "error"
+	}
+}
+
+func breakInCase(s string) string {
+	let result = "start"
+	try {
+		switch {
+		case s == "skip":
+			result = "skipped"
+		case atoi(s) > 0:
+			if s == "5" {
+				break
+			}
+			result = "positive"
+		}
+		return result
+	} catch (e) {
+		return t`error ${errors.Is(e, strconv.ErrSyntax)}`
+	}
+}
+
+func withInit(s string) string {
+	try {
+		switch let n = len(s); n {
+		case atoi(s):
+			return "length"
+		default:
+			return "other"
+		}
+	} catch {
+		return "error"
+	}
+}
+
+func hoistedTag(s, t string) string {
+	try {
+		switch atoi(s) {
+		case atoi(t):
+			return "same"
+		}
+		return "different"
+	} catch {
+		return "error"
+	}
+}
+
+func main() {
+	fmt.Println(and(false, "x"), and(true, "5"), and(true, "x"))
+	flush()
+	fmt.Println(or(true, "x"), or(false, "7"), or(false, "x"))
+	flush()
+	fmt.Println(chain("1", "x"))
+	flush()
+	fmt.Println(chain("0", "2"))
+	flush()
+	fmt.Println(chain("0", "x"))
+	flush()
+	fmt.Println(order("1", "2"))
+	flush()
+	fmt.Println(loop([]string{"1", "2", "0", "x"}), loop([]string{"1"}), loop([]string{"1", "x"}))
+	flush()
+	fmt.Println(loopWithPost([]string{"1", "1", "1", "0"}), loopWithPost([]string{"x"}))
+	flush()
+	fmt.Println(elseIf(""), elseIf("20"), elseIf("2"), elseIf("1"), elseIf("x"))
+	flush()
+	fmt.Println(tagless(""), tagless("20"), tagless("2"), tagless("1"), tagless("x"))
+	flush()
+	fmt.Println(tagged(0, "x", "x"), tagged(2, "4", "x"), tagged(3, "x", "x"), tagged(5, "1", "10"), tagged(7, "1", "1"), tagged(5, "1", "x"))
+	flush()
+	fmt.Println(withInit("1"), withInit("3"), withInit("x"))
+	flush()
+	fmt.Println(hoistedTag("1", "1"), hoistedTag("1", "2"), hoistedTag("x", "1"))
+	flush()
+	fmt.Println(breakInCase("skip"), breakInCase("5"), breakInCase("3"), breakInCase("x"))
+	flush()
+}

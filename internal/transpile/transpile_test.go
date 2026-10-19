@@ -244,14 +244,29 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:4:1: union variant I must not be an interface",
 		},
 		{
-			name: "fallible call after &&",
-			src:  "package p\nimport \"strconv\"\nfunc f(ok bool) bool {\n\ttry {\n\t\treturn ok && strconv.Atoi(\"1\") > 0\n\t} catch {\n\t\treturn false\n\t}\n}",
-			want: "x.gol:5:16: this call can fail but only runs conditionally here, so its error cannot be checked; move it into its own statement",
+			name: "fallible call in a ?? default",
+			src:  "package p\nimport \"strconv\"\nfunc f(p *int) int {\n\ttry {\n\t\treturn p ?? strconv.Atoi(\"1\")\n\t} catch {\n\t\treturn 0\n\t}\n}",
+			want: "x.gol:5:15: this call can fail but only runs conditionally here, so its error cannot be checked; move it into its own statement",
 		},
 		{
-			name: "fallible call in loop condition",
-			src:  "package p\nimport \"strconv\"\nfunc f() {\n\ttry {\n\t\tfor strconv.Atoi(\"1\") > 0 {\n\t\t}\n\t} catch {\n\t}\n}",
-			want: "x.gol:5:7: this call can fail, but its error cannot be checked here; move it into its own statement",
+			name: "fallible call in a for post statement",
+			src:  "package p\nimport \"strconv\"\nfunc f() {\n\ttry {\n\t\tfor (let i = 0; i < 3; i = strconv.Atoi(\"1\") + 1) {\n\t\t}\n\t} catch {\n\t}\n}",
+			want: "x.gol:5:30: this call can fail, but its error cannot be checked here; move it into its own statement",
+		},
+		{
+			name: "fallible call in a later expression of a case",
+			src:  "package p\nimport \"strconv\"\nfunc f(n int) {\n\ttry {\n\t\tswitch n {\n\t\tcase 1, strconv.Atoi(\"2\"):\n\t\t}\n\t} catch {\n\t}\n}",
+			want: "x.gol:6:11: this call can fail but only runs conditionally here, so its error cannot be checked; move it into its own statement",
+		},
+		{
+			name: "fallthrough into a case with a fallible call",
+			src:  "package p\nimport \"strconv\"\nfunc f(n int) {\n\ttry {\n\t\tswitch n {\n\t\tcase 1:\n\t\t\tfallthrough\n\t\tcase strconv.Atoi(\"2\"):\n\t\t}\n\t} catch {\n\t}\n}",
+			want: "x.gol:8:3: fallthrough into a case with a call that can fail is not supported",
+		},
+		{
+			name: "default before a case with a fallible call",
+			src:  "package p\nimport \"strconv\"\nfunc f(n int) {\n\ttry {\n\t\tswitch n {\n\t\tdefault:\n\t\tcase strconv.Atoi(\"2\"):\n\t\t}\n\t} catch {\n\t}\n}",
+			want: "x.gol:7:3: a case with a call that can fail must come before the default case",
 		},
 		{
 			name: "positional field in struct spread",
