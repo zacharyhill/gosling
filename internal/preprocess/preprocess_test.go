@@ -807,6 +807,21 @@ func TestProcess(test *testing.T) {
 			want: "s := html([]string{\"<b>😀\"})",
 		},
 		{
+			name: "tagged templates with escaped backticks",
+			src:  "q := sql`a \\` b ${x}`; r := db.SQL`\\``; u := _x9`\\``",
+			want: "q := sql([]string{\"a ` b \", \"\"}, x); r := db.SQL([]string{\"`\"}); u := _x9([]string{\"`\"})",
+		},
+		{
+			name: "raw strings after keywords and in struct tags keep a final backslash",
+			src:  "func f() string {\n\treturn`a\\`\n}\ntype T struct {\n\tName string`a\\`\n\tX t`b\\`\n}\nvar s = struct{ X int }{X: 1}; var q = sql`\\``",
+			want: "func f() string {\n\treturn`a\\`\n}\ntype T struct {\n\tName string`a\\`\n\tX t`b\\`\n}\nvar s = struct{ X int }{X: 1}; var q = sql([]string{\"`\"})",
+		},
+		{
+			name: "raw import path after a name is not a template",
+			src:  "import f`a\\`\nimport (\n\tg`b\\`\n)\nvar q = sql`\\``",
+			want: "import f`a\\`\nimport (\n\tg`b\\`\n)\nvar q = sql([]string{\"`\"})",
+		},
+		{
 			name: "struct tags are not templates",
 			src:  "type T struct {\n\tName string`json:\"name\"`\n\tX t`x`\n}",
 			want: "type T struct {\n\tName string`json:\"name\"`\n\tX t`x`\n}",

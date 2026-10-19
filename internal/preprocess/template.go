@@ -259,6 +259,7 @@ func quoteEnd(content string, openIndex int) (int, bool) {
 // raw string. MaskBackticks returns src itself if it has no such backtick.
 func MaskBackticks(src []byte) []byte {
 	var masked []byte
+	var isGoRawScopes []bool
 	for offset := 0; offset < len(src); offset++ {
 		switch {
 		case bytes.HasPrefix(src[offset:], []byte("//")):
@@ -267,16 +268,27 @@ func MaskBackticks(src []byte) []byte {
 			offset = findEnd(src, offset+len("/*"), "*/")
 		case src[offset] == '"' || src[offset] == '\'':
 			offset = findLiteralEnd(src, offset)
-		case src[offset] == '`' && !isTemplateStart(src, offset):
-			offset = findEnd(src, offset+1, "`")
-		case src[offset] == '`':
+		case src[offset] == '(' || src[offset] == '{':
+			isGoRawScopes = append(isGoRawScopes, isGoRawScope(src, offset))
+		case (src[offset] == ')' || src[offset] == '}') && len(isGoRawScopes) > 0:
+			isGoRawScopes = isGoRawScopes[:len(isGoRawScopes)-1]
+		case src[offset] == '`' && isTemplateStart(src, offset, isGoRawScopes):
 			offset, masked = maskTemplateBackticks(src, masked, offset)
+		case src[offset] == '`':
+			offset = findEnd(src, offset+1, "`")
 		}
 	}
 	if masked == nil {
 		return src
 	}
 	return masked
+}
+
+// isGoRawScope reports whether the bracket at openOffset opens a struct or an
+// import group. A raw string after a name there is a field tag or a path.
+func isGoRawScope(src []byte, openOffset int) bool {
+	keyword := findWordBefore(src, skipSpacesBack(src, openOffset))
+	return keyword == "struct" || keyword == "import"
 }
 
 // maskTemplateBackticks masks the escaped backticks of the template literal
@@ -324,16 +336,42 @@ func findLiteralEnd(src []byte, openOffset int) int {
 	return len(src) - 1
 }
 
-// isTemplateStart reports whether the backtick at offset follows the tag t.
-func isTemplateStart(src []byte, offset int) bool {
-	if offset == 0 || src[offset-1] != 't' {
+// isTemplateStart reports whether the backtick at offset follows a tag. The
+// tag is a name directly before the backtick, outside a struct or an import.
+func isTemplateStart(src []byte, offset int, isGoRawScopes []bool) bool {
+	tag := findWordBefore(src, offset)
+	if tag == "" || unicode.IsDigit(rune(tag[0])) || token.Lookup(tag).IsKeyword() {
 		return false
 	}
-	if offset == 1 {
-		return true
+	if len(isGoRawScopes) > 0 && isGoRawScopes[len(isGoRawScopes)-1] {
+		return false
 	}
-	byteBeforeTag := src[offset-2]
-	return byteBeforeTag != '_' && byteBeforeTag < utf8.RuneSelf && !unicode.IsLetter(rune(byteBeforeTag)) && !unicode.IsDigit(rune(byteBeforeTag))
+	tagStart := offset - len(tag)
+	return findWordBefore(src, skipSpacesBack(src, tagStart)) != "import"
+}
+
+// findWordBefore returns the identifier or keyword that ends at end.
+func findWordBefore(src []byte, end int) string {
+	start := end
+	for start > 0 && isWordByte(src[start-1]) {
+		start--
+	}
+	return string(src[start:end])
+}
+
+// isWordByte reports whether char can be part of an identifier. Each byte of
+// a non-ASCII letter counts.
+func isWordByte(char byte) bool {
+	return char == '_' || char >= utf8.RuneSelf || unicode.IsLetter(rune(char)) || unicode.IsDigit(rune(char))
+}
+
+// skipSpacesBack returns the offset after the last byte before end that is
+// not a space or a tab.
+func skipSpacesBack(src []byte, end int) int {
+	for end > 0 && (src[end-1] == ' ' || src[end-1] == '\t') {
+		end--
+	}
+	return end
 }
 
 var simpleEscapes = map[byte]string{

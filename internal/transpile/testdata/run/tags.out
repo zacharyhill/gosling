@@ -4,3 +4,4 @@ MULTI
 LINE A |
 ENDz
 built-in 1; drop table users
+QUOTED `|` HEREname `
