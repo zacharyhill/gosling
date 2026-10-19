@@ -245,18 +245,42 @@ func (server *server) forwardPositionRequest(message *rpcMessage) error {
 	if err != nil || file == nil {
 		return server.respondClient(message.ID, nil)
 	}
+	request := pendingRequest{method: message.Method, origin: file}
 	if !server.mapParamsPosition(paramsObject, file) {
 		if golPosition, ok := convertJSON[position](paramsObject["position"]); ok && message.Method == "textDocument/hover" {
 			return server.respondClient(message.ID, server.buildGeneratedHover(file, golPosition))
 		}
-		return server.respondClient(message.ID, nil)
+		nameRange, ok := server.mapRenamePosition(paramsObject, file, message.Method)
+		if !ok {
+			return server.respondClient(message.ID, nil)
+		}
+		request.nameRange = &nameRange
 	}
 	textDocument["uri"] = pathToURI(file.goPath)
 	if message.Params, err = json.Marshal(paramsObject); err != nil {
 		return err
 	}
-	server.pending[string(message.ID)] = pendingRequest{method: message.Method, origin: file}
+	server.pending[string(message.ID)] = request
 	return server.writeGopls(message)
+}
+
+// mapRenamePosition handles a rename at a name that the generated file does
+// not copy, such as a catch variable. gopls renames at a copied use of the
+// name instead. It returns the range of the name.
+func (server *server) mapRenamePosition(params map[string]any, file *generatedFile, method string) (lspRange, bool) {
+	if method != "textDocument/rename" && method != "textDocument/prepareRename" {
+		return lspRange{}, false
+	}
+	golPosition, ok := convertJSON[position](params["position"])
+	if !ok {
+		return lspRange{}, false
+	}
+	goPosition, nameRange, ok := server.findRenameTarget(file, golPosition)
+	if !ok {
+		return lspRange{}, false
+	}
+	params["position"] = goPosition
+	return nameRange, true
 }
 
 func (server *server) generatedForDocument(golPath string) (*generatedFile, error) {

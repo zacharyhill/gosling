@@ -370,7 +370,8 @@ func TestLSP(test *testing.T) {
 	test.Run("position in generated code has no result", session.checkGeneratedPosition)
 	test.Run("hover on gosling syntax shows the generated code", session.checkGeneratedHover)
 	test.Run("rename across gol files", session.checkRename)
-	test.Run("rename that changes generated code fails", session.checkRenameInGeneratedCode)
+	test.Run("rename of a name in generated code", session.checkRenameInGeneratedCode)
+	test.Run("rename at a catch variable", session.checkRenameAtCatchVariable)
 	test.Run("save writes generated files", session.checkGenerateOnSave)
 	test.Run("save with errors writes nothing", session.checkSaveWithErrors)
 	test.Run("server asks for gol file renames and deletes", session.checkFileOperationCapability)
@@ -535,11 +536,35 @@ func (session *lspSession) checkRename(test *testing.T) {
 }
 
 // checkRenameInGeneratedCode renames a catch variable. gosling writes its
-// declaration, so the rename cannot change only .gol text.
+// declaration, so the rename edits the name in the catch clause. The other
+// catch variable keeps its name.
 func (session *lspSession) checkRenameInGeneratedCode(test *testing.T) {
 	response := session.rename(test, "e)\n\t}\n}\n\nfunc main", "failure")
-	if !strings.Contains(string(response.Error), "code that gosling generates") {
-		test.Errorf("rename = %s, error %s, want the generated code error", response.Result, response.Error)
+	if response.Error != nil {
+		test.Fatalf("rename failed: %s", response.Error)
+	}
+	counts := editCountsByURI(test, response.Result)
+	if len(counts) != 1 || counts[session.mainURI] != 2 {
+		test.Errorf("edits by file = %v, want two in main.gol", counts)
+	}
+}
+
+// checkRenameAtCatchVariable starts a rename at the name in the catch clause.
+// The generated file has no copy of that name.
+func (session *lspSession) checkRenameAtCatchVariable(test *testing.T) {
+	binding := positionOf(test, lspMain, "e) {")
+	result := session.client.request("textDocument/prepareRename", textDocumentPosition(session.mainURI, binding))
+	var prepared struct {
+		Start lspPosition `json:"start"`
+	}
+	if err := json.Unmarshal(result, &prepared); err != nil || prepared.Start != binding {
+		test.Fatalf("prepareRename = %s, want the range of the catch variable", result)
+	}
+	params := textDocumentPosition(session.mainURI, binding)
+	params["newName"] = "failure"
+	counts := editCountsByURI(test, session.client.request("textDocument/rename", params))
+	if len(counts) != 1 || counts[session.mainURI] != 2 {
+		test.Errorf("edits by file = %v, want two in main.gol", counts)
 	}
 }
 

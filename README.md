@@ -116,7 +116,7 @@ The language server is `gosling lsp`. It runs gopls on the generated code and ma
 - Find All References and highlights
 - Hover. On gosling syntax, such as `try`, `??`, or a template literal, hover shows the Go code that gosling generates.
 - Completion and signature help
-- Rename
+- Rename, also of a catch variable and other names in gosling syntax
 - The outline of a file
 - Diagnostics: gosling errors, and gopls warnings for the generated code
 
@@ -227,7 +227,8 @@ To highlight `.gol` files, add the VS Code extension folder as a TextMate bundle
 
 - Code that gosling generates, such as `try` and `catch`, has no definition.
 - A definition in generated code, such as a catch variable, goes to the nearest token before it.
-- A rename fails if the name also occurs in code that gosling generates, such as a catch variable. A partial rename would break the code.
+- A rename can change a name that gosling copies into generated code, such as a catch variable, an arrow parameter, or a destructured name. The server then transpiles the renamed files and compares the result with the rename in Go. If they differ, the rename fails, because a partial rename would break the code. For example, a rename of the field `X` fails if `const {X} = p` uses it.
+- A rename in a file that changed after a syntax error fails if the name occurs in generated code.
 - Formatting is not supported. It would change generated code.
 - After a syntax error, the server keeps the last version that parsed. Lines that changed since that version get no results until the file parses again. Type errors do not have this problem.
 

@@ -73,6 +73,9 @@ func (server *server) handleGoplsResponse(message *rpcMessage) error {
 		}
 		return server.respondClient(message.ID, edit)
 	case "textDocument/prepareRename":
+		if request.nameRange != nil && string(message.Result) != "null" {
+			return server.respondClient(message.ID, request.nameRange)
+		}
 		return server.respondClient(message.ID, server.mapPrepareRename(message.Result, request.origin))
 	}
 	result, err := decodeJSON(message.Result)
