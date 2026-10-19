@@ -1111,3 +1111,4 @@ Before you write or change a `.gol` file, read these items:
 13. Remember that string lengths and indexes count bytes, not characters.
 14. Do not edit the output. Run `gosling ./...`, then `go vet ./...` and `go build ./...`.
 15. Run `gosling fmt -w` on each `.gol` file that you change.
+16. Read [known-issues.md](known-issues.md) for the open bugs, the behavior traps, and the limitations.
