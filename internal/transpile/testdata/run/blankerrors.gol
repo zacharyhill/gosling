@@ -1,0 +1,122 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+)
+
+type pair struct{ A, B int }
+
+type codeError struct{ code int }
+
+func (codeError *codeError) Error() string { return fmt.Sprint("code ", codeError.code) }
+
+var calls []string
+
+func step(name string, fail bool) (int, error) {
+	calls = append(calls, name)
+	if fail {
+		return 0, errors.New(name + " failed")
+	}
+	return 1, nil
+}
+
+func steps(name string, fail bool) (int, int, error) {
+	const value, err = step(name, fail)
+	return value, value, err
+}
+
+func pairStep(name string, fail bool) (pair, error) {
+	const value, err = step(name, fail)
+	return pair{value, value}, err
+}
+
+func listStep(name string, fail bool) ([]int, error) {
+	const value, err = step(name, fail)
+	return []int{value, value}, err
+}
+
+func coded(code int) (int, *codeError) {
+	if code != 0 {
+		return 0, &codeError{code}
+	}
+	return 1, nil
+}
+
+func run(name string, body func() string) {
+	calls = nil
+	fmt.Println(name, body(), calls)
+}
+
+func consts(failAt string) string {
+	try {
+		const _ = step("a", failAt == "a")
+		let _ = step("b", failAt == "b")
+		const _, _ = steps("c", failAt == "c")
+		const _, _ = steps("d", failAt == "d")
+		return "ok"
+	} catch (e) {
+		return e.Error()
+	}
+}
+
+func destructured(failAt string) string {
+	try {
+		const [_, _] = listStep("a", failAt == "a")
+		const [_, _] = listStep("b", failAt == "b")
+		const {A: _} = pairStep("c", failAt == "c")
+		let {A: _, B: _} = pairStep("d", failAt == "d")
+		return "ok"
+	} catch (e) {
+		return e.Error()
+	}
+}
+
+func mixed(failAt string) string {
+	try {
+		const _ = step("a", failAt == "a")
+		const value = step("b", failAt == "b")
+		const _ = step("c", failAt == "c")
+		const _ = strconv.Atoi(failAt)
+		return fmt.Sprint("ok ", value)
+	} catch (e) {
+		return e.Error()
+	}
+}
+
+func hoisted(failAt string) string {
+	try {
+		const _ = step("a", failAt == "a") + step("b", failAt == "b")
+		const _ = step("c", failAt == "c") + step("d", failAt == "d")
+		return "ok"
+	} catch (e) {
+		return e.Error()
+	}
+}
+
+func typed(first, second int) string {
+	try {
+		const _ = coded(first)
+		const _ = step("a", false)
+		const _ = coded(second)
+		return "ok"
+	} catch (e) {
+		return e.Error()
+	}
+}
+
+func main() {
+	run("consts", () => consts(""))
+	run("consts", () => consts("b"))
+	run("consts", () => consts("d"))
+	run("destructured", () => destructured(""))
+	run("destructured", () => destructured("b"))
+	run("destructured", () => destructured("d"))
+	run("mixed", () => mixed("1"))
+	run("mixed", () => mixed("c"))
+	run("hoisted", () => hoisted(""))
+	run("hoisted", () => hoisted("c"))
+	run("typed", () => typed(0, 0))
+	run("typed", () => typed(0, 2))
+}

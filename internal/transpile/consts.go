@@ -5,6 +5,7 @@ import (
 	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 
 	"golang.org/x/tools/go/ast/astutil"
 
@@ -186,7 +187,42 @@ func (lowerer *lowerer) lowerConsts() {
 			continue
 		}
 		lowerer.replace(decl.TokPos, assign.Lhs[0].Pos(), "", line)
-		lowerer.replace(assign.TokPos, assign.TokPos+1, ":=", line)
+		if !lowerer.file.blankDefines[assign] {
+			lowerer.replace(assign.TokPos, assign.TokPos+1, ":=", line)
+		}
+	}
+}
+
+// convertBlankDefines turns each := whose names are all blank into =. It
+// reports whether it changed one.
+func (file *file) convertBlankDefines() bool {
+	changed := false
+	ast.Inspect(file.ast, func(node ast.Node) bool {
+		assign, ok := node.(*ast.AssignStmt)
+		if ok && assign.Tok == token.DEFINE && isAllBlank(assign.Lhs) {
+			assign.Tok = token.ASSIGN
+			file.blankDefines[assign] = true
+			changed = true
+		}
+		return true
+	})
+	return changed
+}
+
+func isAllBlank(names []ast.Expr) bool {
+	return !slices.ContainsFunc(names, func(name ast.Expr) bool {
+		ident, ok := name.(*ast.Ident)
+		return !ok || ident.Name != "_"
+	})
+}
+
+// lowerBlankDefines writes = for the := of each let in blankDefines. A
+// const already has = in the source, and lowerConsts keeps it.
+func (lowerer *lowerer) lowerBlankDefines() {
+	for assign := range lowerer.file.blankDefines {
+		if bytes.HasPrefix(lowerer.file.preprocessed.Src[lowerer.offset(assign.TokPos):], []byte(":=")) {
+			lowerer.replace(assign.TokPos, assign.TokPos+token.Pos(len(":=")), "=", lowerer.line(assign.TokPos))
+		}
 	}
 }
 
