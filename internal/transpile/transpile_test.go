@@ -939,6 +939,11 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:4:9: optional chain needs the builtin nil, but a declaration shadows it here; rename that declaration",
 		},
 		{
+			name: "parameter shadows the builtin that a comma-ok optional index needs",
+			src:  "package p\nfunc f(counts map[string]int, true int) (int, bool) {\n\tconst [count, hasCount] = counts?.[\"a\"]\n\treturn count, hasCount\n}",
+			want: "x.gol:3:28: optional chain needs the builtin true, but a declaration shadows it here; rename that declaration",
+		},
+		{
 			name: "parameter shadows a builtin that a template literal needs",
 			src:  "package p\nfunc f(x float32, float64 int) string {\n\treturn t`${x}`\n}",
 			want: "x.gol:3:13: template literal needs the builtin float64, but a declaration shadows it here; rename that declaration",
@@ -1828,6 +1833,13 @@ func TestShadowedBuiltinInOtherFile(test *testing.T) {
 
 func TestBuiltinDeclaredAfterUse(test *testing.T) {
 	src := "package p\nfunc f(xs []int) []int {\n\tlet ys = xs.map(x => x * 2)\n\tlet len = 3\n\t_ = len\n\treturn ys\n}\n"
+	if _, err := Transpile(Config{Importer: importer.Default()}, []Input{{Path: "x.gol", Src: []byte(src)}}); err != nil {
+		test.Fatal(err)
+	}
+}
+
+func TestCommaOkAssertChainWithShadowedTrue(test *testing.T) {
+	src := "package p\ntype Box struct{ Item any }\nfunc f(box *Box, true int) (string, bool) {\n\tconst [text, isText] = box?.Item as string\n\treturn text, isText\n}\n"
 	if _, err := Transpile(Config{Importer: importer.Default()}, []Input{{Path: "x.gol", Src: []byte(src)}}); err != nil {
 		test.Fatal(err)
 	}

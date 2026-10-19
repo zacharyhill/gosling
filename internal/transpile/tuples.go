@@ -74,7 +74,8 @@ func findTupleTempDecls(file *file, typeInfo *types.Info) map[string]tupleTempDe
 			return true
 		}
 		elementNames, isArrayTemp := namesByOffset[file.tokenFile.Offset(tempVar.Pos())]
-		if isArrayTemp && countValues(typeInfo, assign.Rhs[0]) > 1 {
+		hasSeveralValues := countValues(typeInfo, assign.Rhs[0]) > 1 || isCommaOkMapIndex(typeInfo, assign.Rhs[0], elementNames)
+		if isArrayTemp && hasSeveralValues {
 			tempDecls[tempVar.Name] = tupleTempDecl{assign: assign, elementNames: elementNames}
 		}
 		return true
@@ -151,6 +152,37 @@ func countValues(typeInfo *types.Info, expr ast.Expr) int {
 		return tuple.Len() - 1
 	}
 	return tuple.Len()
+}
+
+// isCommaOkMapIndex reports whether `[v, ok] = m[k]` takes the value and the ok result.
+// A map value that you can index is destructured, so `[a, b] = m[k]` reads a slice.
+func isCommaOkMapIndex(typeInfo *types.Info, expr ast.Expr, elementNames []string) bool {
+	indexExpr, ok := ast.Unparen(expr).(*ast.IndexExpr)
+	if !ok || len(elementNames) != 2 {
+		return false
+	}
+	leftType := typeInfo.Types[indexExpr.X].Type
+	if leftType == nil {
+		return false
+	}
+	mapType, ok := leftType.Underlying().(*types.Map)
+	return ok && !isIndexable(mapType.Elem())
+}
+
+func isIndexable(goType types.Type) bool {
+	if _, isTypeParam := goType.(*types.TypeParam); isTypeParam {
+		return true
+	}
+	switch underlying := goType.Underlying().(type) {
+	case *types.Slice, *types.Array, *types.Map:
+		return true
+	case *types.Basic:
+		return underlying.Info()&types.IsString != 0
+	case *types.Pointer:
+		_, isArray := underlying.Elem().Underlying().(*types.Array)
+		return isArray
+	}
+	return false
 }
 
 // lowerTuples writes the patterns that destructureTuples changed.
