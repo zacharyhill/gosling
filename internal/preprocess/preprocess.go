@@ -282,6 +282,9 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		if next, ok, err := processor.destructure(tokenIndex, nil); ok || err != nil {
 			return next, err
 		}
+		if current.is(token.LBRACK) && processor.hasSpreadElement(tokenIndex) {
+			return processor.sliceSpread(tokenIndex)
+		}
 		processor.openBracket(current, pendingTry)
 	case current.is(token.FUNC):
 		return tokenIndex, processor.signature(tokenIndex)
@@ -290,6 +293,8 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 	case current.is(token.LPAREN):
 		processor.openBracket(current, pendingTry)
 		return tokenIndex, processor.typedArrow(tokenIndex)
+	case current.is(token.LBRACK) && processor.hasSpreadElement(tokenIndex):
+		return processor.sliceSpread(tokenIndex)
 	case current.is(token.LBRACE) || current.is(token.LBRACK):
 		processor.openBracket(current, pendingTry)
 	case current.is(token.RPAREN) || current.is(token.RBRACK):

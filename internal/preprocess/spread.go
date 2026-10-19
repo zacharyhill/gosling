@@ -54,6 +54,30 @@ func (processor *processor) elements(openIndex int, closing token.Token) ([]elem
 	return nil, 0, &Error{processor.tokens[openIndex].offset, "unbalanced brackets"}
 }
 
+// hasSpreadElement reports whether an element of the list that opens at token
+// openIndex starts with "...". The [...] of an array type is not a spread.
+func (processor *processor) hasSpreadElement(openIndex int) bool {
+	depth := 0
+	for tokenIndex := openIndex + 1; tokenIndex < len(processor.tokens); tokenIndex++ {
+		switch current := processor.tokens[tokenIndex]; current.kind {
+		case token.LPAREN, token.LBRACK, token.LBRACE:
+			depth++
+		case token.RPAREN, token.RBRACK, token.RBRACE:
+			if depth == 0 {
+				return false
+			}
+			depth--
+		case token.ELLIPSIS:
+			previous := processor.tokens[tokenIndex-1]
+			isElementStart := tokenIndex == openIndex+1 || previous.is(token.COMMA)
+			if depth == 0 && isElementStart && !processor.tokenAt(tokenIndex+1).is(token.RBRACK) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (processor *processor) insertBefore(tokenIndex int, text string) {
 	processor.inserts[tokenIndex] += text
 }

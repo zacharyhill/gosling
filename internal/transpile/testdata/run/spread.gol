@@ -14,6 +14,7 @@ func main() {
 	let b = [...a, 3]
 	b[0] = 99
 	fmt.Println(a, b, [...a, ...b])
+	fmt.Println([0, ...a], [0, 1, ...a, 5])
 	let p = Point{1, 2}
 	let q = Point{...p, Y: 20}
 	fmt.Println(p, q)

@@ -48,3 +48,7 @@ func updateShorthand(u User, age int) User {
 		return v
 	}()
 }
+
+func leadingElements(a []int, x int) [][]int {
+	return [][]int{slices.Concat([]int{x}, a), slices.Concat([]int{x, 1}, a, a, []int{2})}
+}
