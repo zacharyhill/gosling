@@ -155,19 +155,19 @@ func (lowerer *lowerer) lowerWith(withCall *ast.CallExpr) {
 	if addrCall, isAddressed := lowerer.getAddrMarkerCall(conversion); isAddressed {
 		replacedExpr, typeText, returnText = addrCall, "*"+typeText, "&"+tempVar
 	}
-	lowerer.replace(replacedExpr.Pos(), base.Pos(), "func() "+typeText+" {\n"+tempVar+" := ", line)
+	lowerer.replace(replacedExpr.Pos(), base.Pos(), lowerer.buildTextWithComments(replacedExpr.Pos(), base.Pos(), "func() "+typeText+" {", tempVar+" := "), line)
 	previousEnd := base.End()
 	for _, element := range compositeLit.Elts {
 		keyValue := element.(*ast.KeyValueExpr)
 		if ident, isShorthand := lowerer.file.shorthand[keyValue]; isShorthand {
-			lowerer.replace(previousEnd, ident.Pos(), "\n"+tempVar+"."+ident.Name+" = ", line)
+			lowerer.replace(previousEnd, ident.Pos(), lowerer.buildTextWithComments(previousEnd, ident.Pos(), "", tempVar+"."+ident.Name+" = "), line)
 		} else {
-			lowerer.replace(previousEnd, keyValue.Key.Pos(), "\n"+tempVar+".", line)
+			lowerer.replace(previousEnd, keyValue.Key.Pos(), lowerer.buildTextWithComments(previousEnd, keyValue.Key.Pos(), "", tempVar+"."), line)
 			lowerer.replace(keyValue.Key.End(), keyValue.Value.Pos(), " = ", line)
 		}
 		previousEnd = keyValue.Value.End()
 	}
-	lowerer.replace(previousEnd, replacedExpr.End(), "\nreturn "+returnText+"\n}()", line)
+	lowerer.replace(previousEnd, replacedExpr.End(), lowerer.buildTextWithComments(previousEnd, replacedExpr.End(), "", "return "+returnText+"\n}()"), line)
 }
 
 func (lowerer *lowerer) getAddrMarkerCall(conversion *ast.CallExpr) (*ast.CallExpr, bool) {
@@ -176,6 +176,28 @@ func (lowerer *lowerer) getAddrMarkerCall(conversion *ast.CallExpr) (*ast.CallEx
 		return nil, false
 	}
 	return callTo(parentCall, preprocess.AddrMarker)
+}
+
+// buildTextWithComments returns before, a newline, and after, with the comments in
+// [from, to). A comment on the line of from stays there. Other comments get their own lines.
+func (lowerer *lowerer) buildTextWithComments(from, to token.Pos, before, after string) string {
+	var replacement strings.Builder
+	replacement.WriteString(before)
+	var ownLineComments strings.Builder
+	for _, group := range lowerer.file.ast.Comments {
+		for _, comment := range group.List {
+			if comment.Pos() < from || comment.End() > to {
+				continue
+			}
+			if lowerer.line(comment.Pos()) == lowerer.line(from) {
+				replacement.WriteString(" " + comment.Text)
+			} else {
+				ownLineComments.WriteString(comment.Text + "\n")
+			}
+		}
+	}
+	replacement.WriteString("\n" + ownLineComments.String() + after)
+	return replacement.String()
 }
 
 func (file *file) inBadSpread(position token.Pos) bool {

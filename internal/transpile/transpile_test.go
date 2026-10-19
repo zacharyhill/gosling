@@ -637,6 +637,14 @@ func pick(choice int, err error) string {
 
 func throws(err error) error { return err }
 
+func grow(outer box) box {
+	return box{ // copy outer
+		...outer,
+		// a bigger size
+		size: outer.size + 1, // add one
+	}
+}
+
 func last() int {
 	return 1
 }

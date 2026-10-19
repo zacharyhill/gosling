@@ -75,3 +75,23 @@ func updatePointer(p *Point) *Point {
 		return &v
 	}()
 }
+
+func updateWithComments(u User, age int) User {
+	return func() User {
+		v := u // keep the base
+		// the new age
+		v.age = age  /* inline */
+		v.name = "x" // trailing name
+		v.tags = nil // last
+		// before close
+		return v
+	}()
+}
+
+func spreadAfterComment(p Point) Point {
+	return func() Point { // copy p
+		v := p
+		v.Y = 1
+		return v
+	}()
+}
