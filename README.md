@@ -114,7 +114,7 @@ The language server is `gosling lsp`. It runs gopls on the generated code and ma
 
 - Go to Definition (Ctrl+click), Go to Type Definition, and Go to Implementations
 - Find All References and highlights
-- Hover
+- Hover. On gosling syntax, such as `try`, `??`, or a template literal, hover shows the Go code that gosling generates.
 - Completion and signature help
 - Rename
 - The outline of a file
@@ -225,7 +225,7 @@ To highlight `.gol` files, add the VS Code extension folder as a TextMate bundle
 
 ### Language server limitations
 
-- Code that gosling generates, such as `try` and `catch`, has no hover or definition.
+- Code that gosling generates, such as `try` and `catch`, has no definition.
 - A definition in generated code, such as a catch variable, goes to the nearest token before it.
 - A rename fails if the name also occurs in code that gosling generates, such as a catch variable. A partial rename would break the code.
 - Formatting is not supported. It would change generated code.

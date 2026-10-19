@@ -368,6 +368,7 @@ func TestLSP(test *testing.T) {
 	test.Run("definition of an annotated parameter", session.checkAnnotatedParameterDefinition)
 	test.Run("hover on a standard library call", session.checkHover)
 	test.Run("position in generated code has no result", session.checkGeneratedPosition)
+	test.Run("hover on gosling syntax shows the generated code", session.checkGeneratedHover)
 	test.Run("rename across gol files", session.checkRename)
 	test.Run("rename that changes generated code fails", session.checkRenameInGeneratedCode)
 	test.Run("save writes generated files", session.checkGenerateOnSave)
@@ -424,9 +425,16 @@ func (session *lspSession) checkHover(test *testing.T) {
 }
 
 func (session *lspSession) checkGeneratedPosition(test *testing.T) {
+	definition := session.client.request("textDocument/definition", textDocumentPosition(session.mainURI, positionOf(test, lspMain, "try")))
+	if string(definition) != "null" {
+		test.Errorf("definition of try = %s, want null", definition)
+	}
+}
+
+func (session *lspSession) checkGeneratedHover(test *testing.T) {
 	hover := session.client.request("textDocument/hover", textDocumentPosition(session.mainURI, positionOf(test, lspMain, "try")))
-	if string(hover) != "null" {
-		test.Errorf("hover on try = %s, want null", hover)
+	if !strings.Contains(string(hover), "goto catch_1") {
+		test.Errorf("hover on try = %s, want the generated code", hover)
 	}
 }
 

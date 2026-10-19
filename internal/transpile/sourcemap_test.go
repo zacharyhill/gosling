@@ -163,3 +163,22 @@ func TestSourceMapDestructuredNames(test *testing.T) {
 		}
 	}
 }
+
+func TestSourceMapGoOffsets(test *testing.T) {
+	src := "package p\n\nfunc f(n int) string {\n\treturn t`n=${n} m=${n + 1}`\n}\n"
+	output := transpileWithMap(test, "p.gol", []byte(src), false)
+	templateStart := strings.Index(src, "t`")
+	templateEnd := strings.Index(src, "`\n}")
+	offsets := output.SourceMap.GoOffsets(templateStart, templateEnd)
+	if len(offsets) != 4 {
+		test.Fatalf("got %d offsets, want the four tokens in the template: %v", len(offsets), offsets)
+	}
+	for tokenIndex, want := range []string{"n", "n", "+", "1"} {
+		if got := string(output.Src[offsets[tokenIndex] : offsets[tokenIndex]+len(want)]); got != want {
+			test.Errorf("offset %d is at %q, want %q", tokenIndex, got, want)
+		}
+	}
+	if offsets := output.SourceMap.GoOffsets(0, len("package")); len(offsets) != 1 {
+		test.Errorf("package clause offsets = %v, want one", offsets)
+	}
+}

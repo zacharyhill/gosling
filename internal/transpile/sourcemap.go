@@ -48,6 +48,20 @@ func (sourceMap SourceMap) GolOffset(goOffset int) (int, bool) {
 	return found.golOffset + goOffset - found.goOffset, true
 }
 
+// GoOffsets returns the generated offsets of the copied tokens that start in
+// golStart..golEnd of the .gol file, in .gol order.
+func (sourceMap SourceMap) GoOffsets(golStart, golEnd int) []int {
+	first := sort.Search(len(sourceMap.byGol), func(spanIndex int) bool { return sourceMap.byGol[spanIndex].golOffset >= golStart })
+	var offsets []int
+	for _, found := range sourceMap.byGol[first:] {
+		if found.golOffset >= golEnd {
+			break
+		}
+		offsets = append(offsets, found.goOffset)
+	}
+	return offsets
+}
+
 // GolOffsetNear maps an offset in the generated file to the .gol file. An
 // offset in generated text maps to the end of the nearest copied token
 // before it.

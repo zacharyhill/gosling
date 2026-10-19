@@ -17,14 +17,21 @@ const mappingSource = "package p\n\nimport \"strconv\"\n\nfunc parse(text string
 // generated file, without gopls.
 func newMappingServer(test *testing.T) (*server, *generatedFile) {
 	test.Helper()
+	return newServerFor(test, mappingSource)
+}
+
+// newServerFor returns a server with the open document x.gol that holds
+// source.
+func newServerFor(test *testing.T, source string) (*server, *generatedFile) {
+	test.Helper()
 	golPath := "/work/p/x.gol"
-	outputs, err := transpile.Transpile(transpile.Config{Importer: importer.Default()}, []transpile.Input{{Path: golPath, Src: []byte(mappingSource)}})
+	outputs, err := transpile.Transpile(transpile.Config{Importer: importer.Default()}, []transpile.Input{{Path: golPath, Src: []byte(source)}})
 	if err != nil {
 		test.Fatal(err)
 	}
 	server := newServer(Options{Logger: log.New(io.Discard, "", 0)}, io.Discard, io.Discard)
-	file := newGeneratedFile(outputs[0], []byte(mappingSource))
-	server.documents[golPath] = &editorDocument{path: golPath, text: []byte(mappingSource)}
+	file := newGeneratedFile(outputs[0], []byte(source))
+	server.documents[golPath] = &editorDocument{path: golPath, text: []byte(source)}
 	packageState := newPackageState("/work/p")
 	packageState.dirty = false
 	packageState.files[file.goPath] = file
