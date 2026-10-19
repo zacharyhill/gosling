@@ -734,6 +734,21 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:16: method Color.String already declared",
 		},
 		{
+			name: "assignment to a variable that instanceof narrows",
+			src:  "package p\ntype A struct{}\nfunc f(v any) {\n\tif (v instanceof A) {\n\t\tv = A{}\n\t}\n}",
+			want: "x.gol:5:3: cannot assign to v: narrowed by instanceof",
+		},
+		{
+			name: "instanceof on an error needs package errors but the name is taken",
+			src:  "package p\nimport \"io/fs\"\nfunc f(errors int, err error) string {\n\tif (err instanceof *fs.PathError) {\n\t\treturn err.Path\n\t}\n\treturn \"\"\n}",
+			want: "x.gol:4:6: instanceof needs package errors, but the name errors is already used in this file",
+		},
+		{
+			name: "instanceof on a value that is not an interface",
+			src:  "package p\ntype A struct{}\nfunc f(v A) {\n\tif (v instanceof A) {\n\t}\n}",
+			want: "x.gol:4:6: invalid operation: v (variable of struct type A) is not an interface",
+		},
+		{
 			name: "union variant from another package",
 			src:  "package p\nimport \"time\"\ntype A struct{}\ntype U = A | time.Time\n",
 			want: "x.gol:4:1: union variant time.Time must be a type declared in this package",

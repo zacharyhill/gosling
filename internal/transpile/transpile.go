@@ -160,6 +160,12 @@ type file struct {
 	defaultCalls map[*ast.CallExpr]defaultCall
 	// defaultImports holds the import paths that default values use.
 	defaultImports map[string]bool
+	// narrowings maps the offset of each if statement with an instanceof
+	// condition to its narrowing.
+	narrowings map[int]preprocess.Narrowing
+	// narrowedVars holds the variables that instanceof narrows. Code cannot
+	// assign to them, because the assignment would not change the original.
+	narrowedVars map[*ast.Ident]bool
 }
 
 // position maps a position in the preprocessed file to the original source.
@@ -323,6 +329,7 @@ func (transpiler *transpiler) buildFile(input Input, reservedNames map[string]bo
 	golFile.recordForOfBlanks()
 	golFile.recordOptionalFields()
 	transpiler.reportNestedYields(golFile)
+	golFile.recordNarrowings()
 	for _, preprocessedTry := range preprocessed.Tries {
 		golFile.tries[preprocessedTry.If] = preprocessedTry
 	}
@@ -397,6 +404,8 @@ func newFile(input Input, preprocessed *preprocess.Result) *file {
 		addressed:      map[*ast.CallExpr]bool{},
 		defaultCalls:   map[*ast.CallExpr]defaultCall{},
 		defaultImports: map[string]bool{},
+		narrowings:     map[int]preprocess.Narrowing{},
+		narrowedVars:   map[*ast.Ident]bool{},
 	}
 }
 
@@ -563,7 +572,7 @@ func (transpiler *transpiler) isSpurious(typeError types.Error, typeInfo *types.
 	if file := transpiler.fileAt(typeError.Pos); file != nil {
 		// A bad union variant also breaks its generated method. Rewriting
 		// already reports bad spreads.
-		if badUnions[file][file.preprocessed.OrigOffset(file.tokenFile.Offset(typeError.Pos))] || file.inBadSpread(typeError.Pos) || file.isCoveredByDefaults(typeError) {
+		if badUnions[file][file.preprocessed.OrigOffset(file.tokenFile.Offset(typeError.Pos))] || file.inBadSpread(typeError.Pos) || file.isCoveredByDefaults(typeError) || file.isUnusedNarrowing(typeError) {
 			return true
 		}
 	}

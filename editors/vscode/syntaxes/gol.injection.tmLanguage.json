@@ -46,6 +46,9 @@
       "include": "#this"
     },
     {
+      "include": "#instanceof"
+    },
+    {
       "include": "#arrow"
     },
     {
@@ -392,6 +395,20 @@
     "this": {
       "match": "\\bthis\\b",
       "name": "variable.language.this.gol"
+    },
+    "instanceof": {
+      "match": "\\b(instanceof)\\b(?:\\s+(\\*?)((?:\\w+\\.)?\\w+))?",
+      "captures": {
+        "1": {
+          "name": "keyword.operator.instanceof.gol"
+        },
+        "2": {
+          "name": "keyword.operator.address.gol"
+        },
+        "3": {
+          "name": "entity.name.type.gol"
+        }
+      }
     },
     "arrow": {
       "patterns": [

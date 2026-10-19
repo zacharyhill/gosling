@@ -25,6 +25,7 @@ func TestProcess(test *testing.T) {
 		enums       []Enum
 		optionals   []int
 		defaults    []Default
+		narrowings  []Narrowing
 	}{
 		{
 			name: "try catch with binding",
@@ -662,6 +663,73 @@ func TestProcess(test *testing.T) {
 			name: "enum as a name",
 			src:  "func f(enum int) int {\n\treturn enum\n}",
 			want: "func f(enum int) int {\n\treturn enum\n}",
+		},
+		{
+			name:       "instanceof narrows in the if body",
+			src:        "if (s instanceof Circle) {\n\tuse(s)\n}",
+			want:       "if s, ok := s.(Circle); ok {\n\tuse(s)\n}",
+			narrowings: []Narrowing{{If: 0, Var: len("if ")}},
+		},
+		{
+			name:       "instanceof without parentheses",
+			src:        "if err instanceof *fs.PathError { use(err) }",
+			want:       "if err, ok := err.(*fs.PathError); ok { use(err) }",
+			narrowings: []Narrowing{{If: 0, Var: len("if ")}},
+		},
+		{
+			name: "instanceof with else",
+			src:  "if (s instanceof Circle) { a(s) } else if (s instanceof Square) { b(s) }",
+			want: "if circle, ok := s.(Circle); ok { s := circle; a(s) } else if s, ok := s.(Square); ok { b(s) }",
+			narrowings: []Narrowing{
+				{If: 0, Var: len("if circle, ok := s.(Circle); ok { "), CopyStart: len("if circle, ok := s.(Circle); ok {"), CopyEnd: len("if circle, ok := s.(Circle); ok { s := circle;")},
+				{If: len("if circle, ok := s.(Circle); ok { s := circle; a(s) } else "), Var: len("if circle, ok := s.(Circle); ok { s := circle; a(s) } else if ")},
+			},
+		},
+		{
+			name:       "negated instanceof",
+			src:        "if (!(s instanceof Box[int])) { return }",
+			want:       "if _, ok := s.(Box[int]); !ok { return }",
+			narrowings: []Narrowing{{If: 0, Var: -1}},
+		},
+		{
+			name:       "instanceof temporary that is a keyword",
+			src:        "if t instanceof Type { a(t) } else { b(t) }",
+			want:       "if narrowed, ok := t.(Type); ok { t := narrowed; a(t) } else { b(t) }",
+			narrowings: []Narrowing{{If: 0, Var: len("if narrowed, ok := t.(Type); ok { "), CopyStart: len("if narrowed, ok := t.(Type); ok {"), CopyEnd: len("if narrowed, ok := t.(Type); ok { t := narrowed;")}},
+		},
+		{
+			name:       "instanceof with a parenthesized type",
+			src:        "if v instanceof ([]int) { use(v) }",
+			want:       "if v, ok := v.([]int); ok { use(v) }",
+			narrowings: []Narrowing{{If: 0, Var: len("if ")}},
+		},
+		{
+			name:       "parenthesized instanceof with a parenthesized type",
+			src:        "if (v instanceof ([]int)) { use(v) }",
+			want:       "if v, ok := v.([]int); ok { use(v) }",
+			narrowings: []Narrowing{{If: 0, Var: len("if ")}},
+		},
+		{
+			name:       "instanceof with an interface type literal",
+			src:        "if x instanceof interface{ Error() string } { use(x) }",
+			want:       "if x, ok := x.(interface{ Error() string }); ok { use(x) }",
+			narrowings: []Narrowing{{If: 0, Var: len("if ")}},
+		},
+		{
+			name:       "instanceof with a struct type literal and else",
+			src:        "if v instanceof map[string]struct{ A int } { a(v) } else { b(v) }",
+			want:       "if narrowed, ok := v.(map[string]struct{ A int }); ok { v := narrowed; a(v) } else { b(v) }",
+			narrowings: []Narrowing{{If: 0, Var: len("if narrowed, ok := v.(map[string]struct{ A int }); ok { "), CopyStart: len("if narrowed, ok := v.(map[string]struct{ A int }); ok {"), CopyEnd: len("if narrowed, ok := v.(map[string]struct{ A int }); ok { v := narrowed;")}},
+		},
+		{
+			name: "method named instanceof",
+			src:  "func (r R) instanceof(x int) bool { return r.instanceof(x) }",
+			want: "func (r R) instanceof(x int) bool { return r.instanceof(x) }",
+		},
+		{
+			name: "instanceof as an identifier",
+			src:  "instanceof := 1\nf(instanceof)",
+			want: "instanceof := 1\nf(instanceof)",
 		},
 		{
 			name: "plain alias untouched",
@@ -1399,6 +1467,9 @@ func TestProcess(test *testing.T) {
 			if !slices.Equal(result.Splits, testCase.splits) {
 				test.Errorf("splits %v, want %v", result.Splits, testCase.splits)
 			}
+			if !slices.Equal(result.Narrowings, testCase.narrowings) {
+				test.Errorf("narrowings %+v, want %+v", result.Narrowings, testCase.narrowings)
+			}
 			for tryIndex := range testCase.tries {
 				if !reflect.DeepEqual(result.Tries[tryIndex], testCase.tries[tryIndex]) {
 					test.Errorf("try %d: got %+v, want %+v", tryIndex, result.Tries[tryIndex], testCase.tries[tryIndex])
@@ -1520,6 +1591,13 @@ func TestProcessErrors(test *testing.T) {
 		{"as after a binary operator", "x := a + b as int", "as applies only to the operand before it; add parentheses, as in (a + b) as T", len("x := a + b ")},
 		{"as after a unary operator", "x := *p as int", "as applies only to the operand before it", len("x := *p ")},
 		{"as destructuring with three names", "func f() {\n\tconst [a, b, c] = x as int\n}", "a type assertion gives two values: [value, ok]", len("func f() {\n\tconst ")},
+		{"instanceof outside an if condition", "b := s instanceof Circle", "instanceof is only supported as the condition of an if statement", len("b := s ")},
+		{"instanceof in a larger condition", "if ok && s instanceof Circle { }", "instanceof is only supported as the condition of an if statement", len("if ok && s ")},
+		{"instanceof on a field", "if (a.s instanceof Circle) { }", "the left side of instanceof must be a variable name", len("if (")},
+		{"negated instanceof without parentheses", "if !s instanceof Circle { }", "write !(x instanceof T)", len("if ")},
+		{"instanceof without a type", "if (s instanceof) { }", "instanceof needs a type", len("if (s ")},
+		{"instanceof with empty parentheses", "if v instanceof () { }", "instanceof needs a type", len("if v ")},
+		{"instanceof with an unclosed interface type", "if v instanceof interface{ { }", "the if statement has no block after the instanceof condition", len("if v ")},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {

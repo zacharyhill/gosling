@@ -32,6 +32,8 @@ type lowerer struct {
 	// optionalChecks holds the error checks for optional calls in try
 	// blocks. The check goes inside the nil guards of the chain.
 	optionalChecks map[ast.Expr]optionalCheck
+	// usedObjects holds the objects that the package uses. isUsed fills it.
+	usedObjects map[types.Object]bool
 }
 
 func newLowerer(transpiler *transpiler, file *file, typeInfo *types.Info) *lowerer {
@@ -208,6 +210,9 @@ func (lowerer *lowerer) walkIf(stmt *ast.IfStmt, try *tryContext) {
 		delete(lowerer.file.tries, lowerer.offset(stmt.Pos()))
 		lowerer.lowerTry(stmt, preprocessedTry, try)
 		return
+	}
+	if narrowing, ok := lowerer.file.narrowings[lowerer.offset(stmt.Pos())]; ok {
+		lowerer.lowerNarrowing(stmt, narrowing.CopyStart, narrowing.CopyEnd)
 	}
 	if parent, ok := lowerer.parents[stmt].(*ast.IfStmt); ok && parent.Else == stmt {
 		lowerer.hoistElseIf(stmt, try)

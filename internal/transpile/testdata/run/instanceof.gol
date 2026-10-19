@@ -1,0 +1,72 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"io/fs"
+	"os"
+)
+
+type Circle struct{ R int }
+
+type Square struct{ Side int }
+
+type Shape = Circle | Square
+
+func describe(shape Shape) string {
+	if (shape instanceof Circle) {
+		return t`circle ${shape.R}`
+	} else if (shape instanceof Square) {
+		return t`square ${shape.Side}`
+	} else {
+		return t`other ${shape}`
+	}
+}
+
+func path(err error) string {
+	if (err instanceof *fs.PathError) {
+		return err.Path
+	}
+	if (!(err instanceof *fs.PathError)) {
+		return t`not a path error: ${err}`
+	}
+	return ""
+}
+
+func size(value any) int {
+	if (value instanceof ([]int)) {
+		return len(value)
+	}
+	if value instanceof interface{ Len() int } {
+		return value.Len()
+	}
+	return -1
+}
+
+type list struct{}
+
+func (list) Len() int { return 7 }
+
+func openFile(name: string): string {
+	try {
+		const file = os.Open(name)
+		file.Close()
+		return "opened"
+	} catch (e) {
+		if (e instanceof *fs.PathError) {
+			return e.Op == "open" ? t`${e.Op} failed` : "other op"
+		}
+		return "other"
+	}
+}
+
+func main() {
+	fmt.Println(openFile("/nonexistent/gosling"))
+	fmt.Println(describe(Circle{2}))
+	fmt.Println(describe(Square{3}))
+	fmt.Println(describe(nil))
+	let wrapped = fmt.Errorf("open: %w", &fs.PathError{Op: "open", Path: "/tmp/x", Err: fs.ErrNotExist})
+	fmt.Println(path(wrapped))
+	fmt.Println(path(errors.New("plain")))
+	fmt.Println(size([]int{1, 2}), size(list{}), size("x"))
+}

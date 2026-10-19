@@ -109,22 +109,31 @@ func (transpiler *transpiler) checkConstAssignments(astFiles []*ast.File, typeIn
 	}
 }
 
-func (transpiler *transpiler) reportConstTargets(targets []ast.Expr, constObjects map[types.Object]bool, typeInfo *types.Info) {
+func (transpiler *transpiler) reportConstTargets(targets []ast.Expr, constObjects map[types.Object]string, typeInfo *types.Info) {
 	for _, target := range targets {
 		ident, ok := ast.Unparen(target).(*ast.Ident)
-		if ok && constObjects[typeInfo.Uses[ident]] {
-			transpiler.diagnostics.Add(transpiler.position(ident.Pos()), "cannot assign to "+ident.Name+": declared with const")
+		if !ok {
+			continue
+		}
+		if reason, ok := constObjects[typeInfo.Uses[ident]]; ok {
+			transpiler.diagnostics.Add(transpiler.position(ident.Pos()), "cannot assign to "+ident.Name+": "+reason)
 		}
 	}
 }
 
-// constObjects returns the objects of the variables that a const declares.
-func (transpiler *transpiler) constObjects(typeInfo *types.Info) map[types.Object]bool {
-	constObjects := map[types.Object]bool{}
+// constObjects maps the objects of the variables that code cannot assign to
+// the reason: a const declares them, or instanceof narrows them.
+func (transpiler *transpiler) constObjects(typeInfo *types.Info) map[types.Object]string {
+	constObjects := map[types.Object]string{}
 	for _, file := range transpiler.files {
 		for name := range file.constVars {
 			if object := typeInfo.Defs[name]; object != nil {
-				constObjects[object] = true
+				constObjects[object] = "declared with const"
+			}
+		}
+		for name := range file.narrowedVars {
+			if object := typeInfo.Defs[name]; object != nil {
+				constObjects[object] = "narrowed by instanceof"
 			}
 		}
 		addTypeSwitchObjects(file, typeInfo, constObjects)
@@ -149,7 +158,7 @@ func assignTargets(node ast.Node) []ast.Expr {
 
 // addTypeSwitchObjects adds the variables of each case of a type switch
 // that a const declares. Each case has its own variable.
-func addTypeSwitchObjects(file *file, typeInfo *types.Info, constObjects map[types.Object]bool) {
+func addTypeSwitchObjects(file *file, typeInfo *types.Info, constObjects map[types.Object]string) {
 	ast.Inspect(file.ast, func(node ast.Node) bool {
 		typeSwitch, ok := node.(*ast.TypeSwitchStmt)
 		if !ok {
@@ -161,7 +170,7 @@ func addTypeSwitchObjects(file *file, typeInfo *types.Info, constObjects map[typ
 		}
 		for _, clause := range typeSwitch.Body.List {
 			if object := typeInfo.Implicits[clause]; object != nil {
-				constObjects[object] = true
+				constObjects[object] = "declared with const"
 			}
 		}
 		return true
