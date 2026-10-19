@@ -258,6 +258,26 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:4:2: an optional chain cannot be the target of an assignment",
 		},
 		{
+			name: "assignment through a dereferenced optional chain",
+			src:  "package p\ntype T struct{ P *int }\nfunc f(v *T) {\n\t*v?.P = 1\n}",
+			want: "x.gol:4:3: cannot dereference an optional chain; it gives nil when the chain is skipped",
+		},
+		{
+			name: "increment through a dereferenced optional chain",
+			src:  "package p\ntype T struct{ P *int }\nfunc f(v *T) {\n\t(*v?.P)++\n}",
+			want: "x.gol:4:4: cannot dereference an optional chain; it gives nil when the chain is skipped",
+		},
+		{
+			name: "assignment through a dereferenced parenthesized optional chain",
+			src:  "package p\ntype T struct{ P *int }\nfunc f(v *T) {\n\t*(v?.P) = 1\n}",
+			want: "x.gol:4:4: cannot dereference an optional chain; it gives nil when the chain is skipped",
+		},
+		{
+			name: "read of a dereferenced optional chain",
+			src:  "package p\ntype T struct{ P *int }\nfunc f(v *T) {\n\tprintln(*v?.P)\n}",
+			want: "x.gol:4:11: cannot dereference an optional chain; it gives nil when the chain is skipped",
+		},
+		{
 			name: "nullish coalescing mixed with ||",
 			src:  "package p\nfunc f(a *bool, b bool) bool {\n\treturn a ?? b || true\n}",
 			want: "x.gol:3:9: ?? cannot be mixed with || or && without parentheses",

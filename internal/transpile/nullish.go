@@ -312,8 +312,13 @@ func (lowerer *lowerer) coalescedValue(chain coalesceChain, leftOperand ast.Expr
 }
 
 func (lowerer *lowerer) lowerChain(root ast.Expr) {
-	if _, parent := outermostParen(lowerer.parents, root); isAddressOf(parent) {
+	_, parent := outermostParen(lowerer.parents, root)
+	if isAddressOf(parent) {
 		lowerer.errorf(lowerer.file, root.Pos(), "cannot take the address of an optional chain")
+		return
+	}
+	if isDereference(parent) {
+		lowerer.errorf(lowerer.file, root.Pos(), "cannot dereference an optional chain; it gives nil when the chain is skipped")
 		return
 	}
 	if lowerer.isAssignTarget(root) {
@@ -359,6 +364,11 @@ func (lowerer *lowerer) isAssignTarget(expr ast.Expr) bool {
 		}
 	}
 	return false
+}
+
+func isDereference(node ast.Node) bool {
+	_, ok := node.(*ast.StarExpr)
+	return ok
 }
 
 // The ?? operator type-checks as one of these calls. With the pointer form,

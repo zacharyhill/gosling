@@ -415,6 +415,7 @@ These are errors:
 - `??` mixed with `||` or `&&` without parentheses
 - the address of an optional chain, such as `&a?.b`
 - an optional chain that is assigned to or incremented, such as `a?.b = c` or `a?.n++`
+- a dereference of an optional chain, such as `*a?.p`. To read the value, use `a?.p ?? d`.
 
 gosling evaluates each link one time:
 
