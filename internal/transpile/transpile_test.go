@@ -8,6 +8,7 @@ import (
 	"go/importer"
 	"go/parser"
 	"go/token"
+	"go/types"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -306,6 +307,59 @@ func TestErrors(test *testing.T) {
 		})
 	}
 }
+
+// TestArrowTypeErrorPositions checks errors in the types that gosling fills
+// in for an arrow. dep exports functions that use its unexported type.
+func TestArrowTypeErrorPositions(test *testing.T) {
+	depSrc := "package dep\ntype item struct{}\nfunc Each(f func(item)) {}\nfunc Make(f func() item) {}\nfunc Zero() item { return item{} }\n"
+	fileSet := token.NewFileSet()
+	depFile, err := parser.ParseFile(fileSet, "dep.go", depSrc, 0)
+	if err != nil {
+		test.Fatal(err)
+	}
+	depPackage, err := (&types.Config{}).Check("dep", fileSet, []*ast.File{depFile}, nil)
+	if err != nil {
+		test.Fatal(err)
+	}
+	defaultImporter := importer.Default()
+	depImporter := importerFunc(func(path string) (*types.Package, error) {
+		if path == "dep" {
+			return depPackage, nil
+		}
+		return defaultImporter.Import(path)
+	})
+	testCases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "parameter type",
+			src:  "package p\n\nimport \"dep\"\n\nfunc f() {\n\tdep.Each(it => println(it))\n}\n",
+			want: "x.gol:6:11: name item not exported by package dep",
+		},
+		{
+			name: "result type",
+			src:  "package p\n\nimport \"dep\"\n\nfunc f() {\n\tdep.Make(() => dep.Zero())\n}\n",
+			want: "x.gol:6:11: name item not exported by package dep",
+		},
+	}
+	for _, testCase := range testCases {
+		test.Run(testCase.name, func(test *testing.T) {
+			_, err := Transpile(Config{Importer: depImporter}, []Input{{Path: "x.gol", Src: []byte(testCase.src)}})
+			if err == nil {
+				test.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), testCase.want) {
+				test.Errorf("error:\n%v\nwant substring:\n%s", err, testCase.want)
+			}
+		})
+	}
+}
+
+type importerFunc func(path string) (*types.Package, error)
+
+func (importFunc importerFunc) Import(path string) (*types.Package, error) { return importFunc(path) }
 
 // TestRun builds and runs each program in testdata/run. It compares the
 // output with the matching .out file.

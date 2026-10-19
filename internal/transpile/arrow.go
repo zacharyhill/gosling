@@ -131,15 +131,16 @@ func (transpiler *transpiler) fixArrows(file *file, typeInfo *types.Info) bool {
 }
 
 func (transpiler *transpiler) setParams(file *file, arrowFunc *arrow, params []types.Type) bool {
+	fields := arrowFunc.funcLit.Type.Params.List
 	typeExprs := make([]ast.Expr, len(params))
 	for paramIndex, param := range params {
-		paramExpr, ok := transpiler.typeExpr(file, param)
+		paramExpr, ok := transpiler.typeExpr(file, param, fields[paramIndex].Type.Pos())
 		if !ok {
 			return false
 		}
 		typeExprs[paramIndex] = paramExpr
 	}
-	for paramIndex, field := range arrowFunc.funcLit.Type.Params.List {
+	for paramIndex, field := range fields {
 		field.Type = typeExprs[paramIndex]
 	}
 	arrowFunc.params = params
@@ -151,7 +152,7 @@ func (transpiler *transpiler) setParams(file *file, arrowFunc *arrow, params []t
 func (transpiler *transpiler) setResults(file *file, arrowFunc *arrow, results []types.Type) bool {
 	fields := make([]*ast.Field, len(results))
 	for resultIndex, resultType := range results {
-		resultExpr, ok := transpiler.typeExpr(file, resultType)
+		resultExpr, ok := transpiler.typeExpr(file, resultType, arrowFunc.funcLit.Pos())
 		if !ok {
 			return false
 		}
