@@ -12,7 +12,8 @@ import (
 // If inAST is true, it also adds the import to the AST. The next type-check
 // pass needs this to resolve the types. Then Config.Importer must load
 // each package that the imports of the file depend on. It reports false if
-// the name is already used for something else in the file.
+// the name is already used for something else in the file. If another file
+// declares the name at package level, the import gets an alias.
 func (transpiler *transpiler) importName(file *file, path, name string, inAST bool) (string, bool) {
 	for _, spec := range file.ast.Imports {
 		if importPath, err := strconv.Unquote(spec.Path.Value); err != nil || importPath != path {
@@ -33,13 +34,40 @@ func (transpiler *transpiler) importName(file *file, path, name string, inAST bo
 	if file.identNames[name] {
 		return "", false
 	}
-	file.added[path] = name
+	importedAs := name
+	if transpiler.isPackageLevelName(name) {
+		importedAs = transpiler.pickImportAlias(file, name)
+		file.aliased[path] = true
+	}
+	file.added[path] = importedAs
 	if inAST {
 		spec := &ast.ImportSpec{Path: &ast.BasicLit{Kind: token.STRING, Value: strconv.Quote(path)}}
+		if importedAs != name {
+			spec.Name = ast.NewIdent(importedAs)
+		}
 		file.ast.Decls = append([]ast.Decl{&ast.GenDecl{Tok: token.IMPORT, Specs: []ast.Spec{spec}}}, file.ast.Decls...)
 		file.ast.Imports = append(file.ast.Imports, spec)
 	}
-	return name, true
+	return importedAs, true
+}
+
+// isPackageLevelName reports whether a file of the package declares name at
+// package level.
+func (transpiler *transpiler) isPackageLevelName(name string) bool {
+	return transpiler.checkedPackage != nil && transpiler.checkedPackage.Scope().Lookup(name) != nil
+}
+
+// importAliasSuffix follows the package name in an import alias, as in fmtpkg.
+const importAliasSuffix = "pkg"
+
+// pickImportAlias returns an import name based on name that file does not use
+// and the package does not declare.
+func (transpiler *transpiler) pickImportAlias(file *file, name string) string {
+	alias := name + importAliasSuffix
+	for suffix := 2; file.identNames[alias] || transpiler.isPackageLevelName(alias); suffix++ {
+		alias = name + importAliasSuffix + strconv.Itoa(suffix)
+	}
+	return alias
 }
 
 func (lowerer *lowerer) emitImports() {
@@ -56,6 +84,9 @@ func (lowerer *lowerer) emitImports() {
 	}
 	for _, path := range paths {
 		quoted := strconv.Quote(path)
+		if lowerer.file.aliased[path] {
+			quoted = lowerer.file.added[path] + " " + quoted
+		}
 		switch {
 		case lastImport == nil:
 			lowerer.insert(lowerer.file.ast.Name.End(), "\n\nimport "+quoted, lowerer.line(lowerer.file.ast.Name.End()))

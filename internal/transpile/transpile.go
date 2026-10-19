@@ -104,6 +104,8 @@ type file struct {
 	identNames map[string]bool
 	// added maps the path of each import gosling adds to its name.
 	added map[string]string
+	// aliased holds the paths in added whose name is an alias.
+	aliased map[string]bool
 	// finallyOf maps a try statement to its finally block. prepareFinally
 	// moves the block in front of the try.
 	finallyOf     map[*ast.IfStmt]*ast.BlockStmt
@@ -302,6 +304,7 @@ func newFile(input Input, preprocessed *preprocess.Result) *file {
 		arrayCalls:    map[*ast.CallExpr]*arrayCall{},
 		identNames:    map[string]bool{},
 		added:         map[string]string{},
+		aliased:       map[string]bool{},
 		finallyOf:     map[*ast.IfStmt]*ast.BlockStmt{},
 		finallyBlocks: map[*ast.BlockStmt]bool{},
 		hoisted:       map[*ast.CallExpr]*ast.CallExpr{},

@@ -638,6 +638,57 @@ func size(path string) int {
 	}
 }
 
+// TestImportPackageNames checks that an added import gets an alias if
+// another file of the package declares its name.
+func TestImportPackageNames(test *testing.T) {
+	declarations := `package p
+
+import clock "time"
+
+type fmt struct{}
+
+type strconv struct{}
+
+type slices struct{}
+
+type time struct{}
+
+func wait(visit func(clock.Duration)) { visit(clock.Second) }
+`
+	uses := `package p
+
+func describe(count int, ratio float64, first, second []int) []int {
+	println(t` + "`count=${count} ratio=${ratio}`" + `)
+	wait(duration => println(duration.String()))
+	return [...first, ...second]
+}
+`
+	inputs := []Input{{Path: "declarations.gol", Src: []byte(declarations)}, {Path: "uses.gol", Src: []byte(uses)}}
+	outputs, err := Transpile(Config{Importer: importer.Default()}, inputs)
+	if err != nil {
+		test.Fatal(err)
+	}
+	fileSet := token.NewFileSet()
+	var parsedFiles []*ast.File
+	for _, output := range outputs {
+		parsedFile, err := parser.ParseFile(fileSet, output.Path, output.Src, 0)
+		if err != nil {
+			test.Fatal(err)
+		}
+		parsedFiles = append(parsedFiles, parsedFile)
+	}
+	var typeErrors []string
+	checkConfig := types.Config{Importer: importer.Default(), Error: func(err error) { typeErrors = append(typeErrors, err.Error()) }}
+	if _, err := checkConfig.Check("p", fileSet, parsedFiles, nil); err != nil {
+		test.Fatalf("generated code does not type-check:\n%s\n%s", strings.Join(typeErrors, "\n"), outputs[1].Src)
+	}
+	for _, want := range []string{`fmtpkg "fmt"`, `strconvpkg "strconv"`, `slicespkg "slices"`, `timepkg "time"`} {
+		if !strings.Contains(string(outputs[1].Src), want) {
+			test.Errorf("want import %s in:\n%s", want, outputs[1].Src)
+		}
+	}
+}
+
 func writeFile(test *testing.T, path, content string) {
 	test.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
