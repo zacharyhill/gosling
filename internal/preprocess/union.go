@@ -1,7 +1,6 @@
 package preprocess
 
 import (
-	"bytes"
 	"fmt"
 	"go/token"
 	"slices"
@@ -15,11 +14,12 @@ import (
 // func __goslingVariants_Shape(Circle, *Square) {}.
 const VariantsPrefix = "__goslingVariants_"
 
-// Union records a union type declaration. Src[MarkerStart:MarkerEnd] holds
-// the marker function, the separator before it, and the newlines of the
-// original declaration.
+// Union records a union type declaration. Src[Start:] holds its interface
+// declaration. Src[MarkerStart:MarkerEnd] holds the marker function, the
+// separator before it, and the newlines of the original declaration.
 type Union struct {
 	Name                   string
+	Start                  int
 	MarkerStart, MarkerEnd int
 }
 
@@ -27,25 +27,104 @@ type Union struct {
 // sealed interface and a marker method on each variant. A declaration with
 // no top-level | is an ordinary alias, and union does not change it.
 func (processor *processor) union(tokenIndex int) (int, error) {
-	keyword, name := processor.tokens[tokenIndex], processor.tokenAt(tokenIndex+1)
-	assignIndex, end, isUnion := processor.unionHeader(tokenIndex)
+	if processor.tokenAt(tokenIndex + 1).is(token.LPAREN) {
+		return processor.rewriteUnionGroup(tokenIndex)
+	}
+	keyword := processor.tokens[tokenIndex]
+	assignIndex, end, isUnion := processor.unionHeader(tokenIndex + 1)
 	if !isUnion {
 		return tokenIndex, nil
 	}
-	if len(processor.braceStack) > 0 || processor.parens > 0 {
-		return 0, &Error{keyword.offset, "union types must be declared at package level with their own type keyword"}
-	}
-	signature := unionSignature{name: name.text}
-	if assignIndex != tokenIndex+2 {
-		signature.typeParams = string(processor.src[processor.tokenAt(tokenIndex+2).offset:processor.tokenAt(assignIndex-1).end()])
-		signature.paramNames = processor.parseTypeParamNames(tokenIndex+3, assignIndex-1)
-	}
-	variants, err := processor.variants(assignIndex+1, end, signature.paramNames)
+	signature, variants, err := processor.parseUnion(keyword, tokenIndex+1, assignIndex, end)
 	if err != nil {
 		return 0, err
 	}
-	processor.emitUnion(keyword, processor.tokenAt(end-1), signature, variants)
+	last := processor.tokenAt(end - 1)
+	declaration := "type " + formatUnionInterface(signature)
+	methods := buildUnionMethods(signature, variants)
+	// The marker keeps the newlines of a multi-line union, so later lines
+	// keep their numbers.
+	methods.text += processor.collectNewlines(keyword.offset, last.end())
+	start := processor.replace(keyword.offset, last.end(), declaration+methods.text)
+	processor.recordUnion(signature.name, start, start+len(declaration), methods)
 	return end - 1, nil
+}
+
+// rewriteUnionGroup rewrites the unions in the `type ( ... )` group at token
+// tokenIndex. Each union becomes an interface in the group. Its methods
+// follow the closing parenthesis, because a group cannot hold functions.
+func (processor *processor) rewriteUnionGroup(tokenIndex int) (int, error) {
+	closeIndex, _ := processor.matchParen(tokenIndex + 1)
+	if closeIndex < 0 {
+		return tokenIndex, nil
+	}
+	unions, err := processor.rewriteGroupedUnions(tokenIndex+2, closeIndex)
+	if err != nil {
+		return 0, err
+	}
+	if len(unions) == 0 {
+		return tokenIndex, nil
+	}
+	var methodsText strings.Builder
+	for _, union := range unions {
+		methodsText.WriteString(union.methods.text)
+	}
+	methodsStart := processor.replace(processor.tokens[closeIndex].end(), processor.tokens[closeIndex].end(), methodsText.String())
+	for _, union := range unions {
+		processor.recordUnion(union.name, union.start, methodsStart, union.methods)
+		methodsStart += len(union.methods.text)
+	}
+	return closeIndex, nil
+}
+
+// groupedUnion is a union in a type group. start is the output offset of
+// its interface.
+type groupedUnion struct {
+	name    string
+	start   int
+	methods unionText
+}
+
+// rewriteGroupedUnions replaces each union spec in tokens [from, to) with
+// its interface. It returns the unions in order.
+func (processor *processor) rewriteGroupedUnions(from, to int) ([]groupedUnion, error) {
+	var unions []groupedUnion
+	for specIndex := from; specIndex < to; {
+		assignIndex, end, isUnion := processor.unionHeader(specIndex)
+		if !isUnion {
+			end, _ = processor.unionExtent(specIndex)
+			specIndex = end + 1
+			continue
+		}
+		nameToken := processor.tokens[specIndex]
+		signature, variants, err := processor.parseUnion(nameToken, specIndex, assignIndex, end)
+		if err != nil {
+			return nil, err
+		}
+		// The interface keeps the newlines of a multi-line union.
+		lastEnd := processor.tokenAt(end - 1).end()
+		interfaceText := formatUnionInterface(signature) + processor.collectNewlines(nameToken.offset, lastEnd)
+		start := processor.replace(nameToken.offset, lastEnd, interfaceText)
+		unions = append(unions, groupedUnion{signature.name, start, buildUnionMethods(signature, variants)})
+		specIndex = end + 1
+	}
+	return unions, nil
+}
+
+// parseUnion checks the union whose name is at token nameIndex and returns
+// its signature and variants. Errors are at start, the start of the
+// declaration.
+func (processor *processor) parseUnion(start lexeme, nameIndex, assignIndex, end int) (unionSignature, []string, error) {
+	if len(processor.braceStack) > 0 || processor.parens > 0 {
+		return unionSignature{}, nil, &Error{start.offset, "union types must be declared at package level"}
+	}
+	signature := unionSignature{name: processor.tokens[nameIndex].text}
+	if assignIndex != nameIndex+1 {
+		signature.typeParams = string(processor.src[processor.tokenAt(nameIndex+1).offset:processor.tokenAt(assignIndex-1).end()])
+		signature.paramNames = processor.parseTypeParamNames(nameIndex+2, assignIndex-1)
+	}
+	variants, err := processor.variants(assignIndex+1, end, signature.paramNames)
+	return signature, variants, err
 }
 
 // unionSignature holds the name of a union and, for a generic union, its type
@@ -80,13 +159,13 @@ func (processor *processor) parseTypeParamNames(from, to int) []string {
 	return names
 }
 
-// unionHeader recognizes `type Name = A | B` or `type Name[T] = A | B` at
-// tokenIndex. It returns the index of "=" and the end of the type expression.
-func (processor *processor) unionHeader(tokenIndex int) (int, int, bool) {
-	if !processor.tokenAt(tokenIndex + 1).is(token.IDENT) {
+// unionHeader recognizes `Name = A | B` or `Name[T] = A | B` at nameIndex.
+// It returns the index of "=" and the end of the type expression.
+func (processor *processor) unionHeader(nameIndex int) (int, int, bool) {
+	if !processor.tokenAt(nameIndex).is(token.IDENT) {
 		return 0, 0, false
 	}
-	assignIndex := tokenIndex + 2
+	assignIndex := nameIndex + 1
 	if processor.tokenAt(assignIndex).is(token.LBRACK) {
 		closeIndex, ok := processor.matchBracket(assignIndex)
 		if !ok {
@@ -101,44 +180,51 @@ func (processor *processor) unionHeader(tokenIndex int) (int, int, bool) {
 	return assignIndex, end, isUnion
 }
 
-// emitUnion replaces the declaration from keyword to last with the
-// interface, one marker method for each variant, and the variants marker
-// function.
-func (processor *processor) emitUnion(keyword, last lexeme, signature unionSignature, variants []string) {
-	declarations := unionDeclarations(signature, variants)
-	// The marker keeps the newlines of a multi-line union, so later lines
-	// keep their numbers.
-	newlines := strings.Repeat("\n", bytes.Count(processor.src[keyword.offset:last.end()], []byte("\n")))
-	marker := fmt.Sprintf("; func %s%s%s(%s) {}%s", VariantsPrefix, signature.name, signature.typeParams, strings.Join(variants, ", "), newlines)
-	declarationText := strings.Join(declarations, "; ")
-	start := processor.replace(keyword.offset, last.end(), declarationText+marker)
-
-	offset := start
-	for _, declaration := range declarations[:len(declarations)-1] {
-		offset += len(declaration)
-		processor.result.Splits = append(processor.result.Splits, offset)
-		offset += len("; ")
-	}
-	processor.result.Unions = append(processor.result.Unions, Union{
-		Name:        signature.name,
-		MarkerStart: start + len(declarationText),
-		MarkerEnd:   start + len(declarationText) + len(marker),
-	})
+// unionText is the text that follows the interface of a union: one marker
+// method for each variant, then the variants marker function. Each starts
+// with "; ". splits holds the offsets of the separators before the methods.
+type unionText struct {
+	text        string
+	splits      []int
+	markerStart int
 }
 
-// unionDeclarations returns the interface and the marker methods. In a
+// formatUnionInterface returns the interface type spec of a union. In a
 // generic union, the marker method takes the type parameters. So Ok[string]
 // does not satisfy Result[int].
-func unionDeclarations(signature unionSignature, variants []string) []string {
-	method := "is" + upperFirst(signature.name)
-	paramList := strings.Join(signature.paramNames, ", ")
-	declarations := []string{fmt.Sprintf("type %s%s interface{ %s(%s) }", signature.name, signature.typeParams, method, paramList)}
+func formatUnionInterface(signature unionSignature) string {
+	return fmt.Sprintf("%s%s interface{ is%s(%s) }", signature.name, signature.typeParams, upperFirst(signature.name), strings.Join(signature.paramNames, ", "))
+}
+
+// buildUnionMethods returns the marker methods and the variants marker
+// function of a union.
+func buildUnionMethods(signature unionSignature, variants []string) unionText {
+	var methodsText strings.Builder
+	var splits []int
+	method, paramList := "is"+upperFirst(signature.name), strings.Join(signature.paramNames, ", ")
 	// A pointer variant gets a pointer receiver, so the value type does not
 	// also satisfy the union.
 	for _, variant := range variants {
-		declarations = append(declarations, fmt.Sprintf("func (%s) %s(%s) {}", variant, method, paramList))
+		splits = append(splits, methodsText.Len())
+		fmt.Fprintf(&methodsText, "; func (%s) %s(%s) {}", variant, method, paramList)
 	}
-	return declarations
+	markerStart := methodsText.Len()
+	fmt.Fprintf(&methodsText, "; func %s%s%s(%s) {}", VariantsPrefix, signature.name, signature.typeParams, strings.Join(variants, ", "))
+	return unionText{text: methodsText.String(), splits: splits, markerStart: markerStart}
+}
+
+// recordUnion records the union whose interface starts at output offset
+// start and whose methods start at methodsStart.
+func (processor *processor) recordUnion(name string, start, methodsStart int, methods unionText) {
+	for _, split := range methods.splits {
+		processor.result.Splits = append(processor.result.Splits, methodsStart+split)
+	}
+	processor.result.Unions = append(processor.result.Unions, Union{
+		Name:        name,
+		Start:       start,
+		MarkerStart: methodsStart + methods.markerStart,
+		MarkerEnd:   methodsStart + len(methods.text),
+	})
 }
 
 // unionExtent finds the end of the type expression that starts at token

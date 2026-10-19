@@ -41,7 +41,7 @@ func (transpiler *transpiler) collectUnion(sourceFile *file, union preprocess.Un
 	if !ok || !isFunc {
 		return true
 	}
-	position := sourceFile.tokenFile.Pos(union.MarkerStart)
+	position := sourceFile.tokenFile.Pos(union.Start)
 	isValid := true
 	var variants []types.Type
 	for variant := range marker.Signature().Params().Variables() {

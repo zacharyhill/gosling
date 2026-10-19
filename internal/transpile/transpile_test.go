@@ -534,6 +534,16 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:6:9: cannot use A[string]{} (value of struct type A[string]) as U[int] value in return statement: A[string] does not implement U[int] (wrong type for method isU)",
 		},
 		{
+			name: "switch missing variants of a union in a type group",
+			src:  "package p\ntype (\n\tA struct{}\n\tB struct{}\n\tU = A | B\n)\nfunc f(u U) {\n\tswitch u.(type) {\n\tcase A:\n\t}\n}",
+			want: "x.gol:8:2: switch on U is missing cases: B",
+		},
+		{
+			name: "union variant from another package in a type group",
+			src:  "package p\nimport \"time\"\ntype A struct{}\ntype (\n\tID int\n\tU = A | time.Time\n)\n",
+			want: "x.gol:6:2: union variant time.Time must be a type declared in this package",
+		},
+		{
 			name: "union variant from another package",
 			src:  "package p\nimport \"time\"\ntype A struct{}\ntype U = A | time.Time\n",
 			want: "x.gol:4:1: union variant time.Time must be a type declared in this package",

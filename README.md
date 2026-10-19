@@ -762,7 +762,7 @@ case Square:
 ```
 
 - Variants must be types in the same package. They cannot be interfaces.
-- Declare unions at package level, each with its own `type` keyword.
+- Declare unions at package level. A union can be in a `type ( ... )` group. Its methods then come after the group.
 - `*Polygon` is a variant, but `Polygon` is not.
 - `Circle` and `*Circle` can both be stored, but only `case Circle` counts.
 
@@ -817,7 +817,6 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - Object patterns have no rest element.
 - `?.[index]`, `?.(call)`, and `??=` are not supported.
 - In a try block, an optional call that returns an error is an error.
-- Unions cannot be in a `type ( ... )` group.
 - gosling does not check switches in `.go` files.
 - In a `case` expression, a function type or literal cannot use `):`. Use Go order there.
 - VS Code highlights the name in `name: type` parameters as a type.

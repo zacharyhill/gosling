@@ -2,3 +2,4 @@ ok 42
 error: strconv.Atoi: parsing "x": invalid syntax
 ok hi
 nil
+left

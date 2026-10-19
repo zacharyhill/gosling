@@ -35,4 +35,18 @@ func main() {
 	fmt.Println(describe[string](Ok[string]{"hi"}))
 	let empty: Result[bool]
 	fmt.Println(describe(empty))
+	let pick: Choice[int] = Left[int]{1}
+	switch pick.(type) {
+	case Left[int]:
+		fmt.Println("left")
+	case *Right[int]:
+		fmt.Println("right")
+	}
 }
+
+type (
+	Left[T any]  struct{ Value T }
+	Right[T any] struct{ Value T }
+	Choice[T any] = Left[T] |
+		*Right[T]
+)
