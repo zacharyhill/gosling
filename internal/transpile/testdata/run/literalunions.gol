@@ -1,0 +1,34 @@
+package main
+
+import "fmt"
+
+type Method = "GET" | "POST"
+
+type Status = 200 | 404
+
+func describe(m Method, s Status) string {
+	let verb: string
+	switch m {
+	case MethodGET:
+		verb = "read"
+	case MethodPOST:
+		verb = "write"
+	}
+	switch s {
+	case Status200:
+		return t`${verb} ok`
+	case Status404:
+		return t`${verb} missing`
+	}
+	return verb
+}
+
+func main() {
+	fmt.Println(describe(MethodGET, Status200))
+	fmt.Println(describe("POST", 404))
+	for (const input of []string{"GET", "PUT"}) {
+		fmt.Println(input, Method(input).Valid())
+	}
+	let code = 500
+	fmt.Println(Status(code).Valid(), Status200.Valid())
+}

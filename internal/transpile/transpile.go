@@ -161,6 +161,8 @@ type transpiler struct {
 	checkedPackage *types.Package
 	// unions maps each union type to its variants, in declaration order.
 	unions map[*types.TypeName][]types.Type
+	// literalUnions maps each literal union type to its constants.
+	literalUnions map[*types.TypeName][]*types.Const
 }
 
 // Transpile converts the .gol files of one package to Go.

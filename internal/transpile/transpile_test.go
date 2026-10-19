@@ -544,6 +544,21 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:6:2: union variant time.Time must be a type declared in this package",
 		},
 		{
+			name: "switch missing literal union values",
+			src:  "package p\ntype M = \"a\" | \"b\" | \"c\"\nfunc f(m M) {\n\tswitch m {\n\tcase MA:\n\t}\n}",
+			want: "x.gol:4:2: switch on M is missing cases: MB, MC",
+		},
+		{
+			name: "constant that is not in a literal union",
+			src:  "package p\ntype M = \"a\" | \"b\"\nfunc f() M {\n\treturn \"c\"\n}",
+			want: "x.gol:4:9: \"c\" is not a value of M",
+		},
+		{
+			name: "comparison with a constant that is not in a literal union",
+			src:  "package p\ntype Code = 1 | 2\nfunc f(c Code) bool {\n\treturn c == 1 || c == Code(3)\n}",
+			want: "x.gol:4:24: 3 is not a value of Code",
+		},
+		{
 			name: "union variant from another package",
 			src:  "package p\nimport \"time\"\ntype A struct{}\ntype U = A | time.Time\n",
 			want: "x.gol:4:1: union variant time.Time must be a type declared in this package",

@@ -34,7 +34,7 @@ Features:
 - Array methods on slices and arrays: `nums.filter(n => n%2 == 0).map(n => n * n)`
 - Map methods: `ages.has(name)`, `ages.get(name) ?? 0`, `ages.keys()`
 - `.length`: `xs.length` becomes `len(xs)`
-- Union types with exhaustive switches: `type Shape = Circle | Square`
+- Union types with exhaustive switches: `type Shape = Circle | Square`, `type Method = "GET" | "POST"`
 - Struct shorthand and spread: `User{name, age}`, `[...a, ...b]`, `Point{...p, X: 5}`
 
 ## Why
@@ -765,6 +765,39 @@ case Square:
 - Declare unions at package level. A union can be in a `type ( ... )` group. Its methods then come after the group.
 - `*Polygon` is a variant, but `Polygon` is not.
 - `Circle` and `*Circle` can both be stored, but only `case Circle` counts.
+
+A union of string or integer literals becomes a named type with one constant for each literal:
+
+```go
+type Method = "GET" | "POST" | "not-found"
+```
+
+becomes:
+
+```go
+type Method string
+
+const (
+	MethodGET      Method = "GET"
+	MethodPOST     Method = "POST"
+	MethodNotFound Method = "not-found"
+)
+
+func (m Method) Valid() bool {
+	switch m {
+	case MethodGET, MethodPOST, MethodNotFound:
+		return true
+	}
+	return false
+}
+```
+
+- All literals must be strings, or all must be integers.
+- A constant name is the union name and the literal. In a string, each run of letters and digits starts with an upper case letter. A negative integer such as `-1` gives `Neg1`.
+- A constant of the union type must be one of the literals. So `let m: Method = "PUT"` and `m == "PUT"` are errors.
+- A `switch` on the union in a `.gol` file must list all values or have a `default` case. A case can be a constant name or a literal.
+- A conversion of a variable, such as `Method(s)`, can make a value that is not in the union. Use `Valid` to check the value.
+- A literal union cannot be generic and needs its own `type` keyword, not a `type ( ... )` group.
 
 A union can be generic. Each variant must have the type parameters of the union as its type arguments, in the same order:
 
