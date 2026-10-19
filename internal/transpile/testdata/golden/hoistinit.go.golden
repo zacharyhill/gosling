@@ -115,3 +115,32 @@ func bothCalls(s string) bool {
 	}
 	return false
 }
+
+func elseIfCheckedInit(a, b string) bool {
+	{
+		{
+			if a == "" {
+				return false
+			} else {
+				n, err := parse(a)
+				if err != nil {
+					goto catch_5
+				}
+				val6, err := parse(b)
+				if err != nil {
+					goto catch_5
+				}
+				if n > val6 {
+					return true
+				}
+			}
+		}
+		goto end_5
+	catch_5:
+		{
+			return false
+		}
+	end_5:
+	}
+	return false
+}

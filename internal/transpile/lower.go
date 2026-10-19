@@ -218,10 +218,12 @@ func (lowerer *lowerer) walkIf(stmt *ast.IfStmt, try *tryContext) {
 	if narrowing, ok := lowerer.file.narrowings[lowerer.offset(stmt.Pos())]; ok {
 		lowerer.lowerNarrowing(stmt, narrowing.CopyStart, narrowing.CopyEnd)
 	}
-	if parent, ok := lowerer.parents[stmt].(*ast.IfStmt); ok && parent.Else == stmt {
-		lowerer.hoistElseIf(stmt, try)
-	} else if !lowerer.hoistAfterInit(stmt, try, stmt.Init, "if ", stmt.Cond) {
-		lowerer.hoist(stmt, try, stmt.Init, stmt.Cond)
+	if !lowerer.hoistAfterInit(stmt, try, stmt.Init, "if ", stmt.Cond) {
+		if lowerer.isElseIf(stmt) {
+			lowerer.hoistElseIf(stmt, try)
+		} else {
+			lowerer.hoist(stmt, try, stmt.Init, stmt.Cond)
+		}
 	}
 	lowerer.lowerInit(stmt, try)
 	lowerer.walkExprs(stmt.Init, stmt.Cond)
@@ -255,7 +257,13 @@ func (lowerer *lowerer) hoistAfterInit(stmt ast.Stmt, try *tryContext, init ast.
 	if init == nil || condition == nil || len(lowerer.markersIn(condition)) == 0 {
 		return false
 	}
-	lowerer.hoist(stmt, try, init)
+	// An else-if has no room for statements before it, so its init calls
+	// go in the new block.
+	if ifStmt, ok := stmt.(*ast.IfStmt); ok && lowerer.isElseIf(ifStmt) {
+		lowerer.hoistAt(stmt, init.Pos(), 0, try, init)
+	} else {
+		lowerer.hoist(stmt, try, init)
+	}
 	line := lowerer.line(stmt.Pos())
 	// The error check of a checked init statement has order 0 and goes first.
 	lowerer.insertOrdered(init.End(), "\n", line, 1)
@@ -266,6 +274,11 @@ func (lowerer *lowerer) hoistAfterInit(stmt ast.Stmt, try *tryContext, init ast.
 	lowerer.insertOrdered(stmt.End(), "\n}", lowerer.line(stmt.End()), -lowerer.depth(stmt))
 	lowerer.wrappedHeaders[stmt] = true
 	return true
+}
+
+func (lowerer *lowerer) isElseIf(stmt *ast.IfStmt) bool {
+	parent, ok := lowerer.parents[stmt].(*ast.IfStmt)
+	return ok && parent.Else == stmt
 }
 
 func (lowerer *lowerer) buildLabelPrefix(stmt ast.Stmt) string {

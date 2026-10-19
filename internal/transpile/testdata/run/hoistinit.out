@@ -17,3 +17,17 @@ bad
 three
 error: strconv.Atoi: parsing "x": invalid syntax
 error: strconv.Atoi: parsing "y": invalid syntax
+eval init
+eval cond
+bigger
+eval init
+error: strconv.Atoi: parsing "x": invalid syntax
+eval init
+eval cond
+error: strconv.Atoi: parsing "y": invalid syntax
+eval init call
+eval init
+eval half
+bigger
+eval init call
+error: strconv.Atoi: parsing "x": invalid syntax
