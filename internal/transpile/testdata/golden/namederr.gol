@@ -1,0 +1,37 @@
+package namederr
+
+import (
+	"os"
+	"strconv"
+)
+
+func declared(s string) (n int64, err error) {
+	try {
+		const parsed = strconv.ParseInt(s, 10, 64)
+		n = parsed
+		return
+	} catch (e) {
+		err = e
+	}
+	return
+}
+
+func hoisted(s string) (n int64, err error) {
+	try {
+		n = strconv.ParseInt(s, 10, 64) * 2
+		return
+	} catch (e) {
+		err = e
+	}
+	return
+}
+
+func bare(path string) (err error) {
+	try {
+		os.Remove(path)
+		return
+	} catch (e) {
+		err = e
+	}
+	return
+}

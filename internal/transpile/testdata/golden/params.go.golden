@@ -23,9 +23,9 @@ func parse(text string, base int) (n int, err error) {
 	{
 		var e error
 		{
-			parsed, err := strconv.ParseInt(strings.TrimSpace(text), base, 64)
-			if err != nil {
-				e = err
+			parsed, err2 := strconv.ParseInt(strings.TrimSpace(text), base, 64)
+			if err2 != nil {
+				e = err2
 				goto catch_1
 			}
 			n = int(parsed)

@@ -142,6 +142,10 @@ func (lowerer *lowerer) fitsScope(name string, scope *types.Scope, position toke
 	if object := scope.Lookup(name); object != nil {
 		return object.Pos() < position && isErrorVar(object), false
 	}
+	// A bare return cannot see a named result that := shadows.
+	if _, outerObject := scope.LookupParent(name, position); lowerer.namedResults[outerObject] {
+		return false, false
+	}
 	_, isUsed := lowerer.usedIn(name, position, scope.End())
 	return false, !isUsed
 }
