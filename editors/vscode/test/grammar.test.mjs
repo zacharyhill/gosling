@@ -222,6 +222,45 @@ test("optional parameters with a colon", () => {
   assertNoScope(inFunctionBody("\tx := ok ?a: b"), "a", "variable.parameter");
 });
 
+test("parameters with a colon", () => {
+  const source = "package p\n\nfunc load(path: string, cfg: *Config, n: int = 3): (out: Config, err: error) {}";
+  assertScope(source, "path", "variable.parameter.gol");
+  assertScope(source, ":", "punctuation.separator.type.gol");
+  assertScope(source, "string", "storage.type");
+  assertScope(source, "cfg", "variable.parameter.gol");
+  assertScope(source, "Config", "entity.name.type");
+  assertScope(source, "n", "variable.parameter.gol");
+  assertScope(source, "=", "keyword.operator.assignment");
+  assertScope(source, "out", "variable.parameter.gol");
+  assertScope(source, "err", "variable.parameter.gol");
+  assertScope(source, "error", "storage.type");
+  const funcLiteral = inFunctionBody("\tg := func(x: int, done: func(err: error)) {}");
+  assertScope(funcLiteral, "x", "variable.parameter.gol");
+  assertScope(funcLiteral, "done", "variable.parameter.gol");
+  assertScope(funcLiteral, "err", "variable.parameter.gol");
+  assertScope(inFunctionBody("\th := (a: int, b: int) => a + b"), "b", "variable.parameter.gol");
+});
+
+test("colons outside parameters stay plain", () => {
+  const parameterScope = "variable.parameter";
+  assertNoScope(inFunctionBody("\tu := T{Name: x, Port: y}"), "Name", parameterScope);
+  assertNoScope(inFunctionBody("\tu := T{Name: x, Port: y}"), "Port", parameterScope);
+  assertNoScope(inFunctionBody("\tf(T{Name: x, Port: y})"), "Port", parameterScope);
+  assertNoScope(inFunctionBody("\tf(a, T{Name: x, Port: y})"), "Port", parameterScope);
+  assertNoScope(inFunctionBody("\tm := map[K]V{a: b, c: d}"), "c", parameterScope);
+  assertNoScope(inFunctionBody('\tm := map[string]int{"a": 1}'), "1", parameterScope);
+  assertNoScope(inFunctionBody("loop:\n\tfor {\n\t}"), "loop", parameterScope);
+  assertNoScope(inFunctionBody("\tswitch x {\n\tcase a, b:\n\t}"), "b", parameterScope);
+  assertNoScope(inFunctionBody("\tf(ok ? a: b)"), "a", parameterScope);
+  assertNoScope(inFunctionBody("\tys := xs[i:j]"), "i", parameterScope);
+  assertNoScope(inFunctionBody("\tys := xs[(i):j]"), "i", parameterScope);
+  assertNoScope("package p\n\nfunc f(t: T = T{A: 1, B: x}) {}", "B", parameterScope);
+  const followingCode = "package p\n\nfunc f(a: int): int {\n\treturn a\n}\n\nfunc g(b int) {}";
+  assertScope(followingCode, "return", "keyword.control.go");
+  assertScope(followingCode, "g", "entity.name.function");
+  assertScope(followingCode, "b", "variable.parameter.go");
+});
+
 test("union types", () => {
   const source = "package p\n\ntype Shape = Circle | Square | *Polygon";
   assertScope(source, "Shape", "entity.name.type");
