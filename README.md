@@ -169,6 +169,7 @@ In a try block, gosling checks each call whose last result is `error`. A failure
 | `f()`           | `if err := f(); err != nil { e = err; goto catch_N }` |
 | `const x = f()` | `x, err := f()`, then `if err != nil { ... }`         |
 | `x = f()`       | `x, e = f()`, then `if e != nil { goto catch_N }`     |
+| `x += f()`      | `val, err := f()`, then a check, then `x += val`      |
 
 If a call is a value, such as `f()` in `g(f())`, gosling moves it into a new checked statement. The new statement comes before the original statement:
 

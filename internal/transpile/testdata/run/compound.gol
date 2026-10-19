@@ -1,0 +1,34 @@
+package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+func apply(s string) string {
+	let x = 100
+	let bits: uint64 = 0xF0
+	let text = "n="
+	try {
+		x += strconv.Atoi(s)
+		x -= strconv.Atoi(s)
+		x *= strconv.Atoi(s)
+		x /= strconv.Atoi(s)
+		x %= strconv.Atoi(s)
+		bits |= strconv.ParseUint(s, 10, 64)
+		bits <<= strconv.ParseUint(s, 10, 64)
+		bits >>= strconv.ParseUint("1", 10, 64)
+		bits ^= strconv.ParseUint(s, 10, 64)
+		bits &^= strconv.ParseUint("8", 10, 64)
+		bits &= strconv.ParseUint("1020", 10, 64)
+		text += strconv.Unquote(strconv.Quote(s))
+	} catch (e) {
+		return t`error: ${e}`
+	}
+	return t`${x} ${bits} ${text}`
+}
+
+func main() {
+	fmt.Println(apply("3"))
+	fmt.Println(apply("x"))
+}

@@ -1,0 +1,2 @@
+1 964 n=3
+error: strconv.Atoi: parsing "x": invalid syntax
