@@ -150,7 +150,7 @@ func (transpiler *transpiler) asArrayCall(file *file, typeInfo *types.Info, call
 		return nil, false
 	}
 	methodCall.indexed = count == strings.Count(method.callbackParams, ",")+2
-	methodCall.returnsPointer = name == "find" && !nilable(slice.Elem())
+	methodCall.returnsPointer = name == "find" && !isComparableToNil(slice.Elem())
 	return methodCall, true
 }
 

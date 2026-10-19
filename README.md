@@ -476,7 +476,7 @@ evens := func() []int {
 ```
 
 - `reduce` needs an initial value: `nums.reduce((acc, n) => acc + float64(n), 0.0)`.
-- `find` returns the element if it can be nil. Otherwise it returns a pointer into the slice, or nil.
+- `find` returns the element if it can be nil. Otherwise it returns a pointer into the slice, or nil. An element of a type parameter can be nil only if each type in its constraint can be nil. So `find` on a `[]T` with `T any` returns `*T`.
 - `forEach` can only be a statement.
 - `filter` keeps a named slice type. A method of the type with the same name has priority.
 - Each call in a chain is a separate loop.
