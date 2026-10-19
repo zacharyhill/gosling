@@ -653,7 +653,13 @@ name := func() string {
 }()
 ```
 
-The Go compiler inlines these function literals. A chain used as a statement, such as `conn?.Close()`, becomes an `if` statement.
+The Go compiler inlines these function literals. A chain used as a statement, such as `conn?.Close()`, becomes an `if` statement. In a try block, gosling checks the error of the call. If a link is nil, gosling skips the call and the check:
+
+```go
+if v := conn; v != nil {
+	if err := v.Close(); err != nil { ... }
+}
+```
 
 `x ??= d` assigns `d` to `x` only if `x` is nil. `x` can be a pointer, a map, a slice, an interface, a func, or a chan. A map element is nil if the map has no such key. gosling evaluates `x` one time, and `d` only if `x` is nil:
 
@@ -959,7 +965,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - Without `catch panic`, a panic does not run `finally` blocks. A panic in a catch block or in a catch panic block also does not run them.
 - `catch panic` cannot follow a typed catch clause.
 - Object patterns have no rest element.
-- In a try block, an optional call that returns an error is an error.
+- In a try block, an optional call that returns an error must be a statement to be checked.
 - gosling does not check switches in `.go` files.
 - In a `case` expression, a function type or literal cannot use `):`. Use Go order there.
 - VS Code highlights the name in `name: type` parameters as a type.

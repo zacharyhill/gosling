@@ -29,6 +29,9 @@ type lowerer struct {
 	namedResults map[types.Object]bool
 	// wrappedHeaders holds the statements whose init statement moved into a new block.
 	wrappedHeaders map[ast.Stmt]bool
+	// optionalChecks holds the error checks for optional calls in try
+	// blocks. The check goes inside the nil guards of the chain.
+	optionalChecks map[ast.Expr]optionalCheck
 }
 
 func newLowerer(transpiler *transpiler, file *file, typeInfo *types.Info) *lowerer {
@@ -42,6 +45,7 @@ func newLowerer(transpiler *transpiler, file *file, typeInfo *types.Info) *lower
 		wrappedHeaders: map[ast.Stmt]bool{},
 		checkedAssigns: map[*ast.AssignStmt]bool{},
 		namedResults:   map[types.Object]bool{},
+		optionalChecks: map[ast.Expr]optionalCheck{},
 	}
 	ast.Inspect(file.ast, func(node ast.Node) bool {
 		switch node := node.(type) {

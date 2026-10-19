@@ -414,14 +414,9 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:3:9: ?? cannot be mixed with || or && without parentheses",
 		},
 		{
-			name: "optional call returning error in try",
-			src:  "package p\nimport \"io\"\nfunc f(c io.Closer) {\n\ttry {\n\t\tc?.Close()\n\t\tc.Close()\n\t} catch {\n\t}\n}",
-			want: "x.gol:5:3: the error from an optional call is not checked inside try; use an explicit nil check",
-		},
-		{
-			name: "parenthesized optional call returning error in try",
-			src:  "package p\nimport \"io\"\nfunc f(c io.Closer) {\n\ttry {\n\t\t(c?.Close())\n\t\tc.Close()\n\t} catch {\n\t}\n}",
-			want: "x.gol:5:3: the error from an optional call is not checked inside try; use an explicit nil check",
+			name: "optional call returning error assigned in try",
+			src:  "package p\nimport \"io\"\nfunc f(w io.Writer, b []byte) {\n\ttry {\n\t\tlet n = w?.Write(b)\n\t\tprintln(n)\n\t} catch {\n\t}\n}",
+			want: "x.gol:5:7: the error from an optional call is checked only if the call is a statement; use an explicit nil check",
 		},
 		{
 			name: "arrow without parameter types or context",

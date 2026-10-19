@@ -229,7 +229,7 @@ func (lowerer *lowerer) lowerNullishAssign(assign *ast.AssignStmt) {
 		lowerer.replace(indexExpr.Rbrack, value.Pos(), fmt.Sprintf("; %s[%s] == nil {\n%s[%s] = ", mapVar, keyVar, mapVar, keyVar), line)
 		return
 	}
-	tempVar := lowerer.pickTempVar(assign.Pos(), assign.End())
+	tempVar := lowerer.pickTempVar(assign.Pos(), assign.End(), nil)
 	lowerer.insertIfHeader(assign.Pos(), left, fmt.Sprintf("if %s := &", tempVar), line, depth)
 	lowerer.replace(left.End(), value.Pos(), fmt.Sprintf("; *%s == nil {\n*%s = ", tempVar, tempVar), line)
 }
@@ -440,7 +440,7 @@ func (lowerer *lowerer) lowerCoalesce(call *ast.CallExpr) {
 	chain := coalesceChain{
 		resultType: resultType,
 		typeText:   typeText,
-		tempVar:    lowerer.pickTempVar(call.Pos(), fallback.End()),
+		tempVar:    lowerer.pickTempVar(call.Pos(), fallback.End(), nil),
 		depth:      lowerer.depth(call),
 	}
 	line := lowerer.line(call.Pos())
@@ -541,11 +541,12 @@ func (lowerer *lowerer) lowerChain(root ast.Expr) {
 	if !ok || !lowerer.checkBuiltins(root.Pos(), "optional chain", "nil") {
 		return
 	}
-	tempVar := lowerer.pickTempVar(root.Pos(), root.End())
+	check := lowerer.optionalChecks[root]
+	tempVar := lowerer.pickTempVar(root.Pos(), root.End(), check.try)
 	if lowerer.isStatement(root) {
 		lowerer.dropParens(root)
-		closing := lowerer.guards(root, "", links, tempVar, "")
-		lowerer.insertOrdered(root.End(), closing, lowerer.line(root.Pos()), -lowerer.depth(root))
+		closing := lowerer.guards(root, "", links, tempVar, check.prefix)
+		lowerer.insertOrdered(root.End(), check.suffix+closing, lowerer.line(root.Pos()), -lowerer.depth(root))
 		return
 	}
 	resultType := lowerer.typeInfo.Types[root].Type

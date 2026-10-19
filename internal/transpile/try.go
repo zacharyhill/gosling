@@ -386,6 +386,15 @@ func (lowerer *lowerer) usesObject(list []ast.Stmt, object types.Object) bool {
 	return found
 }
 
+// optionalCheck is the check of an optional call statement, such as
+// `conn?.Close()`. The chain skips the call and the check if a link is nil:
+//
+//	if v := conn; v != nil { if err := v.Close(); err != nil { ... } }
+type optionalCheck struct {
+	prefix, suffix string
+	try            *tryContext // the catch variables that the check can assign
+}
+
 // checkBare turns a bare call into `if _, err := call; err != nil { body }`.
 func (lowerer *lowerer) checkBare(stmt ast.Stmt, resultCount int, errVar, body string) {
 	line := lowerer.line(stmt.Pos())
@@ -416,6 +425,13 @@ func (lowerer *lowerer) lowerTryStmt(stmt ast.Stmt, try *tryContext) bool {
 	jump := func(errVar string) string { return lowerer.failTo(try, target, errVar) }
 	errorResult := lastResultType(lowerer.typeInfo, site.call)
 	switch {
+	case site.assign == nil && lowerer.optionalRoots[ast.Unparen(site.call)]:
+		errVar := lowerer.pickErrorVar(try, nil, token.NoPos, token.NoPos, errorResult)
+		lowerer.optionalChecks[ast.Unparen(site.call)] = optionalCheck{
+			prefix: "if " + blanks(resultCount-1) + errVar + " := ",
+			suffix: fmt.Sprintf("; %s != nil {\n%s\n}", errVar, jump(errVar)),
+			try:    try,
+		}
 	case site.assign == nil:
 		errVar := lowerer.pickErrorVar(try, nil, token.NoPos, token.NoPos, errorResult)
 		lowerer.checkBare(stmt, resultCount, errVar, jump(errVar))
@@ -483,9 +499,9 @@ func (lowerer *lowerer) checkableCall(stmt ast.Stmt) (callSite, int, bool) {
 	if !ok || (site.assign != nil && len(site.leftSide) != resultCount-1) {
 		return callSite{}, 0, false
 	}
-	if lowerer.optionalRoots[ast.Unparen(site.call)] {
+	if site.assign != nil && lowerer.optionalRoots[ast.Unparen(site.call)] {
 		lowerer.checkedAssigns[site.assign] = true
-		lowerer.errorf(lowerer.file, stmt.Pos(), "the error from an optional call is not checked inside try; use an explicit nil check")
+		lowerer.errorf(lowerer.file, stmt.Pos(), "the error from an optional call is checked only if the call is a statement; use an explicit nil check")
 		return callSite{}, 0, false
 	}
 	return site, resultCount, true

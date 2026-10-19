@@ -1,0 +1,23 @@
+package optionalcall
+
+import "io"
+
+type Session struct{ Conn io.WriteCloser }
+
+func closeConn(conn io.Closer) error {
+	try {
+		conn?.Close()
+	} catch (e) {
+		return e
+	}
+	return nil
+}
+
+func write(session *Session, data []byte) error {
+	try {
+		session?.Conn?.Write(data)
+	} catch (v) {
+		return v
+	}
+	return nil
+}
