@@ -1026,6 +1026,57 @@ func TestLineDirectiveHoistedCall(test *testing.T) {
 	})
 }
 
+// TestDestructureTempPackageName checks that the temporary of a
+// destructuring does not shadow a package-level name from another file.
+func TestDestructureTempPackageName(test *testing.T) {
+	declarations := `package p
+
+type tmp struct{ code int }
+
+type point struct{ X, Y int }
+
+func load() point { return point{1, 2} }
+
+func each(visit func(tmp)) { visit(tmp{3}) }
+`
+	uses := `package p
+
+func sum() int {
+	const {X, Y} = load()
+	each(item => println(item.code))
+	return X + Y
+}
+`
+	inputs := []Input{{Path: "declarations.gol", Src: []byte(declarations)}, {Path: "uses.gol", Src: []byte(uses)}}
+	outputs, err := Transpile(Config{Importer: importer.Default()}, inputs)
+	if err != nil {
+		test.Fatal(err)
+	}
+	typeCheckOutputs(test, outputs)
+}
+
+// typeCheckOutputs fails the test if the generated files of one package do
+// not type-check together.
+func typeCheckOutputs(test *testing.T, outputs []Output) {
+	test.Helper()
+	fileSet := token.NewFileSet()
+	var parsedFiles []*ast.File
+	var sources []string
+	for _, output := range outputs {
+		parsedFile, err := parser.ParseFile(fileSet, output.Path, output.Src, 0)
+		if err != nil {
+			test.Fatal(err)
+		}
+		parsedFiles = append(parsedFiles, parsedFile)
+		sources = append(sources, string(output.Src))
+	}
+	var typeErrors []string
+	checkConfig := types.Config{Importer: importer.Default(), Error: func(err error) { typeErrors = append(typeErrors, err.Error()) }}
+	if _, err := checkConfig.Check("p", fileSet, parsedFiles, nil); err != nil {
+		test.Fatalf("generated code does not type-check:\n%s\n%s", strings.Join(typeErrors, "\n"), strings.Join(sources, "\n"))
+	}
+}
+
 func writeFile(test *testing.T, path, content string) {
 	test.Helper()
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {

@@ -2,10 +2,68 @@ package transpile
 
 import (
 	"fmt"
+	"go/ast"
 	"go/token"
 	"go/types"
+	"slices"
 	"strconv"
 )
+
+// avoidPackageNamesInTemps preprocesses a file again if a temporary variable
+// can hide a package-level name. Temporaries are local, so one pass is enough.
+func (transpiler *transpiler) avoidPackageNamesInTemps() error {
+	astFiles := slices.Clone(transpiler.plainGoFiles)
+	for _, golFile := range transpiler.files {
+		astFiles = append(astFiles, golFile.ast)
+	}
+	packageNames := collectPackageLevelNames(astFiles)
+	isPackageName := func(name string) bool { return packageNames[name] }
+	for fileIndex, golFile := range transpiler.files {
+		if !slices.ContainsFunc(golFile.preprocessed.TempNames, isPackageName) {
+			continue
+		}
+		rebuilt, err := transpiler.buildFile(Input{Path: golFile.path, Src: golFile.original}, packageNames)
+		if err != nil {
+			return err
+		}
+		if rebuilt != nil {
+			transpiler.files[fileIndex] = rebuilt
+		}
+	}
+	return nil
+}
+
+// collectPackageLevelNames returns the names that astFiles declare at package level.
+func collectPackageLevelNames(astFiles []*ast.File) map[string]bool {
+	names := map[string]bool{}
+	for _, astFile := range astFiles {
+		for _, decl := range astFile.Decls {
+			switch decl := decl.(type) {
+			case *ast.FuncDecl:
+				if decl.Recv == nil {
+					names[decl.Name.Name] = true
+				}
+			case *ast.GenDecl:
+				addGenDeclNames(names, decl)
+			}
+		}
+	}
+	return names
+}
+
+// addGenDeclNames adds the type, const, and var names that genDecl declares.
+func addGenDeclNames(names map[string]bool, genDecl *ast.GenDecl) {
+	for _, spec := range genDecl.Specs {
+		switch spec := spec.(type) {
+		case *ast.TypeSpec:
+			names[spec.Name.Name] = true
+		case *ast.ValueSpec:
+			for _, name := range spec.Names {
+				names[name.Name] = true
+			}
+		}
+	}
+}
 
 func (lowerer *lowerer) scopeAt(position token.Pos) *types.Scope {
 	if scope := lowerer.typeInfo.Scopes[lowerer.file.ast]; scope != nil {

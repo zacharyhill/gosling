@@ -31,7 +31,9 @@ type Result struct {
 	// Consts holds the offsets of the names that a const declares in a
 	// for-of loop, a header, or a destructuring pattern.
 	Consts []int
-	edits  []edit
+	// TempNames holds the names of the temporary variables that the rewrite adds.
+	TempNames []string
+	edits     []edit
 }
 
 // Error is a syntax error at an offset into the original source.
@@ -124,6 +126,12 @@ type processor struct {
 // Process rewrites the gosling syntax in src into Go source with marker
 // identifiers.
 func Process(src []byte) (*Result, error) {
+	return ProcessReserving(src, nil)
+}
+
+// ProcessReserving is like Process, but new temporary variables do not use
+// reservedNames. Use it for names that other files of the package declare.
+func ProcessReserving(src []byte, reservedNames map[string]bool) (*Result, error) {
 	processor := &processor{
 		src:         src,
 		tokens:      tokenize(src),
@@ -137,6 +145,9 @@ func Process(src []byte) (*Result, error) {
 		if current.kind == token.IDENT {
 			processor.identifiers[current.text] = true
 		}
+	}
+	for name := range reservedNames {
+		processor.identifiers[name] = true
 	}
 	if err := processor.run(); err != nil {
 		return nil, err

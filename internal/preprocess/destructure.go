@@ -65,6 +65,7 @@ func (processor *processor) destructure(tokenIndex int, keyword *lexeme) (int, b
 	// Other right sides go into a temporary variable, so they run once. The
 	// scan then continues into the right side and rewrites its gosling syntax.
 	rightSideVar := processor.fresh("tmp")
+	processor.result.TempNames = append(processor.result.TempNames, rightSideVar)
 	processor.replace(open.offset, operator.end(), rightSideVar+" :=")
 	processor.pendingDestructures = append(processor.pendingDestructures, &destructure{
 		start:         processor.nesting(),
