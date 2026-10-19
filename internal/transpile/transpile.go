@@ -98,6 +98,8 @@ type file struct {
 	coalesce   map[*ast.CallExpr]*ast.BinaryExpr
 	arrows     []*arrow
 	arrayCalls map[*ast.CallExpr]*arrayCall
+	// lengths maps each len call that replaced x.length to the selector.
+	lengths map[*ast.CallExpr]*ast.SelectorExpr
 	// identNames holds every identifier name in the source. Added imports
 	// must not use these names.
 	identNames map[string]bool
@@ -322,6 +324,7 @@ func newFile(input Input, preprocessed *preprocess.Result) *file {
 		optional:      map[*ast.SelectorExpr]bool{},
 		coalesce:      map[*ast.CallExpr]*ast.BinaryExpr{},
 		arrayCalls:    map[*ast.CallExpr]*arrayCall{},
+		lengths:       map[*ast.CallExpr]*ast.SelectorExpr{},
 		identNames:    map[string]bool{},
 		added:         map[string]string{},
 		aliased:       map[string]bool{},
@@ -568,6 +571,7 @@ func (transpiler *transpiler) augment(typeInfo *types.Info) bool {
 		changed = convertConsts(file, typeInfo) || changed
 		changed = destructureTuples(file, typeInfo) || changed
 		changed = transpiler.rewriteArrayCalls(file, typeInfo) || changed
+		changed = transpiler.rewriteLengths(file, typeInfo) || changed
 		changed = transpiler.wrapNested(file, typeInfo) || changed
 		changed = transpiler.expandShorthand(file, typeInfo) || changed
 		changed = transpiler.fixArrows(file, typeInfo) || changed

@@ -1,0 +1,20 @@
+package main
+
+import "fmt"
+
+type Box struct {
+	Items []string
+}
+
+func main() {
+	let items = []string{"a", "bb", "ccc"}
+	let grid = [4]int{}
+	let ages = map[string]int{"ada": 36}
+	let jobs = make(chan int, 3)
+	jobs <- 1
+	let box = &Box{items}
+	fmt.Println(items.length, grid.length, ages.length, jobs.length, "héllo".length, box.Items.length)
+	fmt.Println(items[2].length, items.filter(s => s.length > 1).length)
+	let empty: []int
+	fmt.Println(empty.length)
+}

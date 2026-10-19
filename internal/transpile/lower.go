@@ -91,6 +91,7 @@ func (lowerer *lowerer) lowerFile() {
 	lowerer.lowerDefaults()
 	lowerer.lowerArrows()
 	lowerer.lowerArrays()
+	lowerer.lowerLengths()
 	lowerer.lowerUnions()
 	lowerer.lowerSpread()
 	lowerer.lowerForOfBlanks()
