@@ -276,6 +276,10 @@ func (lowerer *lowerer) emitFinally(parts *tryStatement) {
 	if hasCatch && !tryTerminates {
 		layer.gotos++ // the jump over the catch block
 	}
+	for _, returnType := range layer.returnVarTypes {
+		typeText, _ := lowerer.typeName(returnType)
+		lowerer.reportHiddenType(returnType, typeText, stmt.Pos())
+	}
 	lowerer.replace(stmt.Pos(), stmt.Body.Lbrace+1, lowerer.finallyHead(parts, hasCatch), lowerer.line(stmt.Pos()))
 	lowerer.emitFinallyOpening(parts, hasCatch, tryTerminates)
 	// If no path falls through the try statement, the output must not fall

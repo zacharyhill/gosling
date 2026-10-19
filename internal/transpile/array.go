@@ -261,11 +261,20 @@ func (lowerer *lowerer) checkArrayCall(marker *ast.CallExpr, arrayCall *arrayCal
 	if method.result == "" {
 		return "", true
 	}
-	typeText, ok := lowerer.typeName(lowerer.typeInfo.Types[marker].Type)
+	resultType := lowerer.typeInfo.Types[marker].Type
+	typeText, ok := lowerer.typeName(resultType)
 	if !ok {
 		lowerer.typeNameTakenError(receiver.Pos(), arrayCall.method, typeText)
+		return typeText, false
 	}
-	return typeText, ok
+	if lowerer.reportHiddenType(resultType, typeText, receiver.Pos()) {
+		return typeText, false
+	}
+	if slice, isSlice := underlyingSlice(lowerer.typeInfo.Types[receiver].Type); isSlice && !method.hasCallback {
+		elementType, _ := lowerer.typeName(slice.Elem())
+		return typeText, !lowerer.reportHiddenType(slice.Elem(), elementType, receiver.Pos())
+	}
+	return typeText, true
 }
 
 // arrayBindings returns the names for the receiver and arguments, and the

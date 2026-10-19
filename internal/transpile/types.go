@@ -216,6 +216,27 @@ func isPackageNameHidden(typeExpr ast.Expr, scope *types.Scope, position token.P
 	return isHidden
 }
 
+// reportHiddenType reports an error if a local declaration at position hides
+// a name in typeText, the text of goType. The text would then mean another
+// type. It reports whether it found such a declaration.
+func (lowerer *lowerer) reportHiddenType(goType types.Type, typeText string, position token.Pos) bool {
+	if !lowerer.isTypeNameHidden(goType, typeText, position) {
+		return false
+	}
+	lowerer.errorf(lowerer.file, position, "the inferred type %s cannot be written here, because a local declaration hides the name; rename the local declaration", displayName(goType))
+	return true
+}
+
+// isTypeNameHidden parses typeText and calls isNameHidden. It reports false
+// if typeText does not parse.
+func (transpiler *transpiler) isTypeNameHidden(goType types.Type, typeText string, position token.Pos) bool {
+	typeExpr, err := parser.ParseExpr(typeText)
+	if err != nil {
+		return false
+	}
+	return transpiler.isNameHidden(typeExpr, goType, position)
+}
+
 // typeNameIn prints goType as file writes it. It imports the packages that
 // the file does not have, also into the AST if inAST is true. It reports
 // false if a package name is already used in the file.
