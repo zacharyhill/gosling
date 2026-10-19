@@ -474,6 +474,18 @@ const [n, name] = parse(s) // n, name := parse(s), with parse returning (int, st
 
 In a try block, gosling checks the error. A `_` element skips a result. A pattern with a rest element, a nested pattern, or a default cannot take results.
 
+A parameter can also be a pattern. gosling gives the parameter a name and declares the names at the start of the body:
+
+```go
+func handle({Name, Port}: Config) { // func handle(config Config) { Name, Port := config.Name, config.Port
+configs.map(({Name}) => Name)       // func(arg Config) string { Name := arg.Name; return Name }
+```
+
+- The parameter name comes from the type. `Config` and `*pkg.Config` give `config`, and `HTTPConfig` gives `httpConfig`. Other types give `arg`. If the file already uses the name, gosling adds a number.
+- In a function declaration or a function literal, write the type after the pattern. An arrow parameter without a type gets its type from the context.
+- A pattern parameter fits both parameter orders. The other parameters follow the order rule, so `func f({X}: P, n: int)` and `func f({X}: P, n int)` both work.
+- A pattern parameter can be nested and can have defaults.
+
 ### let and const
 
 In `.gol` files, declare variables with `let` and `const`. `:=` is an error. `var` in a function is an error. Package-level `var` is allowed, because `let` has no grouped form.

@@ -153,9 +153,12 @@ func (processor *processor) parseParamList(openIndex int) (paramList, bool) {
 			continue
 		}
 		if tokenIndex > entryStart {
-			if processor.tokens[entryStart].is(token.IDENT) && processor.tokens[entryStart+1].is(token.COLON) {
+			switch {
+			case processor.isTypedPatternEntry(entryStart):
+				// A destructured parameter fits both orders. Its rename removes its colon.
+			case processor.tokens[entryStart].is(token.IDENT) && processor.tokens[entryStart+1].is(token.COLON):
 				list.colons = append(list.colons, entryStart+1)
-			} else {
+			default:
 				list.plainEntries = append(list.plainEntries, entryStart)
 			}
 		}
@@ -164,9 +167,21 @@ func (processor *processor) parseParamList(openIndex int) (paramList, bool) {
 	return list, true
 }
 
-// typedArrow inserts "func" before an arrow parameter list with types, like
-// (x: int) => x or (x int) => x. It runs at the "(", before the scan copies
-// the list, so rewrites inside the list do not block the insert.
+// isTypedPatternEntry reports whether the parameter at token entryStart is a
+// destructuring pattern with a type, like {a, b}: T.
+func (processor *processor) isTypedPatternEntry(entryStart int) bool {
+	open := processor.tokens[entryStart]
+	if !open.is(token.LBRACE) && !open.is(token.LBRACK) {
+		return false
+	}
+	closeIndex, ok := processor.matchClose(entryStart)
+	return ok && processor.tokenAt(closeIndex+1).is(token.COLON)
+}
+
+// typedArrow inserts "func" before an arrow parameter list with types or
+// destructured parameters, like (x: int) => x or ({a}) => a. It runs at the
+// "(", before the scan copies the list, so rewrites inside the list do not
+// block the insert.
 func (processor *processor) typedArrow(openIndex int) error {
 	list, ok := processor.parseParamList(openIndex)
 	openParen := processor.tokens[openIndex]
@@ -176,11 +191,27 @@ func (processor *processor) typedArrow(openIndex int) error {
 	if _, isUntyped := processor.untypedParams(openIndex+1, list.close); isUntyped {
 		return nil
 	}
-	if err := processor.stripColons(list, list.isAnnotated()); err != nil {
+	patterns, err := processor.findParamPatterns(openIndex, list.close)
+	if err != nil {
 		return err
 	}
+	isUntyped := len(patterns) > 0 && processor.isUntypedParamList(openIndex+1, list.close)
+	if !isUntyped {
+		if err := processor.stripColons(list, list.isAnnotated()); err != nil {
+			return err
+		}
+	}
 	processor.replace(openParen.offset, openParen.offset, "func")
-	processor.typedArrows[processor.tokens[list.close].offset] = true
+	closeOffset := processor.tokens[list.close].offset
+	processor.typedArrows[closeOffset] = true
+	statements, err := processor.registerPatternRenames(patterns, isUntyped)
+	if err != nil {
+		return err
+	}
+	if isUntyped {
+		processor.markUntypedNames(openIndex+1, list.close)
+	}
+	processor.arrowStatements[closeOffset] = statements
 	return nil
 }
 

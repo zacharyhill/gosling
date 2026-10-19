@@ -1,0 +1,31 @@
+package paramdestructure
+
+import "fmt"
+
+type Config struct {
+	Name string
+	Port int
+}
+
+type Server struct{ count int }
+
+func address({Name, Port: port}: Config) string {
+	return fmt.Sprintf("%s:%d", Name, port)
+}
+
+func (s *Server) add([a, b]: [2]int, {Port}: *Config) int {
+	s.count++
+	return a + b + Port
+}
+
+func names(configs []Config) []string {
+	return configs.map(({Name}) => Name)
+}
+
+func printAll(configs []Config) {
+	configs.forEach(({Name, Port}) => fmt.Println(Name, Port))
+	const show = ({Name}: Config) => {
+		fmt.Println(Name)
+	}
+	show(configs[0])
+}

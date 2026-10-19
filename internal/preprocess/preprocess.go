@@ -43,7 +43,10 @@ type Result struct {
 	// element. If the right side is a call with more than one result, the
 	// pattern takes the results instead.
 	ArrayTemps []ArrayTemp
-	edits      []edit
+	// Params holds the offsets of the statements that declare the names of
+	// destructured parameters.
+	Params []int
+	edits  []edit
 }
 
 // Error is a syntax error at an offset into the original source.
@@ -142,6 +145,15 @@ type processor struct {
 	// bodyDestructures maps the index of a { token to the destructuring to
 	// add after it.
 	bodyDestructures map[int]*destructure
+	// bodyStatements maps the index of the { of a function body to the
+	// statements for its destructured parameters.
+	bodyStatements map[int]paramStatements
+	// paramRenames maps the index of the first token of a destructured
+	// parameter to its rename.
+	paramRenames map[int]paramRename
+	// arrowStatements maps the offset of the ")" of a typed arrow parameter
+	// list to the statements for its destructured parameters.
+	arrowStatements map[int]paramStatements
 }
 
 // Process rewrites the gosling syntax in src into Go source with marker
@@ -163,6 +175,9 @@ func ProcessReserving(src []byte, reservedNames map[string]bool) (*Result, error
 		typedArrows: map[int]bool{},
 
 		bodyDestructures: map[int]*destructure{},
+		bodyStatements:   map[int]paramStatements{},
+		paramRenames:     map[int]paramRename{},
+		arrowStatements:  map[int]paramStatements{},
 	}
 	for _, current := range processor.tokens {
 		if current.kind == token.IDENT {
@@ -249,12 +264,15 @@ func interpolationTokens(src []byte, from, to int) []lexeme {
 // the outer scan. The output and the bracket depth stay shared.
 func (processor *processor) startScan(tokens []lexeme) (restore func()) {
 	savedTokens, savedScheduled, savedInserts := processor.tokens, processor.scheduled, processor.inserts
-	savedDestructures, savedClosers, savedBodies := processor.pendingDestructures, processor.pendingClosers, processor.bodyDestructures
+	savedDestructures, savedClosers := processor.pendingDestructures, processor.pendingClosers
+	savedBodies, savedStatements, savedRenames := processor.bodyDestructures, processor.bodyStatements, processor.paramRenames
 	processor.tokens, processor.scheduled, processor.inserts = tokens, map[int]string{}, map[int]string{}
-	processor.pendingDestructures, processor.pendingClosers, processor.bodyDestructures = nil, nil, map[int]*destructure{}
+	processor.pendingDestructures, processor.pendingClosers = nil, nil
+	processor.bodyDestructures, processor.bodyStatements, processor.paramRenames = map[int]*destructure{}, map[int]paramStatements{}, map[int]paramRename{}
 	return func() {
 		processor.tokens, processor.scheduled, processor.inserts = savedTokens, savedScheduled, savedInserts
-		processor.pendingDestructures, processor.pendingClosers, processor.bodyDestructures = savedDestructures, savedClosers, savedBodies
+		processor.pendingDestructures, processor.pendingClosers = savedDestructures, savedClosers
+		processor.bodyDestructures, processor.bodyStatements, processor.paramRenames = savedBodies, savedStatements, savedRenames
 	}
 }
 
@@ -275,6 +293,10 @@ func (processor *processor) rewriteTokens() error {
 			processor.recordConsts(insertedAt+len(" "), statement.constBindings)
 			delete(processor.bodyDestructures, tokenIndex)
 		}
+		if statements, ok := processor.bodyStatements[tokenIndex]; ok {
+			processor.insertParamStatements(current.end(), statements)
+			delete(processor.bodyStatements, tokenIndex)
+		}
 		processor.finishClosers(tokenIndex)
 		if err := processor.finishDestructure(tokenIndex); err != nil {
 			return err
@@ -292,6 +314,9 @@ func (processor *processor) rewriteTokens() error {
 // token it uses.
 func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error) {
 	current := processor.tokens[tokenIndex]
+	if lastIndex, ok := processor.renameParam(tokenIndex); ok {
+		return lastIndex, nil
+	}
 	switch {
 	case current.isIdent("try") && processor.tokenAt(tokenIndex+1).is(token.LBRACE) && processor.atStmtStart(tokenIndex):
 		processor.result.Tries = append(processor.result.Tries, Try{If: processor.replace(current.offset, current.end(), "if true")})
@@ -330,7 +355,10 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		}
 		processor.openBracket(current, pendingTry)
 	case current.is(token.FUNC):
-		return tokenIndex, processor.signature(tokenIndex)
+		if err := processor.signature(tokenIndex); err != nil {
+			return 0, err
+		}
+		return processor.rewriteFuncParams(tokenIndex)
 	case current.is(token.INTERFACE) && processor.tokenAt(tokenIndex+1).is(token.LBRACE):
 		return tokenIndex, processor.interfaceMethods(tokenIndex)
 	case current.is(token.LPAREN):
