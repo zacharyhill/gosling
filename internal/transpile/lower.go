@@ -95,6 +95,7 @@ func (lowerer *lowerer) lowerFile() {
 	lowerer.lowerTemplates()
 	lowerer.lowerNullish()
 	lowerer.lowerDefaults()
+	lowerer.lowerTernaries()
 	lowerer.lowerArrows()
 	lowerer.lowerArrays()
 	lowerer.lowerLengths()

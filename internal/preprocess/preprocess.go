@@ -123,12 +123,15 @@ func (processor *processor) nesting() nesting {
 }
 
 // pendingCloser is a rewrite that the scan has not finished, such as an
-// arrow with an expression body. text closes it at the end of its expression.
+// arrow with an expression body or a ternary. text closes it at the end of its expression.
 type pendingCloser struct {
 	start nesting
 	text  string
 	// afterIndex is the index of a token that the rewrite cannot end at or before.
 	afterIndex int
+	// ternaryEnd is the index of the token after a ternary, or 0 if the
+	// rewrite is not a ternary.
+	ternaryEnd int
 }
 
 type processor struct {
@@ -171,6 +174,14 @@ type processor struct {
 	resultArrows map[int]int
 	// spreadBraces holds the indexes of the { tokens with a spread element.
 	spreadBraces map[int]bool
+	// ternaryEnds maps the token index of each ternary ? to the index of the
+	// token after the ternary.
+	ternaryEnds map[int]int
+	// ternaryParts holds the token indexes of each ternary ? and :, and of
+	// the automatic semicolons that a ? at the end of a line cancels.
+	ternaryParts map[int]bool
+	// ternaryStarts counts the ternary conditions that start at a token index.
+	ternaryStarts map[int]int
 }
 
 // Process rewrites the gosling syntax in src into Go source with marker
@@ -200,6 +211,7 @@ func ProcessReserving(src []byte, reservedNames map[string]bool) (*Result, error
 		resultArrows:     map[int]int{},
 	}
 	processor.spreadBraces = findSpreadBraces(processor.tokens)
+	processor.resetTernaries()
 	for _, current := range processor.tokens {
 		if current.kind == token.IDENT {
 			processor.identifiers[current.text] = true
@@ -287,24 +299,32 @@ func (processor *processor) startScan(tokens []lexeme) (restore func()) {
 	savedTokens, savedScheduled, savedInserts := processor.tokens, processor.scheduled, processor.inserts
 	savedDestructures, savedClosers, savedSpreads := processor.pendingDestructures, processor.pendingClosers, processor.spreadBraces
 	savedBodies, savedStatements, savedRenames := processor.bodyDestructures, processor.bodyStatements, processor.paramRenames
+	savedTernaryEnds, savedTernaryParts, savedTernaryStarts := processor.ternaryEnds, processor.ternaryParts, processor.ternaryStarts
 	processor.tokens, processor.scheduled, processor.inserts = tokens, map[int]string{}, map[int]string{}
 	processor.pendingDestructures, processor.pendingClosers, processor.spreadBraces = nil, nil, findSpreadBraces(tokens)
 	processor.bodyDestructures, processor.bodyStatements, processor.paramRenames = map[int]*destructure{}, map[int]paramStatements{}, map[int]paramRename{}
+	processor.resetTernaries()
 	return func() {
 		processor.tokens, processor.scheduled, processor.inserts = savedTokens, savedScheduled, savedInserts
 		processor.pendingDestructures, processor.pendingClosers, processor.spreadBraces = savedDestructures, savedClosers, savedSpreads
 		processor.bodyDestructures, processor.bodyStatements, processor.paramRenames = savedBodies, savedStatements, savedRenames
+		processor.ternaryEnds, processor.ternaryParts, processor.ternaryStarts = savedTernaryEnds, savedTernaryParts, savedTernaryStarts
 	}
 }
 
 func (processor *processor) rewriteTokens() error {
 	pendingTry := -1
+	processor.findTernaries()
 	for tokenIndex := 0; tokenIndex < len(processor.tokens); tokenIndex++ {
 		current := processor.tokens[tokenIndex]
+		// Arrows and ternaries end at the token before. So they close before
+		// the text that other rewrites add before this token.
+		processor.finishClosers(tokenIndex)
 		if text, ok := processor.inserts[tokenIndex]; ok {
 			processor.replace(current.offset, current.offset, text)
 			delete(processor.inserts, tokenIndex)
 		}
+		processor.openTernaries(tokenIndex)
 		if text, ok := processor.scheduled[tokenIndex]; ok {
 			processor.replace(current.offset, current.end(), text)
 			delete(processor.scheduled, tokenIndex)
@@ -318,7 +338,6 @@ func (processor *processor) rewriteTokens() error {
 			processor.insertParamStatements(current.end(), statements)
 			delete(processor.bodyStatements, tokenIndex)
 		}
-		processor.finishClosers(tokenIndex)
 		if err := processor.finishDestructure(tokenIndex); err != nil {
 			return err
 		}
@@ -346,7 +365,11 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		return tokenIndex, processor.rewriteThrow(tokenIndex)
 	case current.isIdent("try") && !processor.tokenAt(tokenIndex+1).is(token.LBRACE):
 		return tokenIndex, processor.rewriteTryExpression(tokenIndex)
-	case current.is(token.ILLEGAL) && current.text == "?":
+	case isQuestion(current) && processor.ternaryParts[tokenIndex]:
+		processor.rewriteTernary(tokenIndex)
+	case current.is(token.COLON) && processor.ternaryParts[tokenIndex]:
+		processor.replace(current.offset, current.end(), ",")
+	case isQuestion(current):
 		return processor.questionMark(tokenIndex)
 	case current.is(token.TYPE):
 		return processor.union(tokenIndex)
@@ -443,6 +466,9 @@ func (processor *processor) atStmtStart(tokenIndex int) bool {
 	if tokenIndex == 0 {
 		return true
 	}
+	if processor.ternaryParts[tokenIndex-1] {
+		return false
+	}
 	switch processor.tokens[tokenIndex-1].kind {
 	case token.SEMICOLON, token.LBRACE:
 		return true
@@ -489,6 +515,15 @@ func (result *Result) OrigRange(start, end int) (int, bool) {
 func (processor *processor) finishClosers(tokenIndex int) {
 	for len(processor.pendingClosers) > 0 {
 		pending := processor.pendingClosers[len(processor.pendingClosers)-1]
+		if pending.ternaryEnd > 0 {
+			if pending.ternaryEnd != tokenIndex {
+				return
+			}
+			processor.pendingClosers = processor.pendingClosers[:len(processor.pendingClosers)-1]
+			end := processor.tokenAt(tokenIndex - 1).end()
+			processor.replace(end, end, ")")
+			continue
+		}
 		if processor.nesting() != pending.start || tokenIndex <= pending.afterIndex {
 			return
 		}

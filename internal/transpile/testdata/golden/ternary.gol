@@ -1,0 +1,76 @@
+package ternary
+
+import (
+	"errors"
+	"os"
+	"strconv"
+)
+
+type Shape interface{ Area() float64 }
+
+type Circle struct{ R float64 }
+
+func (c Circle) Area() float64 { return 3 * c.R * c.R }
+
+type Square struct{ S float64 }
+
+func (s Square) Area() float64 { return s.S * s.S }
+
+type NotFound struct{}
+
+func (*NotFound) Error() string { return "not found" }
+
+func sign(n int) string {
+	return n < 0 ? "negative" : n == 0 ? "zero" : "positive"
+}
+
+func half(n int) float64 {
+	return n%2 == 0 ? 0 : 0.5
+}
+
+func pick(round bool, size float64) Shape {
+	let shape: Shape = round ? Circle{size} : Square{size}
+	return shape
+}
+
+func lookup(m map[string]error, key string) error {
+	const err = m[key]
+	return err == nil ? &NotFound{} : err
+}
+
+func parse(s string) int {
+	try {
+		const n = s == "" ? 0 : len(s)
+		return n + strconv.Atoi(s)
+	} catch {
+		return -1
+	}
+}
+
+func labels(ok bool) map[string]string {
+	return map[string]string{
+		"state": ok ? "on" : "off",
+		ok ? "yes" : "no": t`${ok ? 1 : 0}`,
+	}
+}
+
+func lengths(words []string) []int {
+	return words.map(w => len(w) > 3 ? len(w) : 0)
+}
+
+func wrap(err error) error {
+	return err != nil ? errors.Join(errors.New("wrapped"), err) : nil
+}
+
+func notify(ok bool, s string) {
+	ok ? println("ok", s) : s == "" ? println("empty") : println("failed", s)
+}
+
+func cleanup(remove bool, path string) error {
+	try {
+		remove ? os.Remove(path) : os.Truncate(path, 0)
+	} catch (e) {
+		return e
+	}
+	return nil
+}

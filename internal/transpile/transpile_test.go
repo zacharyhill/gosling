@@ -99,6 +99,11 @@ func TestErrors(test *testing.T) {
 		want string
 	}{
 		{
+			name: "checked call in a ternary arm",
+			src:  "package p\nimport \"strconv\"\nfunc f(ok bool, s string) int {\n\ttry {\n\t\treturn ok ? strconv.Atoi(s) : 0\n\t} catch {\n\t\treturn -1\n\t}\n}",
+			want: "x.gol:5:15: " + errConditionalCall,
+		},
+		{
 			name: "never-returning calls only end a function through try",
 			src:  "package p\nimport \"os\"\nfunc f(ok bool) int {\n\tif ok {\n\t\treturn 1\n\t} else {\n\t\tos.Exit(1)\n\t}\n}",
 			want: "x.gol:9:1: missing return",
@@ -117,6 +122,31 @@ func TestErrors(test *testing.T) {
 			name: "question mark operator",
 			src:  "package p\nimport \"os\"\nfunc f() error {\n\tos.Remove(\"x\")?\n\treturn nil\n}",
 			want: "x.gol:4:16: the ? operator is not supported; use try/catch",
+		},
+		{
+			name: "ternary arms with mismatched types",
+			src:  "package p\nfunc f(c bool) {\n\tlet x = c ? 1 : \"a\"\n\t_ = x\n}",
+			want: "x.gol:3:18: ternary arms have mismatched types untyped int and untyped string",
+		},
+		{
+			name: "ternary with a condition that is not a bool",
+			src:  "package p\nfunc f(n int) int {\n\treturn n ? 1 : 2\n}",
+			want: "x.gol:3:9: cannot use n (variable of type int) as bool value in ternary",
+		},
+		{
+			name: "ternary with unrelated arm types",
+			src:  "package p\nfunc f(c bool, n int, s string) {\n\tlet x = c ? n : s\n\t_ = x\n}",
+			want: "x.gol:3:18: ternary arms have mismatched types int and string",
+		},
+		{
+			name: "ternary with nil arms and no context",
+			src:  "package p\nfunc f(c bool) {\n\tlet x = c ? nil : nil\n\t_ = x\n}",
+			want: "x.gol:3:10: cannot infer the type of this ternary",
+		},
+		{
+			name: "fallible call in a ternary arm",
+			src:  "package p\nimport \"strconv\"\nfunc f(s string) int {\n\ttry {\n\t\treturn s == \"\" ? 0 : strconv.Atoi(s)\n\t} catch {\n\t\treturn -1\n\t}\n}",
+			want: "x.gol:5:24: this call can fail but only runs conditionally here",
 		},
 		{
 			name: "type error positions map to source",

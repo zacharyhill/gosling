@@ -138,6 +138,11 @@ type file struct {
 	// tuples maps each array pattern temporary that destructureTuples
 	// replaced to the pattern.
 	tuples map[*ast.AssignStmt]*tupleDestructure
+	// ternaries holds the marker calls that replace ternaries.
+	ternaries map[*ast.CallExpr]bool
+	// ternaryStmts maps each if statement that replaced a ternary statement
+	// to the marker call.
+	ternaryStmts map[*ast.IfStmt]*ast.CallExpr
 }
 
 // position maps a position in the preprocessed file to the original source.
@@ -301,6 +306,7 @@ func (transpiler *transpiler) buildFile(input Input, reservedNames map[string]bo
 	for _, position := range golFile.stripMarkers() {
 		transpiler.errorf(golFile, position, "?.[ cannot be used with a slice expression")
 	}
+	golFile.recordTernaries()
 	golFile.findArrows()
 	return golFile, nil
 }
@@ -358,6 +364,8 @@ func newFile(input Input, preprocessed *preprocess.Result) *file {
 		constDecls:     map[*ast.GenDecl]*ast.AssignStmt{},
 		forOfBlanks:    map[*ast.RangeStmt]*ast.Ident{},
 		tuples:         map[*ast.AssignStmt]*tupleDestructure{},
+		ternaries:      map[*ast.CallExpr]bool{},
+		ternaryStmts:   map[*ast.IfStmt]*ast.CallExpr{},
 	}
 }
 
@@ -575,6 +583,7 @@ func markerDecls(packageName string) string {
 		"func " + coalesceMarker + "[T any](x any, d T) T { return d }\n" +
 		"func " + coalescePtrMarker + "[T any](x *T, d T) T { return d }\n" +
 		hoistMarkerDecls() +
+		ternaryMarkerDecl +
 		spreadMarkerDecls +
 		defaultMarkerDecls +
 		arrayMarkerDecls()
@@ -617,6 +626,7 @@ func (transpiler *transpiler) augment(typeInfo *types.Info) bool {
 		changed = transpiler.fixArrows(file, typeInfo) || changed
 		changed = usePtrCoalesce(file, typeInfo) || changed
 		changed = useDefaultPtr(file, typeInfo) || changed
+		changed = transpiler.fixTernaryTypes(file, typeInfo) || changed
 		changed = addBlankForErrors(file, typeInfo) || changed
 		changed = dropForOfBlanks(file, typeInfo) || changed
 	}

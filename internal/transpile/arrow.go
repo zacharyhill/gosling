@@ -320,53 +320,63 @@ func hasPlaceholder(goType types.Type) bool {
 
 // exprContext finds the function type expected where funcExpr appears.
 func (transpiler *transpiler) exprContext(file *file, typeInfo *types.Info, parentOf map[ast.Node]ast.Node, funcExpr ast.Expr) (funcContext, bool) {
-	outerExpr, parent := outermostParen(parentOf, funcExpr)
-	switch parentNode := parent.(type) {
-	case *ast.CallExpr:
+	_, parent := outermostParen(parentOf, funcExpr)
+	if parentNode, ok := parent.(*ast.CallExpr); ok {
 		if arrayCall, ok := file.arrayCalls[parentNode]; ok {
 			return transpiler.callbackContext(typeInfo, parentNode, arrayCall, funcExpr)
 		}
+	}
+	return expectFunc(contextType(typeInfo, parentOf, funcExpr))
+}
+
+// contextType returns the type that the code around expr expects, or nil.
+// This is a parameter type, the type of a declaration or an assigned
+// variable, a result type, or the type of a composite literal element.
+func contextType(typeInfo *types.Info, parentOf map[ast.Node]ast.Node, expr ast.Expr) types.Type {
+	outerExpr, parent := outermostParen(parentOf, expr)
+	switch parentNode := parent.(type) {
+	case *ast.CallExpr:
 		signature, ok := typeInfo.Types[parentNode.Fun].Type.(*types.Signature)
 		if !ok || signature.TypeParams().Len() > 0 {
-			return funcContext{}, false
+			return nil
 		}
 		for argIndex, arg := range parentNode.Args {
 			if arg == outerExpr {
-				return expectFunc(paramType(signature, argIndex))
+				return paramType(signature, argIndex)
 			}
 		}
 	case *ast.ValueSpec:
 		for valueIndex, value := range parentNode.Values {
 			if value == outerExpr && parentNode.Type != nil && valueIndex < len(parentNode.Names) {
-				return expectFunc(typeInfo.TypeOf(parentNode.Type))
+				return typeInfo.TypeOf(parentNode.Type)
 			}
 		}
 	case *ast.AssignStmt:
 		for rhsIndex, rightSide := range parentNode.Rhs {
 			if rightSide == outerExpr && parentNode.Tok == token.ASSIGN && len(parentNode.Lhs) == len(parentNode.Rhs) {
-				return expectFunc(typeInfo.TypeOf(parentNode.Lhs[rhsIndex]))
+				return typeInfo.TypeOf(parentNode.Lhs[rhsIndex])
 			}
 		}
 	case *ast.ReturnStmt:
 		signature := enclosingSignature(typeInfo, parentOf, parentNode)
 		for resultIndex, result := range parentNode.Results {
 			if result == outerExpr && signature != nil && signature.Results().Len() == len(parentNode.Results) {
-				return expectFunc(signature.Results().At(resultIndex).Type())
+				return signature.Results().At(resultIndex).Type()
 			}
 		}
 	case *ast.CompositeLit:
 		for elementIndex, element := range parentNode.Elts {
 			if element == outerExpr {
-				return expectFunc(getElementType(typeInfo.TypeOf(parentNode), elementIndex, nil))
+				return getElementType(typeInfo.TypeOf(parentNode), elementIndex, nil)
 			}
 		}
 	case *ast.KeyValueExpr:
 		compositeLit, ok := parentOf[parentNode].(*ast.CompositeLit)
 		if ok && parentNode.Value == outerExpr {
-			return expectFunc(getElementType(typeInfo.TypeOf(compositeLit), -1, parentNode.Key))
+			return getElementType(typeInfo.TypeOf(compositeLit), -1, parentNode.Key)
 		}
 	}
-	return funcContext{}, false
+	return nil
 }
 
 // getElementType returns the type of an element in a composite literal of

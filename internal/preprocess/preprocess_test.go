@@ -255,6 +255,93 @@ func TestProcess(test *testing.T) {
 			params: []int{len("f := func(pair Pair) __goslingR { ")},
 		},
 		{
+			name: "ternary",
+			src:  "x := a > 0 ? 1 : 2",
+			want: "x := __goslingQ(a > 0 , 1 , 2)",
+		},
+		{
+			name: "nested ternary in else arm",
+			src:  "x := a ? b : c ? d : e",
+			want: "x := __goslingQ(a , b , __goslingQ(c , d , e))",
+		},
+		{
+			name: "nested ternary in then arm",
+			src:  "x := a ? b ? 1 : 2 : 3",
+			want: "x := __goslingQ(a , __goslingQ(b , 1 , 2) , 3)",
+		},
+		{
+			name:     "ternary after optional chain and nullish coalescing",
+			src:      "x := a?.b ?? c ? d : e",
+			want:     "x := __goslingQ(a.__goslingO.b || c , d , e)",
+			coalesce: []int{len("x := __goslingQ(a.__goslingO.b ")},
+		},
+		{
+			name: "ternary in map literal",
+			src:  "m := map[string]int{\"a\": c ? 1 : 2, c ? \"b\" : \"d\": 3}",
+			want: "m := map[string]int{\"a\": __goslingQ(c , 1 , 2), __goslingQ(c , \"b\" , \"d\"): 3}",
+		},
+		{
+			name: "ternary in slice expression",
+			src:  "y := xs[lo : c ? 1 : 2]",
+			want: "y := xs[lo : __goslingQ(c , 1 , 2)]",
+		},
+		{
+			name: "ternary in case and after label",
+			src:  "switch {\ncase c ? a : b:\nL:\n\tx = c ? 1 : 2\n}",
+			want: "switch {\ncase __goslingQ(c , a , b):\nL:\n\tx = __goslingQ(c , 1 , 2)\n}",
+		},
+		{
+			name: "ternary in if header",
+			src:  "if c ? a : b {\n}",
+			want: "if __goslingQ(c , a , b) {\n}",
+		},
+		{
+			name: "ternary with composite literals",
+			src:  "x := c ? P{1} : P{2}",
+			want: "x := __goslingQ(c , P{1} , P{2})",
+		},
+		{
+			name: "ternary in arrow body",
+			src:  "f(x => x > 0 ? x : -x)",
+			want: "f(func(x __goslingU) __goslingR { return __goslingQ(x > 0 , x , -x) })",
+		},
+		{
+			name: "arrows in ternary arms",
+			src:  "f(c ? x => x : y => y)",
+			want: "f(__goslingQ(c , func(x __goslingU) __goslingR { return x } , func(y __goslingU) __goslingR { return y }))",
+		},
+		{
+			name: "ternary after return, send, and assignment operator",
+			src:  "return c ? 1 : 2\nch <- c ? 1 : 2\nn += c ? 1 : 2",
+			want: "return __goslingQ(c , 1 , 2)\nch <- __goslingQ(c , 1 , 2)\nn += __goslingQ(c , 1 , 2)",
+		},
+		{
+			name: "ternary inside interpolation",
+			src:  "s := t`${c ? \"a\" : \"b\"}`",
+			want: "s := __goslingT(``, __goslingQ(c , \"a\" , \"b\"), ``)",
+		},
+		{
+			name:     "ternary inside interpolation with format",
+			src:      "s := t`${c ? a ?? 1 : b:05d}`",
+			want:     "s := __goslingT(``, __goslingFormat(__goslingQ(c , a || 1 , b), \"05d\"), ``)",
+			coalesce: []int{len("s := __goslingT(``, __goslingFormat(__goslingQ(c , a ")},
+		},
+		{
+			name: "ternary over lines",
+			src:  "x := c ?\n\t1 :\n\t2",
+			want: "x := __goslingQ(c ,\n\t1 ,\n\t2)",
+		},
+		{
+			name: "ternary in slice spread",
+			src:  "all := [...a, c ? x : y]",
+			want: "all := __goslingCat(a, __goslingOne(__goslingQ(c , x , y)))",
+		},
+		{
+			name: "arrow in slice spread",
+			src:  "fs := [...a, x => x]",
+			want: "fs := __goslingCat(a, __goslingOne(func(x __goslingU) __goslingR { return x }))",
+		},
+		{
 			name: "try catch finally",
 			src:  "try { a() } catch (e) { b() } finally { c() }",
 			want: "if true { a() } else { var e error; _ = e; b() } ; { c() }",
@@ -1126,6 +1213,7 @@ func TestProcessErrors(test *testing.T) {
 		{"question mark", "x := f()?", "the ? operator is not supported; use try/catch", len("x := f()")},
 		{"question mark before space", "x := f()? .y", "the ? operator is not supported", len("x := f()")},
 		{"spread with missing comma", "m := M{...a\n}", "missing comma before newline in spread", len("m := M{...a")},
+		{"question mark without colon", "f(x ?)", "the ? operator is not supported; use try/catch", len("f(x ")},
 		{"let without type or value", "func f() {\n\tlet x\n}", "let x needs a type or a value", len("func f() {\n\t")},
 		{"grouped let in a function", "func f() {\n\tlet (\n\t\ta = 1\n\t)\n}", "let ( ... ) is only supported at package level", len("func f() {\n\t")},
 		{"grouped let without type or value", "let (\n\ta = 1\n\tb\n)", "let b needs a type or a value", len("let (\n\ta = 1\n\t")},
