@@ -1352,7 +1352,7 @@ const s, isString = value as string     // s, isString := value.(string)
 - To use a field of the result, add parentheses: `(s as Circle).R`. `x as T.Field` reads `T.Field` as a type in package `T`.
 - Elsewhere, `as` is a name, as in Go: `as := 1` is valid.
 - In a ternary arm, `as` applies to the arm: `ok ? x as int : 0`. After `??`, it is an error.
-- `[v, ok]` cannot take an assertion at the end of a `?.` chain.
+- An assertion can end a `?.` chain, as in `const [text, ok] = box?.Item as string`. If gosling skips the chain, `text` gets the zero value and `ok` is `false`.
 
 ### Imports and generated names
 

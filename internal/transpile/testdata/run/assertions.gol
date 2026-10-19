@@ -31,4 +31,16 @@ func main() {
 	fmt.Println(box?.Item as string, len(values) > 1 ? values[1] as string : "none")
 	const [_, isText] = (empty ?? box).Item as int
 	fmt.Println(isText, t`${value as celsius:.0f}`)
+	const [boxedText, hasText] = box?.Item as string
+	const [emptyText, emptyHasText] = empty?.Item as string
+	fmt.Println(boxedText, hasText, emptyText == "", emptyHasText)
+	if const number, isNumber = box?.Item as int; !isNumber {
+		fmt.Println("not a number", number)
+	}
+	const boxes = map[string]*Box{"a": box}
+	let found: string
+	let isFound: bool
+	[found, isFound] = boxes?.["a"]?.Item as string
+	const [missing, isMissing] = boxes?.["b"]?.Item as string
+	fmt.Println(found, isFound, missing == "", isMissing)
 }
