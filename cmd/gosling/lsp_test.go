@@ -382,6 +382,7 @@ func TestLSP(test *testing.T) {
 	test.Run("changed lines that parse work despite a syntax error", session.checkChangedLinesWithSyntaxError)
 	test.Run("completion in code with a type error", session.checkCompletion)
 	test.Run("arrow parameters map to the gol file", session.checkArrowParams)
+	test.Run("format a gol document", session.checkFormatting)
 	client.request("shutdown", nil)
 	client.notify("exit", nil)
 	select {
@@ -677,4 +678,64 @@ func (session *lspSession) checkFileDelete(test *testing.T) {
 	if _, err := os.Stat(newGoPath); !errors.Is(err, fs.ErrNotExist) {
 		test.Errorf("new.go still exists after the delete: %v", err)
 	}
+}
+
+// checkFormatting removes the indentation of main.gol. The edits from the
+// server must restore it.
+func (session *lspSession) checkFormatting(test *testing.T) {
+	var capabilities struct {
+		Capabilities struct {
+			DocumentFormattingProvider bool `json:"documentFormattingProvider"`
+		} `json:"capabilities"`
+	}
+	if err := json.Unmarshal(session.client.initializeResult, &capabilities); err != nil {
+		test.Fatal(err)
+	}
+	if !capabilities.Capabilities.DocumentFormattingProvider {
+		test.Error("the server does not list documentFormattingProvider")
+	}
+	lines := strings.Split(lspMain, "\n")
+	for lineIndex := range lines {
+		lines[lineIndex] = strings.TrimLeft(lines[lineIndex], "\t")
+	}
+	unindented := strings.Join(lines, "\n")
+	session.changeMain(unindented)
+	raw := session.client.request("textDocument/formatting", map[string]any{
+		"textDocument": map[string]any{"uri": session.mainURI},
+		"options":      map[string]any{"tabSize": 4, "insertSpaces": false},
+	})
+	var edits []struct {
+		Range struct {
+			Start lspPosition `json:"start"`
+			End   lspPosition `json:"end"`
+		} `json:"range"`
+		NewText string `json:"newText"`
+	}
+	if err := json.Unmarshal(raw, &edits); err != nil {
+		test.Fatalf("decode %s: %v", raw, err)
+	}
+	formatted := unindented
+	for editIndex := len(edits) - 1; editIndex >= 0; editIndex-- {
+		edit := edits[editIndex]
+		start, end := offsetOf(formatted, edit.Range.Start), offsetOf(formatted, edit.Range.End)
+		formatted = formatted[:start] + edit.NewText + formatted[end:]
+	}
+	if formatted != lspMain {
+		test.Errorf("formatted text =\n%s\nwant\n%s", formatted, lspMain)
+	}
+	session.changeMain(strings.Replace(unindented, "return string(data), nil", "return string(data), nil +", 1))
+	raw = session.client.request("textDocument/formatting", map[string]any{"textDocument": map[string]any{"uri": session.mainURI}})
+	if string(raw) != "[]" {
+		test.Errorf("formatting with a syntax error = %s, want no edits", raw)
+	}
+	session.changeMain(lspMain)
+}
+
+// offsetOf returns the offset of an ASCII position in text.
+func offsetOf(text string, cursor lspPosition) int {
+	offset := 0
+	for range cursor.Line {
+		offset += strings.IndexByte(text[offset:], '\n') + 1
+	}
+	return offset + cursor.Character
 }

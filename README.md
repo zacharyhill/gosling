@@ -96,6 +96,7 @@ gosling -check ./... # exit 1 if a generated file is out of date
 gosling -lines=false # do not add line directives
 gosling -v ./...     # show progress for each directory
 gosling -version     # print the gosling version
+gosling fmt -w ./... # format .gol files
 ```
 
 To use `go generate`, add `//go:generate gosling` to a `.go` file in the package.
@@ -105,6 +106,12 @@ To use `go generate`, add `//go:generate gosling` to a `.go` file in the package
 If you rename or delete `foo.gol`, gosling deletes the old `foo.go` on the next run. `gosling -check` reports the old file and does not delete it.
 
 `examples/config` has a program and its generated output.
+
+### Formatting
+
+`gosling fmt` formats `.gol` files as gofmt formats `.go` files. It changes only the space between tokens. Without flags, it prints the result. `-w` writes the result to each file. `-l` lists the files whose format changes. A directory includes only its own files. `dir/...` also includes subdirectories, but not testdata, vendor, and . and _ directories.
+
+gofmt cannot read gosling syntax. So `gosling fmt` runs gofmt on the Go code that preprocessing makes, and copies the space between tokens back to the `.gol` file. It does not sort imports and does not change comments. It does not format a file that has syntax errors.
 
 ## Editor support
 
@@ -117,6 +124,7 @@ The language server is `gosling lsp`. It runs gopls on the generated code and ma
 - Hover. On gosling syntax, such as `try`, `??`, or a template literal, hover shows the Go code that gosling generates.
 - Completion and signature help
 - Rename, also of a catch variable and other names in gosling syntax
+- Formatting, as `gosling fmt` does
 - The outline of a file
 - Diagnostics: gosling errors, and gopls warnings for the generated code
 
@@ -229,7 +237,6 @@ To highlight `.gol` files, add the VS Code extension folder as a TextMate bundle
 - A definition in generated code, such as a catch variable, goes to the nearest token before it.
 - A rename can change a name that gosling copies into generated code, such as a catch variable, an arrow parameter, or a destructured name. The server then transpiles the renamed files and compares the result with the rename in Go. If they differ, the rename fails, because a partial rename would break the code. For example, a rename of the field `X` fails if `const {X} = p` uses it.
 - A rename in a file that changed after a syntax error fails if the name occurs in generated code.
-- Formatting is not supported. It would change generated code.
 - After a syntax error, the server uses the last version that parsed, with the changed lines that still parse. The lines that do not parse get no results until the file parses again. Type errors do not have this problem.
 
 ## Language
@@ -981,6 +988,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 3. Lowering records text edits on the source. It does not print the AST again, so comments and layout stay. gosling applies the edits, adds line directives, and runs gofmt.
 4. `cmd/gosling` loads dependency types with `golang.org/x/tools/go/packages`. It processes directories in import order. Packages that import generated code type-check against the new output.
 5. Emit also records a source map. The map pairs each token that the output copies from the `.gol` file with its new position. `internal/lsp` uses the map to send positions to gopls and to map the results back.
+6. `internal/golfmt` formats `.gol` files. It runs gofmt on the preprocessed code. It then pairs the tokens before and after gofmt, and copies the new space between tokens to the `.gol` file. It checks that the tokens do not change.
 
 ## Development
 
