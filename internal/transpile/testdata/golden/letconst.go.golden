@@ -18,6 +18,21 @@ var fallback = strings.ToUpper("anon")
 
 var cache map[string]string
 
+var (
+	retries = 3
+	name    string
+	// low and high bound the retries.
+	low, high int                 = 1, 9
+	upper     func(string) string = func(s string) string { return strings.ToUpper(s) }
+)
+
+var (
+	one          = 1
+	label string = "x"
+)
+
+var legacy = retries + one
+
 func load(path string) (string, error) {
 	const scale = 2
 	upper := strings.ToUpper(path)

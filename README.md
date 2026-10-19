@@ -516,7 +516,7 @@ configs.map(({Name}) => Name)       // func(arg Config) string { Name := arg.Nam
 
 ### let and const
 
-In `.gol` files, declare variables with `let` and `const`. `:=` is an error. `var` in a function is an error. Package-level `var` is allowed, because `let` has no grouped form.
+In `.gol` files, declare variables with `let` and `const`. `:=` is an error. `var` in a function is an error. Package-level `var` is allowed, so plain Go declarations keep working.
 
 ```go
 let count = 0                  // count := 0
@@ -527,7 +527,17 @@ const limit = 10               // const limit = 10
 const scale: float64 = 1.5     // const scale float64 = 1.5
 ```
 
-At package level, `let x = v` becomes `var x = v`.
+At package level, `let x = v` becomes `var x = v`. A `let ( ... )` group becomes a `var ( ... )` group:
+
+```go
+let (
+	retries = 3           // retries = 3
+	name: string          // name string
+	low, high: int = 1, 9 // low, high int = 1, 9
+)
+```
+
+A group is not allowed in a function. In a function, each `let` becomes `:=`, and try blocks check only these declarations.
 
 A `const` with a constant value stays a Go constant. A `const` with a different value becomes a variable. gosling reports an error if code assigns to this variable, increments it, or uses it as a `range` target. Code can change its fields, its elements, and the value it points to, as in TypeScript.
 

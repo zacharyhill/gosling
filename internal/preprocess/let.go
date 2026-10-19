@@ -15,6 +15,7 @@ const TypedMarker = "__goslingTyped"
 //	let x: T = v    ->  var x T = v
 //	let x: T        ->  var x T
 //	const x: T = v  ->  const x T = v
+//	let ( x: T )    ->  var ( x T ) (only at package level)
 //
 // A const without a type stays as written. The transpiler decides later
 // whether its value is constant. In an if, for, switch, or case header,
@@ -30,13 +31,13 @@ func (processor *processor) declaration(tokenIndex int) (int, error) {
 	if (first.is(token.LBRACE) || first.is(token.LBRACK)) && !isHeader {
 		return processor.declaredPattern(tokenIndex)
 	}
+	if first.is(token.LPAREN) && keyword.isIdent("let") && !isHeader && processor.isLetGroup(tokenIndex) {
+		return tokenIndex, processor.rewriteGroupedLet(tokenIndex)
+	}
 	if !first.is(token.IDENT) {
 		return tokenIndex, nil
 	}
-	lastNameIndex := tokenIndex + 1
-	for processor.tokenAt(lastNameIndex+1).is(token.COMMA) && processor.tokenAt(lastNameIndex+2).is(token.IDENT) {
-		lastNameIndex += 2
-	}
+	lastNameIndex := processor.findLastName(tokenIndex + 1)
 	after := processor.tokenAt(lastNameIndex + 1)
 	switch {
 	case after.is(token.DEFINE):
@@ -61,6 +62,92 @@ func (processor *processor) declaration(tokenIndex int) (int, error) {
 		return tokenIndex, &Error{keyword.offset, fmt.Sprintf("let %s needs a type or a value", first.text)}
 	}
 	return tokenIndex, nil
+}
+
+// rewriteGroupedLet rewrites `let ( a = 1; b: T )` into `var ( a = 1; b T )`. In a
+// function, each let becomes :=, and try checks only these assignments. So
+// a group is only allowed at package level.
+func (processor *processor) rewriteGroupedLet(tokenIndex int) error {
+	keyword := processor.tokens[tokenIndex]
+	if len(processor.braceStack) > 0 {
+		return &Error{keyword.offset, "let ( ... ) is only supported at package level; use one let for each variable"}
+	}
+	processor.replace(keyword.offset, keyword.end(), "var")
+	for specIndex := tokenIndex + 2; specIndex < len(processor.tokens) && !processor.tokens[specIndex].is(token.RPAREN); {
+		lastNameIndex, err := processor.rewriteGroupSpec(specIndex)
+		if err != nil {
+			return err
+		}
+		specIndex = processor.findNextGroupSpec(lastNameIndex + 1)
+	}
+	return nil
+}
+
+// isLetGroup reports whether `let (` at tokenIndex starts a group, not a call
+// to a function named let. A group is the only form at package level. In a
+// function, a group starts with a name and then =, :, or :=.
+func (processor *processor) isLetGroup(tokenIndex int) bool {
+	if len(processor.braceStack) == 0 {
+		return true
+	}
+	firstNameIndex := tokenIndex + 2
+	if !processor.tokenAt(firstNameIndex).is(token.IDENT) {
+		return false
+	}
+	switch processor.tokenAt(processor.findLastName(firstNameIndex) + 1).kind {
+	case token.ASSIGN, token.COLON, token.DEFINE:
+		return true
+	}
+	return false
+}
+
+// rewriteGroupSpec rewrites the spec of a let group that starts at specIndex. It
+// returns the index of the last name of the spec.
+func (processor *processor) rewriteGroupSpec(specIndex int) (int, error) {
+	first := processor.tokens[specIndex]
+	if !first.is(token.IDENT) {
+		return 0, &Error{first.offset, "expected a name in let ( ... )"}
+	}
+	lastNameIndex := processor.findLastName(specIndex)
+	switch after := processor.tokenAt(lastNameIndex + 1); {
+	case after.is(token.DEFINE):
+		return 0, &Error{first.offset, fmt.Sprintf("use let %s = value, not :=", first.text)}
+	case after.is(token.COLON):
+		processor.scheduled[lastNameIndex+1] = ""
+	case !after.is(token.ASSIGN):
+		return 0, &Error{first.offset, fmt.Sprintf("let %s needs a type or a value", first.text)}
+	}
+	return lastNameIndex, nil
+}
+
+// findLastName returns the index of the last name in the list `a, b, c`
+// that starts at the name at firstNameIndex.
+func (processor *processor) findLastName(firstNameIndex int) int {
+	lastNameIndex := firstNameIndex
+	for processor.tokenAt(lastNameIndex+1).is(token.COMMA) && processor.tokenAt(lastNameIndex+2).is(token.IDENT) {
+		lastNameIndex += 2
+	}
+	return lastNameIndex
+}
+
+// findNextGroupSpec returns the index of the token after the ; that ends the
+// spec, or of the ) that ends the group.
+func (processor *processor) findNextGroupSpec(from int) int {
+	depth := 0
+	for tokenIndex := from; tokenIndex < len(processor.tokens); tokenIndex++ {
+		switch current := processor.tokens[tokenIndex]; {
+		case current.is(token.LPAREN) || current.is(token.LBRACK) || current.is(token.LBRACE):
+			depth++
+		case current.is(token.RPAREN) || current.is(token.RBRACK) || current.is(token.RBRACE):
+			if depth == 0 {
+				return tokenIndex
+			}
+			depth--
+		case current.is(token.SEMICOLON) && depth == 0:
+			return tokenIndex + 1
+		}
+	}
+	return len(processor.tokens)
 }
 
 // inHeader reports whether the token at tokenIndex starts the init statement of an if,

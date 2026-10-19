@@ -905,6 +905,21 @@ func TestProcess(test *testing.T) {
 			want: "if f := __goslingTyped[ func() int ]( func() int { return 1 }); f() > 0 { }",
 		},
 		{
+			name: "grouped let",
+			src:  "let (\n\tretries = 3\n\tname: string\n\tlow, high: int = 1, 9\n\tparse: func(string) int = f\n)\n",
+			want: "var (\n\tretries = 3\n\tname string\n\tlow, high int = 1, 9\n\tparse func(string) int = f\n)\n",
+		},
+		{
+			name: "grouped let on one line",
+			src:  "let ( a = 1; b: string )",
+			want: "var ( a = 1; b string )",
+		},
+		{
+			name: "call to a function named let",
+			src:  "func f() {\n\tlet(a, b)\n}",
+			want: "func f() {\n\tlet(a, b)\n}",
+		},
+		{
 			name: "try as identifier",
 			src:  "try := 1\nx := try + 2",
 			want: "try := 1\nx := try + 2",
@@ -1099,6 +1114,9 @@ func TestProcessErrors(test *testing.T) {
 		{"question mark before space", "x := f()? .y", "the ? operator is not supported", len("x := f()")},
 		{"spread with missing comma", "m := M{...a\n}", "missing comma before newline in spread", len("m := M{...a")},
 		{"let without type or value", "func f() {\n\tlet x\n}", "let x needs a type or a value", len("func f() {\n\t")},
+		{"grouped let in a function", "func f() {\n\tlet (\n\t\ta = 1\n\t)\n}", "let ( ... ) is only supported at package level", len("func f() {\n\t")},
+		{"grouped let without type or value", "let (\n\ta = 1\n\tb\n)", "let b needs a type or a value", len("let (\n\ta = 1\n\t")},
+		{"grouped let with define", "let (\n\ta := 1\n)", "use let a = value, not :=", len("let (\n\t")},
 		{"let with keyword after name", "func f() {\n\tlet x := 1\n}", "use let x = value, not :=", len("func f() {\n\t")},
 		{"let destructuring at package level", "let {a} = p\n", "destructuring with let or const is only supported in functions", 0},
 		{"const destructuring with define", "func f() {\n\tconst {a} := p\n}", "use const {...} = value, not :=", len("func f() {\n\t")},

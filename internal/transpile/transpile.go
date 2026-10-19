@@ -307,8 +307,8 @@ func (transpiler *transpiler) reportGoDeclarations(input Input) {
 		case token.DEFINE:
 			transpiler.diagnostics.Add(golFile.positionAt(tokenFile.Offset(position)), "use let or const instead of :=")
 		case token.VAR:
-			// Package-level var stays allowed, because let has no grouped
-			// form.
+			// Package-level var stays allowed, so plain Go declarations
+			// keep working.
 			if braceDepth > 0 {
 				transpiler.diagnostics.Add(golFile.positionAt(tokenFile.Offset(position)), "use let instead of var in a function")
 			}
