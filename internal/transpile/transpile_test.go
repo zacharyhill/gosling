@@ -304,6 +304,11 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:5:3: the error from an optional call is not checked inside try; use an explicit nil check",
 		},
 		{
+			name: "parenthesized optional call returning error in try",
+			src:  "package p\nimport \"io\"\nfunc f(c io.Closer) {\n\ttry {\n\t\t(c?.Close())\n\t\tc.Close()\n\t} catch {\n\t}\n}",
+			want: "x.gol:5:3: the error from an optional call is not checked inside try; use an explicit nil check",
+		},
+		{
 			name: "arrow without parameter types or context",
 			src:  "package p\nfunc f() {\n\tlet g = x => x\n\t_ = g\n}",
 			want: "x.gol:3:10: cannot infer the parameter types of this arrow function; add types, as in (x int) => ...",

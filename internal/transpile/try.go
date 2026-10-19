@@ -317,7 +317,7 @@ func (lowerer *lowerer) checkableCall(stmt ast.Stmt) (callSite, int, bool) {
 	if !ok || (site.assign != nil && len(site.leftSide) != resultCount-1) {
 		return callSite{}, 0, false
 	}
-	if lowerer.optionalRoots[site.call] {
+	if lowerer.optionalRoots[ast.Unparen(site.call)] {
 		lowerer.checkedAssigns[site.assign] = true
 		lowerer.errorf(lowerer.file, stmt.Pos(), "the error from an optional call is not checked inside try; use an explicit nil check")
 		return callSite{}, 0, false

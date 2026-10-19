@@ -130,6 +130,21 @@ func closeIt(c io.Closer) {
 	}
 }
 
+func (p *Profile) Reset() { p.Name = "" }
+
+func resetParenthesized(user *User) {
+	if v := user; v != nil {
+		if v := v.Profile; v != nil {
+			v.Reset()
+		}
+	}
+	if v := user; v != nil {
+		if v := v.Profile; v != nil {
+			v.Reset()
+		}
+	}
+}
+
 func reader(r io.Reader, fallback io.Reader) io.Reader {
 	return func() io.Reader {
 		if v := r; v != nil {

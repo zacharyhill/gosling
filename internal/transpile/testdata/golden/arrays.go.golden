@@ -67,6 +67,12 @@ func printAll(names []string, out func(string)) {
 			f(x)
 		}
 	}
+	{
+		xs, f := names, func(n string) { out(n) }
+		for _, x := range xs {
+			f(x)
+		}
+	}
 }
 
 func lookup(users []User, id int) string {
