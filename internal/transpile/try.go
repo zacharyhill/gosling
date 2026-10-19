@@ -158,14 +158,16 @@ func (lowerer *lowerer) walkTryStatement(parts *tryStatement, binding string, ou
 	}
 }
 
+// catchPrologue ends in a semicolon, because user code can follow it on the
+// same line.
 func (lowerer *lowerer) catchPrologue(parts *tryStatement) string {
 	try := parts.context
 	isBindingUsed := lowerer.usesObject(parts.catchBody, lowerer.findBindingObject(parts))
 	switch {
 	case try.rebind != "" && isBindingUsed:
-		return "\n" + try.rebind + " := " + try.catchVar
+		return "\n" + try.rebind + " := " + try.catchVar + ";"
 	case try.needsDecl && !try.isCatchVarRead && !isBindingUsed:
-		return "\n_ = " + try.catchVar
+		return "\n_ = " + try.catchVar + ";"
 	}
 	return ""
 }
