@@ -1,0 +1,29 @@
+package regex
+
+import "strings"
+
+var word = /\w+/
+
+// isNumber reports whether s is a number.
+func isNumber(s string) bool {
+	return /^\d+$/.MatchString(strings.TrimSpace(s))
+}
+
+func split(s string) []string {
+	const sep = /\s*[,;\/]\s*/
+	return sep.Split(s, -1)
+}
+
+func ratio(a, b int) int {
+	return a / b / 2
+}
+
+var matchers = []func(string) bool{
+	(s string) => /^go/i.MatchString(s),
+}
+
+func greeting(s string) bool {
+	let re1 = 0
+	_ = re1
+	return /hello.world/is.MatchString(s)
+}

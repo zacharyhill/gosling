@@ -3,6 +3,8 @@ package lsp
 import (
 	"go/scanner"
 	"go/token"
+
+	"github.com/zacharyhill/gosling/internal/preprocess"
 )
 
 // golToken is a token of a .gol file. The scanner sees gosling syntax as Go
@@ -14,11 +16,11 @@ type golToken struct {
 }
 
 // scanGolTokens returns the tokens of a .gol file, without comments and
-// automatic semicolons.
+// automatic semicolons. A regex literal is one string token.
 func scanGolTokens(text []byte) []golToken {
 	tokenFile := token.NewFileSet().AddFile("", -1, len(text))
 	var golScanner scanner.Scanner
-	golScanner.Init(tokenFile, text, func(token.Position, string) {}, 0)
+	golScanner.Init(tokenFile, preprocess.MaskRegexes(text), func(token.Position, string) {}, 0)
 	var tokens []golToken
 	for {
 		tokenPosition, kind, literal := golScanner.Scan()

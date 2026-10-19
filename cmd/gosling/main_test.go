@@ -370,6 +370,26 @@ func TestImportsTransitiveTypes(test *testing.T) {
 	}
 }
 
+// TestRegexLiteralWithoutImport checks that gosling loads package regexp for
+// a regex literal, also when the file does not import it.
+func TestRegexLiteralWithoutImport(test *testing.T) {
+	if testing.Short() {
+		test.Skip("runs the go tool")
+	}
+	enterModule(test, map[string]string{
+		"go.mod":   goModFile,
+		"main.gol": "package main\n\nimport \"fmt\"\n\nfunc main() {\n\tfmt.Println(/^\\d+$/.MatchString(\"42\"))\n}\n",
+	})
+	var stderr bytes.Buffer
+	if code := run([]string{"."}, io.Discard, &stderr); code != 0 {
+		test.Fatalf("exit %d: %s", code, stderr.String())
+	}
+	output, err := exec.Command("go", "run", ".").CombinedOutput()
+	if err != nil || string(output) != "true\n" {
+		test.Fatalf("go run: %v\n%s", err, output)
+	}
+}
+
 func TestVersion(test *testing.T) {
 	for _, flagName := range []string{"-version", "--version"} {
 		var stdout, stderr bytes.Buffer

@@ -232,7 +232,7 @@ func ProcessReserving(src []byte, reservedNames map[string]bool) (*Result, error
 	return processor.result, nil
 }
 
-func tokenize(src []byte) []lexeme {
+func scanTokens(src []byte) []lexeme {
 	fileSet := token.NewFileSet()
 	tokenFile := fileSet.AddFile("", -1, len(src))
 	var sourceScanner scanner.Scanner
@@ -379,6 +379,8 @@ func (processor *processor) rewrite(tokenIndex int, pendingTry *int) (int, error
 		processor.replace(current.offset, current.end(), ",")
 	case isQuestion(current):
 		return processor.questionMark(tokenIndex)
+	case isRegex(current):
+		return tokenIndex, processor.rewriteRegex(current)
 	case current.is(token.TYPE):
 		return processor.union(tokenIndex)
 	case (current.isIdent("let") || current.is(token.CONST)) && (processor.atStmtStart(tokenIndex) || processor.inHeader(tokenIndex)):

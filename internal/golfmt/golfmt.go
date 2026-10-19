@@ -44,7 +44,8 @@ func Edits(src []byte) ([]Edit, error) {
 	if err != nil {
 		return nil, mapSourceError(src, preprocessed, err)
 	}
-	layout := newLayout(src)
+	// A regex literal is one token. Its text keeps its space.
+	layout := newLayout(preprocess.MaskRegexes(src))
 	layout.copyGaps(newGofmtResult(preprocessed, formatted))
 	layout.cleanKeptGaps()
 	layout.alignComments(formatted)
@@ -151,7 +152,7 @@ func findTokenEnd(src []byte, start int, kind token.Token, literal string) int {
 // sameTokens reports whether formatted has the tokens of src, and whether
 // both preprocess to the same tokens.
 func sameTokens(src []byte, preprocessed *preprocess.Result, formatted []byte) bool {
-	if !equalTokens(scanTokens(src, true), scanTokens(formatted, true)) {
+	if !equalTokens(scanTokens(preprocess.MaskRegexes(src), true), scanTokens(preprocess.MaskRegexes(formatted), true)) {
 		return false
 	}
 	reprocessed, err := preprocess.Process(formatted)

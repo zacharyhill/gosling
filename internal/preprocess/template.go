@@ -179,22 +179,23 @@ func buildFormatWrapper(spec string, hasSpec bool, specOffset int) (string, stri
 // findFormatSpec finds a format spec, as in ${price:.2f}, in the
 // interpolation content[from:to]. Go expressions have a colon only inside
 // brackets, and each ternary ? takes one colon. So the spec starts at the
-// first other colon outside brackets and quotes. It returns the end of the
-// value and the spec without spaces.
+// first other colon outside brackets, quotes, and regex literals. It
+// returns the end of the value and the spec without spaces.
 func findFormatSpec(content string, from, to int) (int, string) {
+	masked := content[:from] + string(MaskRegexes([]byte(content[from:to])))
 	depth, openTernaries := 0, 0
 	for charIndex := from; charIndex < to; charIndex++ {
-		switch content[charIndex] {
+		switch masked[charIndex] {
 		case '{', '(', '[':
 			depth++
 		case '}', ')', ']':
 			depth--
 		case '"', '\'':
-			if end, ok := quoteEnd(content, charIndex); ok {
+			if end, ok := quoteEnd(masked, charIndex); ok {
 				charIndex = end
 			}
 		case '?':
-			if charIndex+1 < to && (content[charIndex+1] == '?' || content[charIndex+1] == '.') {
+			if charIndex+1 < to && (masked[charIndex+1] == '?' || masked[charIndex+1] == '.') {
 				charIndex++
 			} else if depth == 0 {
 				openTernaries++

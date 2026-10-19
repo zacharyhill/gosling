@@ -210,3 +210,18 @@ test("destructuring declarations", () => {
   assertScope(inFunctionBody("\tlet [first, ...rest] = xs"), "let", "keyword.let.gol");
   assertScope(inFunctionBody("\tlet [first, ...rest] = xs"), "...", "keyword.operator");
 });
+
+test("regex literals", () => {
+  const source = inFunctionBody("\tok := /^\\d+[/]$/i.MatchString(s)");
+  assertScope(source, "/", "punctuation.definition.string.begin.regexp.gol");
+  assertScope(source, "^\\d+[/]$", "string.regexp.gol");
+  assertScope(source, "i", "keyword.other.regexp-flags.gol");
+  assertScope(inFunctionBody("\treturn /a b/"), "a b", "string.regexp.gol");
+  assertScope(inFunctionBody("\tf(s => /x/.MatchString(s))"), "x", "string.regexp.gol");
+});
+
+test("division is not a regex literal", () => {
+  assertNoScope(inFunctionBody("\tn := a / b / c"), "b", "string.regexp");
+  assertNoScope(inFunctionBody("\tn := f(x) / 2 / y"), "2", "string.regexp");
+  assertNoScope(inFunctionBody("\tn := 1 /* c */ + 2"), "/*", "string.regexp");
+});

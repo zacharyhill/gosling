@@ -68,6 +68,11 @@ func TestSource(test *testing.T) {
 			want: "package p\n\nfunc f(c Config, xs []int) {\n\tconst {\n\t\tName: name,\n\t\tPort,\n\t} = c\n\tlet [\n\t\tfirst,\n\t\t...rest\n\t] = xs\n\tprintln(name, Port, first, rest)\n}\n",
 		},
 		{
+			name: "regex literals keep their text",
+			src:  "package p\n\nfunc f(s string) bool {\nreturn /a  b\"/.MatchString(s)&&  /x/i.MatchString(s)\n}\n",
+			want: "package p\n\nfunc f(s string) bool {\n\treturn /a  b\"/.MatchString(s) && /x/i.MatchString(s)\n}\n",
+		},
+		{
 			name: "nullish assignment",
 			src:  "package p\n\nfunc f(p *int, q *int) {\np ??= q\n}\n",
 			want: "package p\n\nfunc f(p *int, q *int) {\n\tp ??= q\n}\n",
