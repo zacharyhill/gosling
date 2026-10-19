@@ -287,6 +287,8 @@ To highlight `.gol` files, add the VS Code extension folder as a TextMate bundle
 
 ## Language
 
+For the full syntax, with rules and error messages for each feature, see the [syntax guide](docs/syntax.md).
+
 ### try / catch
 
 In a try block, gosling checks each call whose last result is `error`. A failure jumps to the catch block.
