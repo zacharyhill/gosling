@@ -1754,3 +1754,24 @@ func TestTightControlFlow(test *testing.T) {
 		}
 	}
 }
+
+func TestParseErrors(test *testing.T) {
+	valid := "package p\n\nfunc f() int {\n\tlet x = 1\n\treturn x\n}\n"
+	if err := FindParseErrors(Input{Path: "p.gol", Src: []byte(valid)}); err != nil {
+		test.Errorf("valid file: %v", err)
+	}
+	for _, testCase := range []struct {
+		src  string
+		line int
+	}{
+		{"package p\n\nfunc f() int {\n\tlet x = \n}\n", 5},
+		{"package p\n\nfunc f() {\n\tx := 1\n\t_ = x\n}\n", 4},
+		{"package p\n\nfunc f() {\n\ttry {\n\t}\n}\n", 5},
+	} {
+		err := FindParseErrors(Input{Path: "p.gol", Src: []byte(testCase.src)})
+		var errorList scanner.ErrorList
+		if !errors.As(err, &errorList) || errorList[0].Pos.Filename != "p.gol" || errorList[0].Pos.Line != testCase.line {
+			test.Errorf("FindParseErrors(%q) = %v, want an error on line %d", testCase.src, err, testCase.line)
+		}
+	}
+}

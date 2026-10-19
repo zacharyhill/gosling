@@ -198,6 +198,18 @@ func Transpile(config Config, inputs []Input) ([]Output, error) {
 	return outputs, nil
 }
 
+// FindParseErrors returns the errors in one .gol file that stop Transpile before
+// type checking, such as syntax errors. These errors stop the whole package,
+// also with KeepGoing.
+func FindParseErrors(input Input) error {
+	session := &transpiler{fileSet: token.NewFileSet()}
+	if err := session.parseInput(input); err != nil {
+		return err
+	}
+	session.diagnostics.Sort()
+	return session.diagnostics.Err()
+}
+
 // lowerAndEmit converts one file. It reports false if lowering found errors
 // in the file. With KeepGoing, an emit failure or a panic also skips the
 // file. Type errors can leave nodes that lowering does not expect.

@@ -230,7 +230,7 @@ To highlight `.gol` files, add the VS Code extension folder as a TextMate bundle
 - A rename can change a name that gosling copies into generated code, such as a catch variable, an arrow parameter, or a destructured name. The server then transpiles the renamed files and compares the result with the rename in Go. If they differ, the rename fails, because a partial rename would break the code. For example, a rename of the field `X` fails if `const {X} = p` uses it.
 - A rename in a file that changed after a syntax error fails if the name occurs in generated code.
 - Formatting is not supported. It would change generated code.
-- After a syntax error, the server keeps the last version that parsed. Lines that changed since that version get no results until the file parses again. Type errors do not have this problem.
+- After a syntax error, the server uses the last version that parsed, with the changed lines that still parse. The lines that do not parse get no results until the file parses again. Type errors do not have this problem.
 
 ## Language
 
