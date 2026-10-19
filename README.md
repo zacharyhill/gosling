@@ -852,6 +852,7 @@ const p2 = Point{...p, X: 5} // func() Point { v := p; v.X = 5; return v }()
 
 - Shorthand applies only if a positional literal is not valid. So `Point{y, x}` sets `X` to `y`, as in Go.
 - A slice spread always makes a new slice. It needs Go 1.22.
+- In a slice spread, untyped constants get the element type of the spread slices. So `[...int64s, 1]` is a `[]int64`.
 - In a struct spread, the spread comes first. Name all fields after it. For a pointer, write `...*p`.
 - `&Point{...p, X: 5}` gives a pointer to the new value.
 
@@ -881,7 +882,6 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - VS Code highlights the name in `name: type` parameters as a type.
 - An arrow cannot get a type from the context if a local declaration hides the name of that type. Rename the local declaration.
 - Only a package-level `const` with one name can hold a generic arrow. Go function literals cannot have type parameters.
-- In a slice spread, untyped constants get their default type. Write `int64(1)`, not `1`, in `[...int64s, 1]`.
 - gosling ignores build constraints in `.gol` files.
 
 ## How it works

@@ -1,5 +1,7 @@
 package spread
 
+import "time"
+
 type User struct {
 	name string
 	age  int
@@ -70,4 +72,10 @@ func spreadAfterComment(p Point) Point {
 		...p,
 		Y: 1,
 	}
+}
+
+type ID int64
+
+func typedConstants(ids []ID, waits []time.Duration) ([]ID, []time.Duration) {
+	return [...ids, 1, ...ids, 2], [...waits, 5, time.Second]
 }
