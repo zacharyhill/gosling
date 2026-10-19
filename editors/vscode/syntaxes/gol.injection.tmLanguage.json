@@ -34,12 +34,15 @@
   "repository": {
     "template": {
       "name": "string.template.gol",
-      "begin": "\\b(t)(`)",
+      "begin": "\\b(?:(t)|(\\w+))(`)",
       "beginCaptures": {
         "1": {
           "name": "storage.type.template.gol"
         },
         "2": {
+          "name": "entity.name.function.tag.gol"
+        },
+        "3": {
           "name": "punctuation.definition.string.template.begin.gol"
         }
       },

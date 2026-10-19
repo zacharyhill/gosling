@@ -126,6 +126,13 @@ test("template literals", () => {
   assertScope(source, "`", "punctuation.definition.string.template.end.gol", 1);
 });
 
+test("tagged template literals", () => {
+  const source = inFunctionBody("\tq := db.SQL`select ${id}`");
+  assertScope(source, "SQL", "entity.name.function.tag.gol");
+  assertScope(source, "select", "string.template.gol");
+  assertScope(source, "id", "meta.template.expression.gol");
+});
+
 test("template literal escapes", () => {
   assertScope(inFunctionBody("\ts := t`a\\tb \\${x}`"), "\\t", "constant.character.escape.gol");
   assertScope(inFunctionBody("\ts := t`a\\tb \\${x}`"), "\\$", "constant.character.escape.gol");

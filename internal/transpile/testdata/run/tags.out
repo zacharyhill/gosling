@@ -1,0 +1,6 @@
+"select * from users where id = $1 and age > $2" [1; drop table users 30]
+A | B |x,y
+MULTI
+LINE A |
+ENDz
+built-in 1; drop table users

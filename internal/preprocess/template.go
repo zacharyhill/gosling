@@ -3,6 +3,7 @@ package preprocess
 import (
 	"bytes"
 	"fmt"
+	"go/token"
 	"regexp"
 	"strconv"
 	"strings"
@@ -10,16 +11,24 @@ import (
 	"unicode/utf8"
 )
 
-// template rewrites t`text ${expr} text` into a TMarker call. Text pieces
-// stay raw strings with their escapes, so newlines do not change. The
-// transpiler decodes the escapes. The rewrite does not move expression text,
-// so its offsets map back to the source.
-func (processor *processor) template(tag, literal lexeme) error {
+// interpolation holds the source offsets of the value in a ${value} or a
+// ${value:spec}, and the spec.
+type interpolation struct {
+	start, end int
+	spec       string
+	hasSpec    bool
+	specOffset int
+}
+
+// splitTemplate splits a template literal into its raw text pieces and the
+// interpolations between them. It returns one more piece than
+// interpolations.
+func (processor *processor) splitTemplate(literal lexeme) ([]string, []interpolation, error) {
 	content := literal.text[1 : len(literal.text)-1]
 	contentStart := literal.offset + 1
+	var pieces []string
+	var interpolations []interpolation
 	var text strings.Builder
-	prefix := TMarker + "("
-	replaceFrom := tag.offset
 	for charIndex := 0; charIndex < len(content); {
 		switch {
 		case content[charIndex] == '\\' && charIndex+1 < len(content) && processor.src[contentStart+charIndex+1] == '`':
@@ -32,31 +41,123 @@ func (processor *processor) template(tag, literal lexeme) error {
 			exprStart := charIndex + len("${")
 			exprEnd, ok := exprExtent(content, exprStart)
 			if !ok {
-				return &Error{contentStart + charIndex, "unterminated ${ in template literal"}
+				return nil, nil, &Error{contentStart + charIndex, "unterminated ${ in template literal"}
 			}
 			valueEnd, spec := findFormatSpec(content, exprStart, exprEnd)
 			if strings.TrimSpace(content[exprStart:valueEnd]) == "" {
-				return &Error{contentStart + charIndex, "empty ${} in template literal"}
+				return nil, nil, &Error{contentStart + charIndex, "empty ${} in template literal"}
 			}
-			valuePrefix, valueSuffix, err := buildFormatWrapper(spec, valueEnd < exprEnd, contentStart+valueEnd)
-			if err != nil {
-				return err
-			}
-			processor.replace(replaceFrom, contentStart+exprStart, prefix+"`"+text.String()+"`, "+valuePrefix)
-			if err := processor.rewriteInterpolation(contentStart+exprStart, contentStart+valueEnd); err != nil {
-				return err
-			}
+			pieces = append(pieces, text.String())
+			interpolations = append(interpolations, interpolation{
+				start: contentStart + exprStart, end: contentStart + valueEnd,
+				spec: spec, hasSpec: valueEnd < exprEnd, specOffset: contentStart + valueEnd,
+			})
 			text.Reset()
-			prefix = valueSuffix + ", "
-			replaceFrom = contentStart + valueEnd
 			charIndex = exprEnd + len("}")
 		default:
 			text.WriteByte(content[charIndex])
 			charIndex++
 		}
 	}
-	processor.replace(replaceFrom, literal.end(), prefix+"`"+text.String()+"`)")
+	return append(pieces, text.String()), interpolations, nil
+}
+
+// template rewrites t`text ${expr} text` into a TMarker call. Text pieces
+// stay raw strings with their escapes, so newlines do not change. The
+// transpiler decodes the escapes. The rewrite does not move expression text,
+// so its offsets map back to the source.
+func (processor *processor) template(tag, literal lexeme) error {
+	pieces, interpolations, err := processor.splitTemplate(literal)
+	if err != nil {
+		return err
+	}
+	prefix, replaceFrom := TMarker+"(", tag.offset
+	for pieceIndex, interpolated := range interpolations {
+		valuePrefix, valueSuffix, err := buildFormatWrapper(interpolated.spec, interpolated.hasSpec, interpolated.specOffset)
+		if err != nil {
+			return err
+		}
+		processor.replace(replaceFrom, interpolated.start, prefix+"`"+pieces[pieceIndex]+"`, "+valuePrefix)
+		if err := processor.rewriteInterpolation(interpolated.start, interpolated.end); err != nil {
+			return err
+		}
+		prefix, replaceFrom = valueSuffix+", ", interpolated.end
+	}
+	processor.replace(replaceFrom, literal.end(), prefix+"`"+pieces[len(pieces)-1]+"`)")
 	return nil
+}
+
+// rewriteTaggedTemplate rewrites tag`a ${x} b` into
+// tag([]string{"a ", " b"}, x). It decodes the escapes, so the strings have
+// no raw newlines. The newlines of each piece go between the arguments, so
+// lines do not change.
+func (processor *processor) rewriteTaggedTemplate(literal lexeme) error {
+	pieces, interpolations, err := processor.splitTemplate(literal)
+	if err != nil {
+		return err
+	}
+	quoted := make([]string, len(pieces))
+	for pieceIndex, piece := range pieces {
+		quoted[pieceIndex] = strconv.Quote(Unescape(piece))
+	}
+	prefix, replaceFrom := "([]string{"+strings.Join(quoted, ", ")+"}", literal.offset
+	for pieceIndex, interpolated := range interpolations {
+		if interpolated.hasSpec {
+			return &Error{interpolated.specOffset, "a tagged template cannot have a format; use t`...`"}
+		}
+		// One newline stays, so a line directive before the value follows
+		// a newline. gofmt moves a directive that follows a comma.
+		paddingLines, keptNewline := extractNewlines(pieces[pieceIndex]), ""
+		if paddingLines != "" {
+			paddingLines, keptNewline = paddingLines[1:], "\n"
+		}
+		processor.replacePadded(replaceFrom, interpolated.start, prefix+", "+keptNewline, paddingLines, "")
+		if err := processor.rewriteInterpolation(interpolated.start, interpolated.end); err != nil {
+			return err
+		}
+		prefix, replaceFrom = "", interpolated.end
+	}
+	lastPaddingLines := extractNewlines(pieces[len(pieces)-1])
+	if lastPaddingLines != "" {
+		lastPaddingLines = "," + lastPaddingLines // the comma stops a semicolon at the newline
+	}
+	processor.replacePadded(replaceFrom, literal.end(), prefix, lastPaddingLines, ")")
+	return nil
+}
+
+// replacePadded replaces src[start:end] with before+padding+after. The output
+// drops the padding newlines.
+func (processor *processor) replacePadded(start, end int, before, padding, after string) {
+	newStart := processor.replace(start, end, before+padding+after)
+	processor.recordNewlines(newStart+len(before), padding)
+}
+
+// extractNewlines returns only the newlines of text.
+func extractNewlines(text string) string {
+	return strings.Repeat("\n", strings.Count(text, "\n"))
+}
+
+// isGoRawString reports whether the raw string after the name at token
+// nameIndex is plain Go: a struct field tag or an import path.
+func (processor *processor) isGoRawString(nameIndex int) bool {
+	if nameIndex > 0 && processor.tokens[nameIndex-1].is(token.IMPORT) {
+		return true
+	}
+	depth := 0
+	for openIndex := nameIndex - 1; openIndex > 0; openIndex-- {
+		switch processor.tokens[openIndex].kind {
+		case token.RPAREN, token.RBRACK, token.RBRACE:
+			depth++
+		case token.LPAREN, token.LBRACK, token.LBRACE:
+			if depth > 0 {
+				depth--
+				continue
+			}
+			tokenBeforeOpen := processor.tokens[openIndex-1]
+			return tokenBeforeOpen.is(token.STRUCT) || tokenBeforeOpen.is(token.IMPORT)
+		}
+	}
+	return false
 }
 
 // formatSpecRE matches a printf verb without the %, with optional flags,
@@ -221,4 +322,59 @@ func isTemplateStart(src []byte, offset int) bool {
 	}
 	byteBeforeTag := src[offset-2]
 	return byteBeforeTag != '_' && byteBeforeTag < utf8.RuneSelf && !unicode.IsLetter(rune(byteBeforeTag)) && !unicode.IsDigit(rune(byteBeforeTag))
+}
+
+var simpleEscapes = map[byte]string{
+	'n': "\n", 't': "\t", 'r': "\r", 'b': "\b", 'f': "\f", 'v': "\v", '0': "\x00",
+	'\n': "", // a backslash before a newline continues the line
+}
+
+// Unescape decodes the escapes in a raw text piece of a template literal, as
+// JavaScript decodes them.
+func Unescape(raw string) string {
+	var decoded strings.Builder
+	for byteIndex := 0; byteIndex < len(raw); byteIndex++ {
+		if raw[byteIndex] != '\\' || byteIndex+1 == len(raw) {
+			decoded.WriteByte(raw[byteIndex])
+			continue
+		}
+		byteIndex++
+		if text, ok := simpleEscapes[raw[byteIndex]]; ok {
+			decoded.WriteString(text)
+			continue
+		}
+		if decodedRune, consumed, ok := hexEscape(raw[byteIndex:]); ok {
+			decoded.WriteRune(decodedRune)
+			byteIndex += consumed - 1
+			continue
+		}
+		decoded.WriteByte(raw[byteIndex]) // \\, \$, \", and unknown escapes give the character itself
+	}
+	return decoded.String()
+}
+
+// hexEscape decodes xHH, uHHHH, or u{H...} at the start of escapeText. It
+// returns the rune and the number of bytes used.
+func hexEscape(escapeText string) (rune, int, bool) {
+	var digits string
+	var consumed int
+	switch {
+	case strings.HasPrefix(escapeText, "u{"):
+		end := strings.IndexByte(escapeText, '}')
+		if end < 0 {
+			return 0, 0, false
+		}
+		digits, consumed = escapeText[2:end], end+1
+	case escapeText[0] == 'u' && len(escapeText) >= 5:
+		digits, consumed = escapeText[1:5], 5
+	case escapeText[0] == 'x' && len(escapeText) >= 3:
+		digits, consumed = escapeText[1:3], 3
+	default:
+		return 0, 0, false
+	}
+	codePoint, err := strconv.ParseUint(digits, 16, 32)
+	if err != nil || codePoint > unicode.MaxRune {
+		return 0, 0, false
+	}
+	return rune(codePoint), consumed, true
 }

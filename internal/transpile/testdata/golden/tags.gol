@@ -1,0 +1,20 @@
+package tags
+
+type Query struct {
+	Text string
+	Args []any
+}
+
+func sql(parts []string, values ...any) Query {
+	return Query{parts[0], values}
+}
+
+func byID(id int, name string) Query {
+	return sql`select * from users where id = ${id} and name = ${name}`
+}
+
+func multiline(id int) Query {
+	return sql`select *
+from users
+where id = ${id}`
+}

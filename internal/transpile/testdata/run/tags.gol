@@ -1,0 +1,35 @@
+package main
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+type Query struct {
+	Text string
+	Args []any
+}
+
+func sql(parts []string, values ...any) Query {
+	let text = parts[0]
+	for (let i = 1; i < len(parts); i++) {
+		text += "$" + strconv.Itoa(i) + parts[i]
+	}
+	return Query{text, values}
+}
+
+func upper(parts []string, values ...string) string {
+	return strings.ToUpper(strings.Join(parts, "|")) + strings.Join(values, ",")
+}
+
+func main() {
+	let id = "1; drop table users"
+	let q = sql`select * from users where id = ${id} and age > ${30}`
+	fmt.Printf("%q %v\n", q.Text, q.Args)
+	fmt.Println(upper`a ${"x"} b ${"y"}`)
+	fmt.Println(upper`multi
+line \u{41} ${"z"}
+end`)
+	fmt.Println(t`built-in ${id}`)
+}
