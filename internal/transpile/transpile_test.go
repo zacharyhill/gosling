@@ -738,6 +738,35 @@ func main() {
 	panic(name)
 }
 `
+	expectPanicAt(test, src, "prog.gol:17")
+}
+
+// TestLineDirectivesAfterMultilineUnion checks that a union written over
+// several lines does not shift the lines after it.
+func TestLineDirectivesAfterMultilineUnion(test *testing.T) {
+	if testing.Short() {
+		test.Skip("runs the go tool")
+	}
+	src := `package main
+
+type A struct{}
+type B struct{}
+
+type U = A |
+	B
+
+func main() {
+	let u: U = A{}
+	panic(u)
+}
+`
+	expectPanicAt(test, src, "prog.gol:11")
+}
+
+// expectPanicAt runs src as prog.gol and checks that its stack trace
+// contains location.
+func expectPanicAt(test *testing.T, src, location string) {
+	test.Helper()
 	outputs, err := Transpile(Config{Importer: importer.Default(), LineDirectives: true}, []Input{{Path: "prog.gol", Src: []byte(src)}})
 	if err != nil {
 		test.Fatal(err)
@@ -751,8 +780,8 @@ func main() {
 	if err == nil {
 		test.Fatalf("expected panic, got none:\n%s", outputs[0].Src)
 	}
-	if !strings.Contains(string(got), "prog.gol:17") {
-		test.Errorf("stack trace does not point at prog.gol:17:\n%s\ngenerated:\n%s", got, outputs[0].Src)
+	if !strings.Contains(string(got), location) {
+		test.Errorf("stack trace does not point at %s:\n%s\ngenerated:\n%s", location, got, outputs[0].Src)
 	}
 }
 

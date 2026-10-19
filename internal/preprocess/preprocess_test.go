@@ -198,6 +198,20 @@ func TestProcess(test *testing.T) {
 			}},
 		},
 		{
+			name: "multi-line union keeps line count",
+			src:  "type Shape = Circle |\n\t*Square\nvar x int",
+			want: "type Shape interface{ isShape() }; func (Circle) isShape() {}; func (*Square) isShape() {}; func __goslingVariants_Shape(Circle, *Square) {}\n\nvar x int",
+			splits: []int{
+				len("type Shape interface{ isShape() }"),
+				len("type Shape interface{ isShape() }; func (Circle) isShape() {}"),
+			},
+			unions: []Union{{
+				Name:        "Shape",
+				MarkerStart: len("type Shape interface{ isShape() }; func (Circle) isShape() {}; func (*Square) isShape() {}"),
+				MarkerEnd:   len("type Shape interface{ isShape() }; func (Circle) isShape() {}; func (*Square) isShape() {}; func __goslingVariants_Shape(Circle, *Square) {}\n"),
+			}},
+		},
+		{
 			name: "plain alias untouched",
 			src:  "type ID = string\n",
 			want: "type ID = string\n",
