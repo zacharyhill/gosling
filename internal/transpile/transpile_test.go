@@ -439,6 +439,16 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:6:16: strconv.Atoi returns an error that is not checked here; assign the error, or move the call into its own statement in a try block",
 		},
 		{
+			name: "assignment to a const type switch binding after an init statement",
+			src:  "package p\nfunc f(v any) {\n\tswitch let w = v; const s = w.(type) {\n\tcase int:\n\t\ts = 2\n\t\tprintln(s)\n\t}\n}",
+			want: "x.gol:5:3: cannot assign to s: declared with const",
+		},
+		{
+			name: "missing union case in a type switch with an init statement",
+			src:  "package p\ntype A struct{}\ntype B struct{}\ntype U = A | B\nfunc f(u U) {\n\tswitch let w = u; const s = w.(type) {\n\tcase A:\n\t\tprintln(s)\n\t}\n}",
+			want: "switch on U is missing cases: B",
+		},
+		{
 			name: "positional field in struct spread",
 			src:  "package p\ntype P struct{ X, Y int }\nfunc f(p P) P {\n\treturn P{...p, 1}\n}",
 			want: "x.gol:4:17: fields after a struct spread must be named",
