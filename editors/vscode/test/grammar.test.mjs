@@ -166,6 +166,14 @@ test("arrow functions", () => {
   assertScope(inFunctionBody("\tsort.Slice(xs, (i, j) => xs[i] < xs[j])"), "=>", "storage.type.function.arrow.gol");
 });
 
+test("generators and yield", () => {
+  const source = "package p\n\nfunc* walk(t *Tree) iter.Seq[int] {\n\tyield t.Value\n\tyield* walk(t.Left)\n}";
+  assertScope(source, "*", "keyword.generator.asterisk.gol");
+  assertScope(source, "yield", "keyword.control.flow.yield.gol");
+  assertScope(source, "yield", "keyword.control.flow.yield.gol", 1);
+  assertNoScope(inFunctionBody("\tyieldCount := 1"), "yieldCount", "keyword");
+});
+
 test("optional chaining and nullish coalescing", () => {
   const source = inFunctionBody('\tname := user?.Profile?.Name ?? "anon"');
   assertScope(source, "?.", "punctuation.accessor.optional.gol");

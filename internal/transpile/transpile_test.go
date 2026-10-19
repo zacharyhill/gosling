@@ -1024,6 +1024,11 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:2:8: write name: type for every parameter",
 		},
 		{
+			name: "yield in a function literal inside a generator",
+			src:  "package p\nimport \"iter\"\nfunc* g() iter.Seq[int] {\n\tfunc() {\n\t\tyield 1\n\t}()\n}",
+			want: "x.gol:5:3: yield must be directly in a generator body, not in a nested function",
+		},
+		{
 			name: "parse error positions map to source",
 			src:  "package p\nfunc f() {\n\ttry { let x = } catch (e) {}\n}",
 			want: "x.gol:3:16: expected operand",

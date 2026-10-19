@@ -1284,6 +1284,31 @@ func TestProcess(test *testing.T) {
 			src:  "func f() {\n\timpl := 1\n\t_ = impl\n}",
 			want: "func f() {\n\timpl := 1\n\t_ = impl\n}",
 		},
+		{
+			name: "generator",
+			src:  "func* g() iter.Seq[int] {\n\tyield 1\n\tyield *p\n}",
+			want: "func g() iter.Seq[int] { return func(yield func(int) bool) {\n\tif !yield(1) { return }\n\tif !yield(*p) { return }\n}}",
+		},
+		{
+			name: "generator method with pairs and delegation",
+			src:  "func* (t *T) All() iter.Seq2[string, int] { yield* t.inner(); yield t.key, f(t.val) }",
+			want: "func (t *T) All() iter.Seq2[string, int] { return func(yield func(string, int) bool) { for k, v := range t.inner() { if !yield(k, v) { return } }; if !yield(t.key, f(t.val)) { return } }}",
+		},
+		{
+			name: "generator literal",
+			src:  "g := func*() iter.Seq[int] { yield x => x }",
+			want: "g := func() iter.Seq[int] { return func(yield func(int) bool) { if !yield(func(x __goslingU) __goslingR { return x }) { return } }}",
+		},
+		{
+			name: "ternary in a yield",
+			src:  "func* g() iter.Seq[int] { yield c ? 1 : 2; yield* c ? a : b }",
+			want: "func g() iter.Seq[int] { return func(yield func(int) bool) { if !yield(__goslingQ(c , 1 , 2)) { return }; for v := range __goslingQ(c , a , b) { if !yield(v) { return } } }}",
+		},
+		{
+			name: "yield as identifier outside a generator",
+			src:  "func f() {\n\tyield := 1\n\tyield(2)\n}",
+			want: "func f() {\n\tyield := 1\n\tyield(2)\n}",
+		},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {
@@ -1449,6 +1474,9 @@ func TestProcessErrors(test *testing.T) {
 		{"generic implements", "impl Stack[T] implements Pusher {\n}", "a generic impl block cannot use implements", 0},
 		{"impl without block", "impl User\n", "expected { after impl User", 0},
 		{"unclosed impl", "impl User {\n\tfunc A() {}\n", "impl block is not closed", len("impl User ")},
+		{"generator without an iterator result", "func* g() []int {\n}", "a generator must return iter.Seq[T] or iter.Seq2[K, V]", 0},
+		{"generator without a body", "func* g() iter.Seq[int]\n", "a generator needs a body", 0},
+		{"yield without a value", "func* g() iter.Seq[int] {\n\tyield\n}", "yield needs a value", len("func* g() iter.Seq[int] {\n\t")},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {

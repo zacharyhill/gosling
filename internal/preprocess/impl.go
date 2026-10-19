@@ -160,7 +160,7 @@ func (processor *processor) findMemberEnd(tokenIndex, limit int) (int, int) {
 func (processor *processor) recordImplMember(block *implBlock, tokenIndex, body int, isGeneric bool) error {
 	member, next := processor.tokens[tokenIndex], processor.tokenAt(tokenIndex+1)
 	switch {
-	case member.is(token.FUNC) && next.is(token.IDENT):
+	case member.is(token.FUNC) && next.is(token.IDENT), processor.isGeneratorKeyword(tokenIndex) && processor.tokenAt(tokenIndex+2).is(token.IDENT):
 		block.funcKeywordIndexes[tokenIndex] = true
 	case member.is(token.FUNC) && next.is(token.LPAREN):
 		return &Error{member.offset, "a method in an impl block cannot have a receiver; use this in its body"}

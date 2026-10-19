@@ -43,6 +43,7 @@ Features:
 - Optional struct fields: `Host? string`
 - Default and optional parameters: `func Dial(addr: string, timeout: time.Duration = 5*time.Second, port?: int)`
 - Method blocks: `impl User { func Greet() string { ... } }`
+- Generators: `func* walk(t: *Tree): iter.Seq[int] { yield t.Value }`
 
 ## Why
 
@@ -681,6 +682,8 @@ for (const [k, v] of pairs) {         // for _, tmp := range pairs { k, v := tmp
 
 A pattern in a `for...in` loop is an error. To read the keys and values of a map, use `for const k, v = range m`.
 
+If `xs` is an `iter.Seq`, `for (const x of xs)` becomes `for x := range xs`. For an `iter.Seq2`, `x` gets the second value. To get both values, write `for const k, v = range seq`.
+
 `for (let i = 0; i < n; i++)` becomes `for i := 0; i < n; i++`.
 
 ### Optional chaining, ??, and ??=
@@ -1233,6 +1236,51 @@ func (this *User) String() string { return this.Name }
 - `impl Stack[T]` works for generic types. A generic block cannot have a constructor or `implements`.
 - There is no `extends`. Embed a type in the struct instead, as in Go. This is composition, not inheritance. The methods of the embedded type get the embedded value, not the outer value.
 
+### Generators
+
+A function declared with `func*` is a generator. It returns a Go 1.23 iterator. Each `yield` statement gives one value to the loop that uses the iterator:
+
+```go
+func* walk(t *Tree) iter.Seq[int] {
+	if t == nil {
+		return
+	}
+	yield* walk(t.Left)
+	yield t.Value
+	yield* walk(t.Right)
+}
+```
+
+becomes:
+
+```go
+func walk(t *Tree) iter.Seq[int] {
+	return func(yield func(int) bool) {
+		if t == nil {
+			return
+		}
+		for v := range walk(t.Left) {
+			if !yield(v) {
+				return
+			}
+		}
+		if !yield(t.Value) {
+			return
+		}
+		...
+	}
+}
+```
+
+- The result type must be `iter.Seq[T]` or `iter.Seq2[K, V]`, written with the package name `iter`.
+- For `iter.Seq2`, write `yield k, v`.
+- `yield* seq` gives each value of another iterator of the same kind.
+- `return` with no value ends the generator.
+- If the loop stops early, the generator stops at its current `yield`. `finally` blocks and deferred calls in the generator then run.
+- Methods and function literals can also be generators: `func* (t *Tree) All() iter.Seq[int]`, `func*() iter.Seq[int] { ... }`.
+- A generator can use `name: type` parameters, destructured parameters, and default values. A method in an `impl` block can be a generator.
+- In a generator, a statement that starts with `yield` is a yield statement. `yield *p` gives the value that `p` points to. `yield* p` delegates to `p`.
+
 ### Imports and generated names
 
 gosling adds the imports that the output needs. If the package name is already in use in the file, gosling reports an error. If another file of the package declares the name, the import gets an alias, such as `fmtpkg`.
@@ -1265,6 +1313,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - In a template literal, a regex literal cannot contain `}`.
 - Default values are not supported in generic functions, variadic functions, function literals, arrow functions, and interface methods.
 - A default value must be plain Go. It cannot use gosling syntax, such as a template literal.
+- A `yield` statement must be directly in a generator body, not in a function literal in it. Arrow functions cannot be generators.
 
 ## How it works
 

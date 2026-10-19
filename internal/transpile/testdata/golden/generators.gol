@@ -1,0 +1,56 @@
+package generators
+
+import (
+	"iter"
+	"strconv"
+)
+
+type Tree struct {
+	Left, Right *Tree
+	Value       int
+}
+
+func* walk(tree *Tree) iter.Seq[int] {
+	if tree == nil {
+		return
+	}
+	yield* walk(tree.Left)
+	yield tree.Value
+	yield* walk(tree.Right)
+}
+
+func* (tree *Tree) Labels() iter.Seq2[int, string] {
+	let index = 0
+	for (const value of walk(tree)) {
+		yield index, t`node ${value}`
+		index++
+	}
+}
+
+func* filter[T any](seq iter.Seq[T], keep func(T) bool) iter.Seq[T] {
+	for (const x of seq) {
+		if keep(x) {
+			yield x
+		}
+	}
+}
+
+func* parse(lines []string) iter.Seq2[int, error] {
+	for (const line of lines) {
+		try {
+			yield strconv.Atoi(line), nil
+		} catch (e) {
+			yield 0, e
+			return
+		}
+	}
+}
+
+func count(limit int) iter.Seq[int] {
+	const numbers = func*() iter.Seq[int] {
+		for (let i = 0; i < limit; i++) {
+			yield i
+		}
+	}
+	return filter(numbers(), n => n%2 == 0)
+}
