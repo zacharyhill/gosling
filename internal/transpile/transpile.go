@@ -93,6 +93,9 @@ type file struct {
 	// augmented maps each assignment with an added blank identifier to its
 	// original LHS length.
 	augmented map[*ast.AssignStmt]int
+	// blankDefines holds the := statements whose names are all blank, such
+	// as const _ = f(). They become =, because := must declare a name.
+	blankDefines map[*ast.AssignStmt]bool
 	// optional holds the selectors, index expressions, and calls written
 	// with ?. instead of a plain dot.
 	optional map[ast.Expr]bool
@@ -382,6 +385,7 @@ func newFile(input Input, preprocessed *preprocess.Result) *file {
 		preprocessed:   preprocessed,
 		tries:          map[int]preprocess.Try{},
 		augmented:      map[*ast.AssignStmt]int{},
+		blankDefines:   map[*ast.AssignStmt]bool{},
 		optional:       map[ast.Expr]bool{},
 		coalesce:       map[*ast.CallExpr]*ast.BinaryExpr{},
 		nullishAssigns: map[*ast.AssignStmt]bool{},
@@ -680,6 +684,7 @@ func (transpiler *transpiler) augment(typeInfo *types.Info) bool {
 	optionalFieldVars := transpiler.collectOptionalFieldVars(typeInfo)
 	for _, file := range transpiler.files {
 		changed = convertConsts(file, typeInfo) || changed
+		changed = file.convertBlankDefines() || changed
 		changed = destructureTuples(file, typeInfo) || changed
 		changed = transpiler.addressOptionalValues(file, typeInfo, optionalFieldVars) || changed
 		changed = transpiler.rewriteArrayCalls(file, typeInfo) || changed

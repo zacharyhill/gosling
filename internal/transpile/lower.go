@@ -96,6 +96,7 @@ func (lowerer *lowerer) lowerFile() {
 	}
 	lowerer.checkLiteralConstants()
 	lowerer.lowerConsts()
+	lowerer.lowerBlankDefines()
 	lowerer.lowerTryExpressions()
 	lowerer.lowerTuples()
 	lowerer.lowerTypedHeaders()

@@ -1,0 +1,67 @@
+package blankerrors
+
+import "strconv"
+
+type CodeError struct{ Code int }
+
+func (codeError *CodeError) Error() string { return "failed" }
+
+func coded() (int, *CodeError) { return 0, nil }
+
+func blanks(input string) int {
+	try {
+		const _ = strconv.Atoi(input)
+		let _ = strconv.Atoi(input)
+		return 1
+	} catch {
+		return 0
+	}
+}
+
+func typed(input string) int {
+	try {
+		const _ = coded()
+		const _ = strconv.Atoi(input)
+		const _ = coded()
+		return 1
+	} catch {
+		return 0
+	}
+}
+
+func declared(input string) error {
+	let err: error
+	try {
+		const _ = strconv.Atoi(input)
+	} catch (e) {
+		err = e
+	}
+	return err
+}
+
+func shadowed(input string) int {
+	try {
+		let err: error = nil
+		const _ = strconv.Atoi(input)
+		return err == nil ? 1 : 0
+	} catch {
+		return -1
+	}
+}
+
+func hoisted(input string) int {
+	try {
+		const _ = strconv.Atoi(input) + strconv.Atoi(input)
+		return 1
+	} catch {
+		return 0
+	}
+}
+
+type Point struct{ X, Y int }
+
+func plain(point Point) {
+	const _ = strconv.Itoa(point.X)
+	let _ = strconv.Itoa(point.Y)
+	const {X: _, Y: _} = point
+}
