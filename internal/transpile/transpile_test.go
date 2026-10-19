@@ -904,6 +904,16 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:5:9: filter needs the builtin append, but a declaration shadows it here; rename that declaration",
 		},
 		{
+			name: "local variable shadows the builtin that length needs",
+			src:  "package p\nfunc f(xs []int) int {\n\tconst len = 3\n\treturn xs.length + len\n}",
+			want: "x.gol:4:9: length needs the builtin len, but a declaration shadows it here; rename that declaration",
+		},
+		{
+			name: "package function shadows the builtin that length needs",
+			src:  "package p\nfunc len(s string) int { return 0 }\nfunc f(s string) int {\n\treturn s.length\n}",
+			want: "x.gol:4:9: length needs the builtin len, but a declaration shadows it here; rename that declaration",
+		},
+		{
 			name: "parameter shadows a builtin that try needs",
 			src:  "package p\nimport \"os\"\nfunc f(nil int) {\n\ttry {\n\t\tos.Remove(\"x\")\n\t} catch {\n\t}\n}",
 			want: "x.gol:5:3: try needs the builtin nil, but a declaration shadows it here; rename that declaration",
@@ -1093,6 +1103,10 @@ func TestErrorsReportedOnce(test *testing.T) {
 		name string
 		src  string
 	}{
+		{
+			name: "length with a shadowed len",
+			src:  "package p\nfunc f(xs []int) int {\n\tconst len = 3\n\treturn xs.length + len\n}",
+		},
 		{
 			name: "optional chain on a struct value with a call moved out of try",
 			src:  "package p\nimport \"strconv\"\ntype T struct{}\nfunc (T) Get(n int) int { return n }\nfunc f(v T) int {\n\ttry {\n\t\treturn v?.Get(strconv.Atoi(\"1\"))\n\t} catch {\n\t\treturn 0\n\t}\n}",
