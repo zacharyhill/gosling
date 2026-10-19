@@ -21,8 +21,9 @@ type gap struct {
 	text        string
 	isFormatted bool
 	// nextToken is the offset in the gofmt output of the token after the
-	// gap. It is valid only if isFormatted is true.
-	nextToken int
+	// gap. It is valid only if hasNextToken is true. A formatted gap has it.
+	nextToken    int
+	hasNextToken bool
 	// indent is the gofmt indentation of the token after the gap, if that
 	// token starts a line in the gofmt output.
 	indent    string
@@ -117,6 +118,7 @@ func (layout *layout) copyGaps(result gofmtResult) {
 		layout.gaps[gapIndex].text = formattedText
 		layout.gaps[gapIndex].isFormatted = true
 		layout.gaps[gapIndex].nextToken = formattedEnd
+		layout.gaps[gapIndex].hasNextToken = true
 	}
 }
 
@@ -133,11 +135,18 @@ func tokenAt(tokens []sourceToken, tokenIndex int) sourceToken {
 // preprocessed tokens left and right. A regex literal becomes a
 // preprocess.RegexMarker call, so it starts with the marker and ends with ")".
 func (layout *layout) hasSameNeighbors(gapIndex int, left, right sourceToken) bool {
-	isLeftSame := left.text == tokenAt(layout.tokens, gapIndex-1).text ||
+	sourceLeft, sourceRight := tokenAt(layout.tokens, gapIndex-1), tokenAt(layout.tokens, gapIndex)
+	isLeftSame := isSameToken(sourceLeft.text, left.text) ||
 		layout.isRegex(gapIndex-1) && left.text == ")"
-	isRightSame := right.text == tokenAt(layout.tokens, gapIndex).text ||
+	isRightSame := isSameToken(sourceRight.text, right.text) ||
 		layout.isRegex(gapIndex) && right.text == preprocess.RegexMarker
 	return isLeftSame && isRightSame
+}
+
+// isSameToken reports whether a .gol token and a preprocessed token take the
+// same space. The "=" of "let x = 1" in a function becomes ":=".
+func isSameToken(sourceText, preprocessedText string) bool {
+	return sourceText == preprocessedText || sourceText == "=" && preprocessedText == ":="
 }
 
 // isRegex reports whether the token at tokenIndex is a masked regex literal.
@@ -177,6 +186,8 @@ func (layout *layout) copyIndents(result gofmtResult) {
 			continue
 		}
 		formattedStart := result.formattedTokens[formattedIndex].start
+		layout.gaps[gapIndex].nextToken = formattedStart
+		layout.gaps[gapIndex].hasNextToken = true
 		lineStart := bytes.LastIndexByte(result.formatted[:formattedStart], '\n') + 1
 		indent := string(result.formatted[lineStart:formattedStart])
 		if strings.Trim(indent, " \t") == "" {
@@ -439,10 +450,13 @@ func (layout *layout) needsSpace(gapIndex int) bool {
 	if layout.isRegex(gapIndex) && isIdentByte(layout.src[left.end-1]) {
 		return true
 	}
-	if layout.isInNullishAssign(gapIndex) {
+	isInsideOperator := layout.startsOperator(gapIndex - 1)
+	if layout.isInNullishAssign(gapIndex) || isInsideOperator {
 		return false
 	}
-	return layout.startsOperator(gapIndex) || layout.endsOperator(gapIndex-1)
+	// gofmt cannot space this "=". In a typed header, it becomes "](".
+	isNextToAssign := left.kind == token.ASSIGN || right.kind == token.ASSIGN
+	return isNextToAssign || layout.startsOperator(gapIndex) || layout.endsOperator(gapIndex-1)
 }
 
 // isInNullishAssign reports whether the gap is between the "??" and the "="
@@ -480,11 +494,75 @@ func (layout *layout) isBeforeComment(gapIndex int) bool {
 // in the preprocessed code, where a line can have a different width. Each
 // group of comments that gofmt aligns gets the column after its widest line.
 func (layout *layout) alignComments(formatted []byte) {
+	var commentGaps []int
+	for gapIndex := range layout.gaps {
+		if layout.isTrailingComment(gapIndex) {
+			commentGaps = append(commentGaps, gapIndex)
+		}
+	}
+	layout.alignColumns([][]int{commentGaps}, formatted)
+}
+
+// alignLetGroups aligns the types and the "=" of the specs in each
+// `let ( ... )` group. gofmt aligns them in the `var ( ... )` that
+// preprocessing makes, where each typed spec has no colon.
+func (layout *layout) alignLetGroups(formatted []byte) {
+	var typeGapsByGroup, valueGapsByGroup [][]int
+	depth := 0
+	for tokenIndex, current := range layout.tokens {
+		if depth == 0 && current.text == "let" && tokenAt(layout.tokens, tokenIndex+1).kind == token.LPAREN {
+			typeGaps, valueGaps := layout.findLetGroupGaps(tokenIndex + 1)
+			typeGapsByGroup = append(typeGapsByGroup, typeGaps)
+			valueGapsByGroup = append(valueGapsByGroup, valueGaps)
+		}
+		depth += bracketChange(current.kind)
+	}
+	// Type alignment moves each "=", so the "=" columns must come after it.
+	layout.alignColumns(typeGapsByGroup, formatted)
+	layout.alignColumns(valueGapsByGroup, formatted)
+}
+
+// alignColumns aligns each list of gaps in gapGroups as its own column.
+// The lists must be on different lines, so they can share one column scan.
+func (layout *layout) alignColumns(gapGroups [][]int, formatted []byte) {
+	if len(gapGroups) == 0 {
+		return
+	}
 	columns := layout.computeGapColumns()
+	for _, gapIndexes := range gapGroups {
+		layout.alignColumn(gapIndexes, formatted, columns)
+	}
+}
+
+// findLetGroupGaps returns the gaps before the types and before the "=" of
+// the specs in the group that opens at openIndex.
+func (layout *layout) findLetGroupGaps(openIndex int) ([]int, []int) {
+	var typeGaps, valueGaps []int
+	depth := 0
+	for tokenIndex := openIndex; tokenIndex < len(layout.tokens); tokenIndex++ {
+		current := layout.tokens[tokenIndex]
+		depth += bracketChange(current.kind)
+		switch {
+		case depth == 0:
+			return typeGaps, valueGaps
+		case depth == 1 && current.kind == token.COLON:
+			typeGaps = append(typeGaps, tokenIndex+1)
+		case depth == 1 && current.kind == token.ASSIGN:
+			valueGaps = append(valueGaps, tokenIndex)
+		}
+	}
+	return typeGaps, valueGaps
+}
+
+// alignColumn aligns the tokens after gapIndexes. Each group of tokens
+// that gofmt puts in one column on adjacent lines gets the column after
+// its widest line.
+func (layout *layout) alignColumn(gapIndexes []int, formatted []byte, columns []int) {
 	var group []int
 	previousLine, previousColumn := -1, -1
-	for gapIndex, current := range layout.gaps {
-		if !layout.isTrailingComment(gapIndex) {
+	for _, gapIndex := range gapIndexes {
+		current := layout.gaps[gapIndex]
+		if !current.hasNextToken || hasNewline(current.text) {
 			continue
 		}
 		line, column := lineAndColumn(formatted, current.nextToken)

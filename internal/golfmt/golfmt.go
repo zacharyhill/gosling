@@ -47,6 +47,7 @@ func Edits(src []byte) ([]Edit, error) {
 	layout := newLayout(src)
 	layout.copyGaps(newGofmtResult(preprocessed, formatted))
 	layout.cleanKeptGaps()
+	layout.alignLetGroups(formatted)
 	layout.alignComments(formatted)
 	edits := layout.buildEdits()
 	if !sameTokens(src, preprocessed, applyEdits(src, edits)) {
