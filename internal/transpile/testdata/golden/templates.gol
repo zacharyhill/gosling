@@ -48,3 +48,7 @@ func floats(f float64, g float32, h int) string {
 func backticks(name string) string {
 	return t`run \`go ${name}\` := now`
 }
+
+func formats(price float64, n int, id uint, xs []int) string {
+	return t`${price:.2f} ${n:05d} ${id:#x} ${xs[1:]} ${price}`
+}

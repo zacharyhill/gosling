@@ -2,6 +2,9 @@ package preprocess
 
 import (
 	"bytes"
+	"fmt"
+	"regexp"
+	"strconv"
 	"strings"
 	"unicode"
 	"unicode/utf8"
@@ -31,16 +34,21 @@ func (processor *processor) template(tag, literal lexeme) error {
 			if !ok {
 				return &Error{contentStart + charIndex, "unterminated ${ in template literal"}
 			}
-			if strings.TrimSpace(content[exprStart:exprEnd]) == "" {
+			valueEnd, spec := findFormatSpec(content, exprStart, exprEnd)
+			if strings.TrimSpace(content[exprStart:valueEnd]) == "" {
 				return &Error{contentStart + charIndex, "empty ${} in template literal"}
 			}
-			processor.replace(replaceFrom, contentStart+exprStart, prefix+"`"+text.String()+"`, ")
-			if err := processor.rewriteInterpolation(contentStart+exprStart, contentStart+exprEnd); err != nil {
+			valuePrefix, valueSuffix, err := buildFormatWrapper(spec, valueEnd < exprEnd, contentStart+valueEnd)
+			if err != nil {
+				return err
+			}
+			processor.replace(replaceFrom, contentStart+exprStart, prefix+"`"+text.String()+"`, "+valuePrefix)
+			if err := processor.rewriteInterpolation(contentStart+exprStart, contentStart+valueEnd); err != nil {
 				return err
 			}
 			text.Reset()
-			prefix = ", "
-			replaceFrom = contentStart + exprEnd
+			prefix = valueSuffix + ", "
+			replaceFrom = contentStart + valueEnd
 			charIndex = exprEnd + len("}")
 		default:
 			text.WriteByte(content[charIndex])
@@ -49,6 +57,47 @@ func (processor *processor) template(tag, literal lexeme) error {
 	}
 	processor.replace(replaceFrom, literal.end(), prefix+"`"+text.String()+"`)")
 	return nil
+}
+
+// formatSpecRE matches a printf verb without the %, with optional flags,
+// width, and precision.
+var formatSpecRE = regexp.MustCompile(`^[-+# 0]*[0-9]*(\.[0-9]*)?[bcdeEfFgGoOpqstTUvxX]$`)
+
+// buildFormatWrapper returns the text before and after a value with a format
+// spec. It returns empty text if the value has no spec.
+func buildFormatWrapper(spec string, hasSpec bool, specOffset int) (string, string, error) {
+	if !hasSpec {
+		return "", "", nil
+	}
+	if !formatSpecRE.MatchString(spec) {
+		return "", "", &Error{specOffset, fmt.Sprintf("invalid format %s in template literal; use a printf verb such as .2f or 05d", spec)}
+	}
+	return FormatMarker + "(", ", " + strconv.Quote(spec) + ")", nil
+}
+
+// findFormatSpec finds a format spec, as in ${price:.2f}, in the
+// interpolation content[from:to]. Go expressions have a colon only inside
+// brackets, so the spec starts at the first colon outside brackets and
+// quotes. It returns the end of the value and the spec without spaces.
+func findFormatSpec(content string, from, to int) (int, string) {
+	depth := 0
+	for charIndex := from; charIndex < to; charIndex++ {
+		switch content[charIndex] {
+		case '{', '(', '[':
+			depth++
+		case '}', ')', ']':
+			depth--
+		case '"', '\'':
+			if end, ok := quoteEnd(content, charIndex); ok {
+				charIndex = end
+			}
+		case ':':
+			if depth == 0 {
+				return charIndex, strings.TrimSpace(content[charIndex+1 : to])
+			}
+		}
+	}
+	return to, ""
 }
 
 // exprExtent finds the "}" that closes the interpolation starting at from.

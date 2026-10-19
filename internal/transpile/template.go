@@ -38,17 +38,23 @@ func (lowerer *lowerer) lowerTemplates() {
 // lowerTemplate rewrites only the text between interpolated expressions,
 // so edits inside the expressions stay.
 func (lowerer *lowerer) lowerTemplate(call *ast.CallExpr, fmtPrefix string) {
-	pieces := call.Args
 	line := lowerer.line(call.Pos())
-	if len(pieces) == 1 {
-		lowerer.replace(call.Pos(), call.End(), strconv.Quote(rawText(pieces[0])), line)
+	if len(call.Args) == 1 {
+		lowerer.replace(call.Pos(), call.End(), strconv.Quote(rawText(call.Args[0])), line)
 		return
 	}
 	var format strings.Builder
 	depth := lowerer.depth(call)
-	for pieceIndex, piece := range pieces {
+	pieces := make([]ast.Expr, len(call.Args))
+	for pieceIndex, piece := range call.Args {
+		pieces[pieceIndex] = piece
 		if pieceIndex%2 == 0 {
 			format.WriteString(strings.ReplaceAll(rawText(piece), "%", "%%"))
+			continue
+		}
+		if value, spec, ok := unwrapFormatMarker(piece); ok {
+			pieces[pieceIndex] = value
+			format.WriteString("%" + spec)
 			continue
 		}
 		pieceType := lowerer.typeInfo.Types[piece].Type
@@ -64,6 +70,21 @@ func (lowerer *lowerer) lowerTemplate(call *ast.CallExpr, fmtPrefix string) {
 		lowerer.replace(pieces[pieceIndex].End(), pieces[pieceIndex+2].Pos(), ", ", line)
 	}
 	lowerer.replace(pieces[len(pieces)-2].End(), call.Rparen+1, ")", line)
+}
+
+// unwrapFormatMarker returns the value and the spec of a value with a format
+// spec, as in ${price:.2f}.
+func unwrapFormatMarker(piece ast.Expr) (ast.Expr, string, bool) {
+	formatCall, ok := callTo(piece, preprocess.FormatMarker)
+	if !ok || len(formatCall.Args) != 2 {
+		return nil, "", false
+	}
+	specLit, ok := formatCall.Args[1].(*ast.BasicLit)
+	if !ok {
+		return nil, "", false
+	}
+	spec, err := strconv.Unquote(specLit.Value)
+	return formatCall.Args[0], spec, err == nil
 }
 
 // wrapInFormatFloat wraps a float argument in strconv.FormatFloat, because %v
