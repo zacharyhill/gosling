@@ -29,6 +29,7 @@ type arrow struct {
 	// hasHiddenType is true when a local declaration hides the name of a type
 	// that the arrow needs. gosling already reported the error.
 	hasHiddenType bool
+	isVoidBlock   bool // block body without a value return; only the context gives results
 }
 
 func (arrow *arrow) node() ast.Expr {
@@ -62,7 +63,7 @@ func (file *file) findArrows() {
 		}
 		if arrowFunc.bodyReturn == nil && !returnsValue(funcLit.Body) {
 			funcLit.Type.Results = nil
-			arrowFunc.resolved = true
+			arrowFunc.isVoidBlock = true
 		}
 		file.arrows = append(file.arrows, arrowFunc)
 		return true
@@ -326,7 +327,7 @@ func (lowerer *lowerer) lowerArrows() {
 			name, _ := lowerer.typeName(arrowFunc.params[paramIndex])
 			lowerer.replace(placeholder.Pos(), placeholder.End(), name, 0)
 		}
-		if !arrowFunc.resolved {
+		if !arrowFunc.resolved && !arrowFunc.isVoidBlock {
 			continue // the type checker already reported the error
 		}
 		names := make([]string, len(arrowFunc.results))

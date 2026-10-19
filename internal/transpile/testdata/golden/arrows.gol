@@ -88,3 +88,16 @@ func localType() []int {
 	let entries = []entry{{1}}
 	return entries.map(e => e.Count)
 }
+
+func blockWithoutReturn() func() error {
+	return () => {
+		panic("not implemented")
+	}
+}
+
+func blockWithoutReturnInCall(run func(func(int) error)) {
+	run(n => {
+		for {
+		}
+	})
+}

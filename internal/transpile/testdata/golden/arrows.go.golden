@@ -127,3 +127,16 @@ func localType() []int {
 		return out
 	}()
 }
+
+func blockWithoutReturn() func() error {
+	return func() error {
+		panic("not implemented")
+	}
+}
+
+func blockWithoutReturnInCall(run func(func(int) error)) {
+	run(func(n int) error {
+		for {
+		}
+	})
+}
