@@ -210,6 +210,18 @@ test("default and optional parameters", () => {
   assertScope(source, "int", "storage.type");
 });
 
+test("optional parameters with a colon", () => {
+  const source = "package p\n\nfunc Dial(addr: string, port?: int, opts?: *Options) {}";
+  assertScope(source, "port", "variable.parameter.gol");
+  assertScope(source, "?", "keyword.operator.optional.gol");
+  assertNoScope(source, "?", "keyword.operator.ternary.gol");
+  assertScope(source, ":", "punctuation.separator.type.gol", 1);
+  assertScope(source, "int", "storage.type");
+  assertScope(source, "opts", "variable.parameter.gol");
+  assertScope(source, "?", "keyword.operator.optional.gol", 1);
+  assertNoScope(inFunctionBody("\tx := ok ?a: b"), "a", "variable.parameter");
+});
+
 test("union types", () => {
   const source = "package p\n\ntype Shape = Circle | Square | *Polygon";
   assertScope(source, "Shape", "entity.name.type");
