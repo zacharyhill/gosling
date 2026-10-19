@@ -227,10 +227,21 @@ func (lowerer *lowerer) drop(from, to token.Pos, text string, line int) {
 
 func (lowerer *lowerer) line(position token.Pos) int { return lowerer.file.tokenFile.Line(position) }
 
+// dropped reports whether the output discards the code at position. A move
+// renders a hoisted call, so the drop of that call does not discard it.
 func (lowerer *lowerer) dropped(position token.Pos) bool {
 	offset := lowerer.offset(position)
 	for _, drop := range lowerer.drops {
-		if offset >= drop.start && offset < drop.end {
+		if offset >= drop.start && offset < drop.end && !lowerer.isMoved(drop) {
+			return true
+		}
+	}
+	return false
+}
+
+func (lowerer *lowerer) isMoved(drop edit) bool {
+	for _, candidate := range lowerer.edits {
+		if candidate.move != nil && candidate.move[0] == drop.start && candidate.move[1] == drop.end {
 			return true
 		}
 	}

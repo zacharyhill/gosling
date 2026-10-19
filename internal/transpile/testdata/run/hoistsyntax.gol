@@ -1,0 +1,46 @@
+package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+type Config struct {
+	Port *string
+	Name string
+}
+
+func parseAll(xs []string) ([]int, error) {
+	let out: []int
+	for (const x of xs) {
+		try {
+			out = append(out, strconv.Atoi(x))
+		} catch (e) {
+			return nil, e
+		}
+	}
+	return out, nil
+}
+
+func apply(f func(string) string, s string) (string, error) { return f(s), nil }
+
+func run(s string, cfg *Config) string {
+	try {
+		const quoted = strconv.Unquote(t`"${s}"`) + "!"
+		const port = strconv.Atoi(cfg?.Port ?? "80") + 1
+		const upper = apply(x => x + "?", s) + "."
+		const evens = len(parseAll([]string{"2", "3", "4"}.filter(x => x != "3")))
+		const both = len(parseAll([...[]string{"5"}, ...[]string{"6"}]))
+		const named = strconv.Unquote(strconv.Quote(Config{...*cfg, Name: s}.Name)) + "#"
+		const ratio = strconv.ParseFloat(t`${1000000.0 * float64(len(s))}`, 64) + 0.5
+		return t`${quoted} ${port} ${upper} ${evens} ${both} ${named} ${ratio}`
+	} catch (e) {
+		return t`error: ${e}`
+	}
+}
+
+func main() {
+	let port = "8080"
+	fmt.Println(run("a", &Config{Port: &port}))
+	fmt.Println(run("b", &Config{}))
+}
