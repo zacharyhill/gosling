@@ -423,6 +423,31 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:4:17: fields after a struct spread must be named",
 		},
 		{
+			name: "local variable hides the package of an arrow result type",
+			src:  "package p\nimport \"os\"\nfunc h() *os.File { return nil }\nfunc f() {\n\tlet os = 1\n\t_ = os\n\tconst g = () => h()\n\t_ = g\n}",
+			want: "x.gol:7:12: the inferred type *os.File cannot be written here, because a local declaration hides the name; rename the local declaration",
+		},
+		{
+			name: "local variable hides the package of an arrow parameter type",
+			src:  "package p\nimport \"os\"\nfunc each(f func(*os.File)) {}\nfunc f() {\n\tlet os = 1\n\t_ = os\n\teach(file => println(file))\n}",
+			want: "x.gol:7:7: the inferred type *os.File cannot be written here, because a local declaration hides the name; rename the local declaration",
+		},
+		{
+			name: "local variable hides the package of an array method result",
+			src:  "package p\nimport \"os\"\nfunc f(files []*os.File) {\n\tlet os = 1\n\t_ = os\n\t_ = files.filter(file => file != nil)\n}",
+			want: "x.gol:6:19: the inferred type *os.File cannot be written here, because a local declaration hides the name; rename the local declaration",
+		},
+		{
+			name: "local variable hides the fmt import of a template literal",
+			src:  "package p\nimport \"fmt\"\nvar _ = fmt.Sprint\nfunc f(n int) string {\n\tlet fmt = 2\n\t_ = fmt\n\treturn t`${n}`\n}",
+			want: "x.gol:7:9: template literal needs package fmt, but the name fmt is already used in this file",
+		},
+		{
+			name: "local variable hides the slices import of a spread",
+			src:  "package p\nimport \"slices\"\nvar _ = slices.Max[[]int]\nfunc f(p []int64) []int64 {\n\tlet slices = 2\n\t_ = slices\n\treturn [...p, int64(1)]\n}",
+			want: "x.gol:7:9: spread needs package slices and the element type, but a needed name is already used in this file",
+		},
+		{
 			name: "missing catch",
 			src:  "package p\nfunc f() {\n\ttry { }\n}",
 			want: "x.gol:3:8: try block must be followed by catch",
@@ -935,6 +960,19 @@ func mustRead(test *testing.T, path string) string {
 		test.Fatal(err)
 	}
 	return string(contents)
+}
+
+// TestArrowParameterNamedLikePackage checks that the parameters of an arrow
+// do not hide the packages of its own types.
+func TestArrowParameterNamedLikePackage(test *testing.T) {
+	src := "package p\nimport \"os\"\nfunc each(f func(*os.File) *os.File) {}\nfunc g() {\n\teach(os => os)\n}\n"
+	outputs, err := Transpile(Config{Importer: importer.Default()}, []Input{{Path: "x.gol", Src: []byte(src)}})
+	if err != nil {
+		test.Fatal(err)
+	}
+	if want := "func(os *os.File) *os.File"; !strings.Contains(string(outputs[0].Src), want) {
+		test.Errorf("output does not contain %q:\n%s", want, outputs[0].Src)
+	}
 }
 
 func TestKeepGoingEmitsDespiteTypeErrors(test *testing.T) {

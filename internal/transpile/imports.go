@@ -3,6 +3,7 @@ package transpile
 import (
 	"go/ast"
 	"go/token"
+	"go/types"
 	"sort"
 	"strconv"
 )
@@ -68,6 +69,27 @@ func (transpiler *transpiler) pickImportAlias(file *file, name string) string {
 		alias = name + importAliasSuffix + strconv.Itoa(suffix)
 	}
 	return alias
+}
+
+// importNameAt is importName for code at position. It also reports false
+// if a declaration in scope hides the name there.
+func (lowerer *lowerer) importNameAt(position token.Pos, path, name string) (string, bool) {
+	packageName, ok := lowerer.importName(lowerer.file, path, name, false)
+	return packageName, ok && !isHiddenAt(lowerer.scopeAt(position), position, packageName, path)
+}
+
+// isHiddenAt reports whether a declaration in scope hides packageName, the
+// name of the package at path, at position.
+func isHiddenAt(scope *types.Scope, position token.Pos, packageName, path string) bool {
+	if scope == nil || packageName == "" {
+		return false
+	}
+	_, object := scope.LookupParent(packageName, position)
+	if object == nil {
+		return false
+	}
+	importedPackage, isPackage := object.(*types.PkgName)
+	return !isPackage || importedPackage.Imported().Path() != path
 }
 
 func (lowerer *lowerer) emitImports() {

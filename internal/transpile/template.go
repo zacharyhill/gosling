@@ -69,7 +69,7 @@ func (lowerer *lowerer) lowerTemplate(call *ast.CallExpr, fmtPrefix string) {
 // prints 1e+06 and JavaScript prints 1000000. It reports false if the file
 // cannot use strconv.
 func (lowerer *lowerer) formatFloat(arg ast.Expr, bits, line, depth int) bool {
-	strconvName, ok := lowerer.importName(lowerer.file, "strconv", "strconv", false)
+	strconvName, ok := lowerer.importNameAt(arg.Pos(), "strconv", "strconv")
 	if !ok {
 		return false
 	}
@@ -181,7 +181,7 @@ func verb(goType types.Type) string {
 // fmtName returns the qualifier for fmt calls ("fmt." or an alias). It adds
 // the import if the file does not have one.
 func (lowerer *lowerer) fmtName(position token.Pos) (string, bool) {
-	name, ok := lowerer.importName(lowerer.file, "fmt", "fmt", false)
+	name, ok := lowerer.importNameAt(position, "fmt", "fmt")
 	if !ok {
 		lowerer.errorf(lowerer.file, position, "template literal needs package fmt, but the name fmt is already used in this file")
 		return "", false
