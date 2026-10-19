@@ -1,0 +1,38 @@
+package main
+
+import (
+	"fmt"
+	"strconv"
+)
+
+type Ok[T any] struct{ Value T }
+
+type Err[T any] struct{ Msg string }
+
+type Result[T any] = Ok[T] | Err[T]
+
+func parse(text string) Result[int] {
+	const number, err = strconv.Atoi(text)
+	if err != nil {
+		return Err[int]{err.Error()}
+	}
+	return Ok[int]{number}
+}
+
+func describe[T any](result Result[T]) string {
+	switch let variant = result.(type) {
+	case Ok[T]:
+		return t`ok ${variant.Value}`
+	case Err[T]:
+		return t`error: ${variant.Msg}`
+	}
+	return "nil"
+}
+
+func main() {
+	fmt.Println(describe(parse("42")))
+	fmt.Println(describe(parse("x")))
+	fmt.Println(describe[string](Ok[string]{"hi"}))
+	let empty: Result[bool]
+	fmt.Println(describe(empty))
+}

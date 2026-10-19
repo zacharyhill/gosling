@@ -420,6 +420,20 @@ func TestProcess(test *testing.T) {
 			}},
 		},
 		{
+			name: "generic union type",
+			src:  "type Either[L, R any] = Left[L, R] | *Right[L, R]\n",
+			want: "type Either[L, R any] interface{ isEither(L, R) }; func (Left[L, R]) isEither(L, R) {}; func (*Right[L, R]) isEither(L, R) {}; func __goslingVariants_Either[L, R any](Left[L, R], *Right[L, R]) {}\n",
+			splits: []int{
+				len("type Either[L, R any] interface{ isEither(L, R) }"),
+				len("type Either[L, R any] interface{ isEither(L, R) }; func (Left[L, R]) isEither(L, R) {}"),
+			},
+			unions: []Union{{
+				Name:        "Either",
+				MarkerStart: len("type Either[L, R any] interface{ isEither(L, R) }; func (Left[L, R]) isEither(L, R) {}; func (*Right[L, R]) isEither(L, R) {}"),
+				MarkerEnd:   len("type Either[L, R any] interface{ isEither(L, R) }; func (Left[L, R]) isEither(L, R) {}; func (*Right[L, R]) isEither(L, R) {}; func __goslingVariants_Either[L, R any](Left[L, R], *Right[L, R]) {}"),
+			}},
+		},
+		{
 			name: "plain alias untouched",
 			src:  "type ID = string\n",
 			want: "type ID = string\n",
@@ -917,7 +931,9 @@ func TestProcessErrors(test *testing.T) {
 		{"optional index", "x := a?.[0]", "?.[ and ?.( are not supported", len("x := a")},
 		{"nullish assignment", "x ??= 1", "??= is not supported", len("x ")},
 		{"union inside function", "func f() {\n\ttype S = A | B\n}", "union types must be declared at package level", len("func f() {\n\t")},
-		{"generic union", "type R[T any] = Ok[T] | Err\n", "generic union types are not supported", 0},
+		{"generic union variant without type arguments", "type R[T any] = Ok[T] | Err\n", "union variant Err must have the type arguments [T]", len("type R[T any] = Ok[T] | ")},
+		{"generic union variant with other type arguments", "type R[K, V any] = Ok[V, K] | Err[K, V]\n", "union variant Ok[V, K] must have the type arguments [K, V]", len("type R[K, V any] = ")},
+		{"type arguments in a plain union", "type R = Ok[int] | Err\n", "union variants must be type names", len("type R = Ok")},
 		{"question mark", "x := f()?", "the ? operator is not supported; use try/catch", len("x := f()")},
 		{"question mark before space", "x := f()? .y", "the ? operator is not supported", len("x := f()")},
 		{"spread not first", "p := Point{X: 1, ...p}", "struct spread must be the first element", len("p := Point{X: 1, ")},

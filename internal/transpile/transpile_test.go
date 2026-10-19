@@ -519,6 +519,21 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:7:2: switch on U is missing cases: B, C",
 		},
 		{
+			name: "switch missing generic union variants",
+			src:  "package p\ntype A[T any] struct{}\ntype B[T any] struct{}\ntype U[T any] = A[T] | *B[T]\nfunc f(u U[int]) {\n\tswitch u.(type) {\n\tcase A[int]:\n\t}\n}",
+			want: "x.gol:6:2: switch on U[int] is missing cases: *B[int]",
+		},
+		{
+			name: "switch missing generic union variants in a generic function",
+			src:  "package p\ntype A[T any] struct{}\ntype B[T any] struct{}\ntype U[T any] = A[T] | B[T]\nfunc f[T any](u U[T]) {\n\tswitch u.(type) {\n\tcase A[T]:\n\t}\n}",
+			want: "x.gol:6:2: switch on U[T] is missing cases: B[T]",
+		},
+		{
+			name: "generic union variant with another type argument",
+			src:  "package p\ntype A[T any] struct{}\ntype B[T any] struct{}\ntype U[T any] = A[T] | B[T]\nfunc f() U[int] {\n\treturn A[string]{}\n}",
+			want: "x.gol:6:9: cannot use A[string]{} (value of struct type A[string]) as U[int] value in return statement: A[string] does not implement U[int] (wrong type for method isU)",
+		},
+		{
 			name: "union variant from another package",
 			src:  "package p\nimport \"time\"\ntype A struct{}\ntype U = A | time.Time\n",
 			want: "x.gol:4:1: union variant time.Time must be a type declared in this package",
@@ -1485,6 +1500,44 @@ func TestKeepGoingEmitsDespiteTypeErrors(test *testing.T) {
 	}
 	if outputs, err := Transpile(Config{Importer: importer.Default()}, inputs); err == nil || outputs != nil {
 		test.Errorf("without KeepGoing got %d outputs, %v, want no outputs and an error", len(outputs), err)
+	}
+}
+
+// TestKeepGoingGenericUnionSwitch checks switches on broken generic unions.
+// KeepGoing lowers despite the type errors, so the exhaustive check sees
+// variants that it cannot instantiate.
+func TestKeepGoingGenericUnionSwitch(test *testing.T) {
+	testCases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "pointer to an unnamed type",
+			src:  "package p\ntype A[T any] struct{}\ntype Q[T any] = struct{ x T }\ntype U[T any] = A[T] | *Q[T]\nfunc f(u U[int]) {\n\tswitch u.(type) {\n\tcase A[int]:\n\t}\n}",
+			want: "x.gol:6:2: cannot check that the switch on U[int] covers *Q[T]: *Q[T] is not a named type",
+		},
+		{
+			name: "variant with the wrong type argument count",
+			src:  "package p\ntype A[T any] struct{}\ntype B[T, V any] struct{}\ntype U[T any] = A[T] | B[T]\nfunc f(u U[int]) {\n\tswitch u.(type) {\n\tcase A[int]:\n\t}\n}",
+			want: "x.gol:6:2: cannot check that the switch on U[int] covers B[T]: got 1 type arguments but B[T, V any] has 2 type parameters",
+		},
+	}
+	for _, testCase := range testCases {
+		test.Run(testCase.name, func(test *testing.T) {
+			_, err := Transpile(Config{Importer: importer.Default(), KeepGoing: true}, []Input{{Path: "x.gol", Src: []byte(testCase.src)}})
+			var errorList scanner.ErrorList
+			if !errors.As(err, &errorList) {
+				test.Fatalf("got %v, want a list of errors", err)
+			}
+			var messages strings.Builder
+			for _, listedError := range errorList {
+				messages.WriteString(listedError.Error() + "\n")
+			}
+			if !strings.Contains(messages.String(), testCase.want) || strings.Contains(messages.String(), "missing cases") {
+				test.Errorf("errors:\n%s\nwant substring:\n%s", messages.String(), testCase.want)
+			}
+		})
 	}
 }
 

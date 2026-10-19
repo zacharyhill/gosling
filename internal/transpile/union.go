@@ -1,8 +1,10 @@
 package transpile
 
 import (
+	"fmt"
 	"go/ast"
 	"go/types"
+	"slices"
 	"strings"
 
 	"github.com/zacharyhill/gosling/internal/preprocess"
@@ -82,13 +84,45 @@ func (lowerer *lowerer) checkExhaustive(typeSwitch *ast.TypeSwitchStmt) {
 	}
 	var missing []string
 	for _, variant := range variants {
-		if !containsType(covered, variant) {
-			missing = append(missing, displayName(variant))
+		instance, err := instantiateVariant(variant, union.TypeArgs())
+		if err != nil {
+			lowerer.errorf(lowerer.file, typeSwitch.Pos(), "cannot check that the switch on %s covers %s: %s", displayName(union), displayName(variant), strings.ReplaceAll(err.Error(), checkPath+".", ""))
+			return
+		}
+		if !containsType(covered, instance) {
+			missing = append(missing, displayName(instance))
 		}
 	}
 	if len(missing) > 0 {
-		lowerer.errorf(lowerer.file, typeSwitch.Pos(), "switch on %s is missing cases: %s", union.Obj().Name(), strings.Join(missing, ", "))
+		lowerer.errorf(lowerer.file, typeSwitch.Pos(), "switch on %s is missing cases: %s", displayName(union), strings.Join(missing, ", "))
 	}
+}
+
+// instantiateVariant replaces the type parameters of a generic union in
+// variant with typeArgs, the type arguments of a union instance. The
+// variant has the type parameters as its type arguments, in order. It fails
+// only for a union with type errors, which KeepGoing still lowers.
+func instantiateVariant(variant types.Type, typeArgs *types.TypeList) (types.Type, error) {
+	if typeArgs.Len() == 0 {
+		return variant, nil
+	}
+	base := variant
+	pointer, isPointer := variant.(*types.Pointer)
+	if isPointer {
+		base = pointer.Elem()
+	}
+	named, ok := types.Unalias(base).(*types.Named)
+	if !ok {
+		return nil, fmt.Errorf("%s is not a named type", displayName(variant))
+	}
+	instance, err := types.Instantiate(nil, named.Origin(), slices.Collect(typeArgs.Types()), true)
+	if err != nil {
+		return nil, err
+	}
+	if isPointer {
+		return types.NewPointer(instance), nil
+	}
+	return instance, nil
 }
 
 // switchedUnion returns the union type that a type switch is on, and its variants.
