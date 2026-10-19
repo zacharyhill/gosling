@@ -1,0 +1,50 @@
+package main
+
+import (
+	"fmt"
+	"slices"
+	"strconv"
+)
+
+const identity = <T>(x T) => x
+
+const firstOf = <T>(xs: []T, fallback: T) => {
+	if len(xs) > 0 {
+		return xs[0]
+	}
+	return fallback
+}
+
+const sorted = <T int | string>(xs []T) => {
+	let out = slices.Clone(xs)
+	slices.Sort(out)
+	return out
+}
+
+const pairs = <K comparable, V>(m map[K]V, order []K) => order.map(k => t`${k}=${m[k]}`)
+
+const parseAll = <T ~string>(xs []T) => {
+	let out: []int
+	for (const x of xs) {
+		try {
+			const n = strconv.Atoi(string(x))
+			out = append(out, n)
+		} catch (e) {
+			return nil, e
+		}
+	}
+	return out, nil
+}
+
+type Digits string
+
+func main() {
+	fmt.Println(identity(42), identity("hi"))
+	fmt.Println(sorted([]int{3, 1, 2}), sorted([]string{"b", "a"}))
+	fmt.Println(pairs(map[string]int{"a": 1, "b": 2}, []string{"b", "a"}))
+	const nums, err = parseAll([]Digits{"1", "22"})
+	fmt.Println(nums, err)
+	const _, bad = parseAll([]string{"x"})
+	fmt.Println(bad != nil)
+	fmt.Println(firstOf([]string{}, "none"), firstOf([]int{4}, 0))
+}

@@ -37,6 +37,8 @@ func (processor *processor) declaration(tokenIndex int) (int, error) {
 	switch {
 	case after.is(token.DEFINE):
 		return tokenIndex, &Error{keyword.offset, fmt.Sprintf("use %s %s = value, not :=", keyword.text, first.text)}
+	case after.is(token.ASSIGN) && processor.tokenAt(lastNameIndex+2).is(token.LSS):
+		return processor.rewriteGenericArrow(tokenIndex, lastNameIndex)
 	case isHeader:
 		return tokenIndex, processor.headerDeclaration(tokenIndex, lastNameIndex)
 	case keyword.is(token.CONST):

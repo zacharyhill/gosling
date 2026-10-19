@@ -3,8 +3,9 @@ package preprocess
 import "go/token"
 
 const (
-	everyParamMessage  = "write name: type for every parameter, or use Go order for all of them"
-	resultColonMessage = "write ): before the result type of a function with name: type parameters"
+	everyParamMessage     = "write name: type for every parameter, or use Go order for all of them"
+	resultColonMessage    = "write ): before the result type of a function with name: type parameters"
+	genericUntypedMessage = "the parameters of a generic arrow function need types"
 )
 
 // paramList is a parenthesized parameter list. close is the token index of
@@ -188,7 +189,11 @@ func (processor *processor) typedArrow(openIndex int) error {
 	if !ok || !processor.isArrow(list.close+1) || openParen.offset < processor.copiedUpTo {
 		return nil
 	}
+	isGeneric := processor.genericParamOffsets[openParen.offset]
 	if _, isUntyped := processor.untypedParams(openIndex+1, list.close); isUntyped {
+		if isGeneric {
+			return &Error{openParen.offset, genericUntypedMessage}
+		}
 		return nil
 	}
 	patterns, err := processor.findParamPatterns(openIndex, list.close)
@@ -196,20 +201,32 @@ func (processor *processor) typedArrow(openIndex int) error {
 		return err
 	}
 	isUntyped := len(patterns) > 0 && processor.isUntypedParamList(openIndex+1, list.close)
+	if isUntyped && isGeneric {
+		return &Error{openParen.offset, genericUntypedMessage}
+	}
 	if !isUntyped {
 		if err := processor.stripColons(list, list.isAnnotated()); err != nil {
 			return err
 		}
 	}
-	processor.replace(openParen.offset, openParen.offset, "func")
-	closeOffset := processor.tokens[list.close].offset
+	if !isGeneric {
+		// A generic arrow already has its func keyword.
+		processor.replace(openParen.offset, openParen.offset, "func")
+	}
+	return processor.registerArrowPatterns(openIndex, list.close, patterns, isUntyped)
+}
+
+// registerArrowPatterns marks the arrow parameter list from openIndex to
+// closeIndex as handled and schedules the renames of its patterns.
+func (processor *processor) registerArrowPatterns(openIndex, closeIndex int, patterns []paramPattern, isUntyped bool) error {
+	closeOffset := processor.tokens[closeIndex].offset
 	processor.typedArrows[closeOffset] = true
 	statements, err := processor.registerPatternRenames(patterns, isUntyped)
 	if err != nil {
 		return err
 	}
 	if isUntyped {
-		processor.markUntypedNames(openIndex+1, list.close)
+		processor.markUntypedNames(openIndex+1, closeIndex)
 	}
 	processor.arrowStatements[closeOffset] = statements
 	return nil

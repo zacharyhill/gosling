@@ -116,6 +116,26 @@ func TestProcess(test *testing.T) {
 			want: "xs.__goslingMap(func(x __goslingU) __goslingR { return P{x, f(x)} }).filter(func(p __goslingU) __goslingR { return p.ok })",
 		},
 		{
+			name: "generic arrow",
+			src:  "const id = <T>(x T) => x\n",
+			want: "func id[T any](x T) __goslingR { return x }\n",
+		},
+		{
+			name: "generic arrow with constraints and block body",
+			src:  "const keys = <K comparable, V>(m map[K]V) => {\n\treturn nil\n}\n",
+			want: "func keys[K comparable, V any](m map[K]V) __goslingR {\n\treturn nil\n}\n",
+		},
+		{
+			name: "generic arrow with names only",
+			src:  "const pair = <A, B>(a A, b B) => P[A, B]{a, b}\n",
+			want: "func pair[A, B any](a A, b B) __goslingR { return P[A, B]{a, b} }\n",
+		},
+		{
+			name: "generic arrow with union constraint",
+			src:  "const sum = <T int | float64>(xs []T) => xs.reduce((a, x) => a + x, T(0))\n",
+			want: "func sum[T int | float64](xs []T) __goslingR { return xs.reduce(func(a __goslingU, x __goslingU) __goslingR { return a + x }, T(0)) }\n",
+		},
+		{
 			name: "arrow inside interpolation",
 			src:  "s := t`${xs.map(x => x + 1)}`",
 			want: "s := __goslingT(``, xs.__goslingMap(func(x __goslingU) __goslingR { return x + 1 }), ``)",
@@ -865,6 +885,11 @@ func TestProcessErrors(test *testing.T) {
 		{"catch panic after typed catch", "try { g() } catch (e is X) { } catch panic { }", "catch panic cannot follow a typed catch clause", len("try { g() } catch (e is X) { } ")},
 		{"catch panic on next line", "try { g() } catch {\n}\ncatch panic { }", "catch must be on the same line as the closing brace before it", len("try { g() } catch {\n}\n")},
 		{"bad panic binding", "try { g() } catch panic (p any) { }", "expected catch panic (name) or catch panic", len("try { g() } ")},
+		{"generic arrow in a function", "func f() {\n\tconst id = <T>(x T) => x\n}", "a generic arrow function must be a package-level const with one name", len("func f() {\n\t")},
+		{"generic arrow with let", "let id = <T>(x T) => x\n", "a generic arrow function must be a package-level const with one name", 0},
+		{"generic arrow with untyped parameters", "const id = <T>(x) => x\n", "the parameters of a generic arrow function need types", len("const id = <T>")},
+		{"type parameters without arrow", "const id = <T>(x T)\n", "expected an arrow function after the type parameters", len("const id = ")},
+		{"empty type parameters", "const id = <>(x int) => x\n", "expected an arrow function after the type parameters", len("const id = ")},
 	}
 	for _, testCase := range testCases {
 		test.Run(testCase.name, func(test *testing.T) {

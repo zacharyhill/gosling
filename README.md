@@ -614,6 +614,17 @@ gosling does not use the body to find parameter types. Without a context, add ty
 
 `nil` has no type. If the body returns only `nil` for a result, the type must come from the context, as in `let f: func() error = () => nil`.
 
+A package-level `const` can hold a generic arrow. It becomes a generic function:
+
+```go
+const identity = <T>(x T) => x                        // func identity[T any](x T) T { return x }
+const keys = <K comparable, V>(m map[K]V) => { ... } // func keys[K comparable, V any](m map[K]V) []K { ... }
+```
+
+- Write the type parameters as in Go, between `<` and `>`. If the last type parameter has no constraint, it gets `any`. So `<K, V>` becomes `[K, V any]`.
+- The parameters must have types.
+- The result type comes from the body. So a generic arrow cannot call itself.
+
 ### Array methods
 
 Slices have `map`, `filter`, `reduce`, `forEach`, `find`, `findIndex`, `some`, `every`, `includes`, and `indexOf`. A callback can be an arrow or a function value. If the callback has a second parameter, it gets the index.
@@ -712,6 +723,7 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - In a `case` expression, a function type or literal cannot use `):`. Use Go order there.
 - VS Code highlights the name in `name: type` parameters as a type.
 - An arrow cannot get a type from the context if a local declaration hides the name of that type. Rename the local declaration.
+- Only a package-level `const` with one name can hold a generic arrow. Go function literals cannot have type parameters.
 - In a slice spread, untyped constants get their default type. Write `int64(1)`, not `1`, in `[...int64s, 1]`.
 - gosling ignores build constraints in `.gol` files.
 

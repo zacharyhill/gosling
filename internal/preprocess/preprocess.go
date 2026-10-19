@@ -154,6 +154,9 @@ type processor struct {
 	// arrowStatements maps the offset of the ")" of a typed arrow parameter
 	// list to the statements for its destructured parameters.
 	arrowStatements map[int]paramStatements
+	// genericParamOffsets holds the offsets of the parameter lists of generic
+	// arrows. Their func keyword is already in the output.
+	genericParamOffsets map[int]bool
 }
 
 // Process rewrites the gosling syntax in src into Go source with marker
@@ -173,6 +176,8 @@ func ProcessReserving(src []byte, reservedNames map[string]bool) (*Result, error
 		scheduled:   map[int]string{},
 		inserts:     map[int]string{},
 		typedArrows: map[int]bool{},
+
+		genericParamOffsets: map[int]bool{},
 
 		bodyDestructures: map[int]*destructure{},
 		bodyStatements:   map[int]paramStatements{},
