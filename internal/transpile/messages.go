@@ -149,7 +149,7 @@ func cleanCall(name, text string) (string, string, bool) {
 			}
 		}
 		return "[" + strings.Join(args, ", ") + "]", after, true
-	case name == hoistMarker && len(args) == 1:
+	case isHoistMarker(name) && len(args) == 1:
 		return args[0], after, true
 	case (name == coalesceMarker || name == coalescePtrMarker) && len(args) == 2:
 		return args[0] + " ?? " + args[1], after, true

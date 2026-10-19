@@ -19,6 +19,7 @@ func TestProcess(test *testing.T) {
 		consts      []int
 		forOfBlanks []int
 		newlines    [][2]int
+		arrayTemps  []ArrayTemp
 	}{
 		{
 			name: "try catch with binding",
@@ -353,16 +354,18 @@ func TestProcess(test *testing.T) {
 			want: "func f() {\n\t_ = xs\n}",
 		},
 		{
-			name:   "array destructuring of a call with only blank elements",
-			src:    "func f() {\n\tconst [_] = load()\n}",
-			want:   "func f() {\n\ttmp := load(); _ = tmp\n}",
-			splits: []int{len("func f() {\n\ttmp := load()")},
+			name:       "array destructuring of a call with only blank elements",
+			src:        "func f() {\n\tconst [_] = load()\n}",
+			want:       "func f() {\n\ttmp := load(); _ = tmp\n}",
+			splits:     []int{len("func f() {\n\ttmp := load()")},
+			arrayTemps: []ArrayTemp{{Offset: len("func f() {\n\t"), Names: []string{"_"}}},
 		},
 		{
-			name:   "destructuring temp avoids existing names",
-			src:    "func f() { tmp := 1; [x] := g(tmp) }",
-			want:   "func f() { tmp := 1; tmp2 := g(tmp); x := tmp2[0] }",
-			splits: []int{len("func f() { tmp := 1; tmp2 := g(tmp)")},
+			name:       "destructuring temp avoids existing names",
+			src:        "func f() { tmp := 1; [x] := g(tmp) }",
+			want:       "func f() { tmp := 1; tmp2 := g(tmp); x := tmp2[0] }",
+			splits:     []int{len("func f() { tmp := 1; tmp2 := g(tmp)")},
+			arrayTemps: []ArrayTemp{{Offset: len("func f() { tmp := 1; "), Names: []string{"x"}}},
 		},
 		{
 			name: "let object destructuring",
@@ -376,11 +379,12 @@ func TestProcess(test *testing.T) {
 			consts: []int{len("func f() { "), len("func f() { A, ")},
 		},
 		{
-			name:   "const array destructuring hoists call",
-			src:    "func f() {\n\tconst [x, _, y] = load()\n}",
-			want:   "func f() {\n\ttmp := load(); x, y := tmp[0], tmp[2]\n}",
-			splits: []int{len("func f() {\n\ttmp := load()")},
-			consts: []int{len("func f() {\n\ttmp := load(); "), len("func f() {\n\ttmp := load(); x, ")},
+			name:       "const array destructuring hoists call",
+			src:        "func f() {\n\tconst [x, _, y] = load()\n}",
+			want:       "func f() {\n\ttmp := load(); x, y := tmp[0], tmp[2]\n}",
+			splits:     []int{len("func f() {\n\ttmp := load()")},
+			consts:     []int{len("func f() {\n\ttmp := load(); "), len("func f() {\n\ttmp := load(); x, ")},
+			arrayTemps: []ArrayTemp{{Offset: len("func f() {\n\t"), Names: []string{"x", "_", "y"}}},
 		},
 		{
 			name: "nested object destructuring",
@@ -413,6 +417,12 @@ func TestProcess(test *testing.T) {
 			name: "block with labeled block is not destructuring",
 			src:  "func f() {\n\t{L: {x()}}\n}",
 			want: "func f() {\n\t{L: {x()}}\n}",
+		},
+		{
+			name:   "array destructuring with rest has no array temp",
+			src:    "func f() {\n\t[x, ...rest] = load()\n}",
+			want:   "func f() {\n\ttmp := load(); x, rest = tmp[0], tmp[1:]\n}",
+			splits: []int{len("func f() {\n\ttmp := load()")},
 		},
 		{
 			name: "block statement is not destructuring",
@@ -703,6 +713,11 @@ func TestProcess(test *testing.T) {
 			}
 			if !slices.Equal(result.Newlines, testCase.newlines) {
 				test.Errorf("newlines %v, want %v", result.Newlines, testCase.newlines)
+			}
+			if !slices.EqualFunc(result.ArrayTemps, testCase.arrayTemps, func(got, want ArrayTemp) bool {
+				return got.Offset == want.Offset && slices.Equal(got.Names, want.Names)
+			}) {
+				test.Errorf("array temps %v, want %v", result.ArrayTemps, testCase.arrayTemps)
 			}
 			if !slices.Equal(result.Splits, testCase.splits) {
 				test.Errorf("splits %v, want %v", result.Splits, testCase.splits)

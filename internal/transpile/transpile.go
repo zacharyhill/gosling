@@ -130,6 +130,9 @@ type file struct {
 	// forOfBlanks maps each for-of range statement to the "_" key that
 	// preprocessing added.
 	forOfBlanks map[*ast.RangeStmt]*ast.Ident
+	// tuples maps each array pattern temporary that destructureTuples
+	// replaced to the pattern.
+	tuples map[*ast.AssignStmt]*tupleDestructure
 }
 
 // position maps a position in the preprocessed file to the original source.
@@ -331,6 +334,7 @@ func newFile(input Input, preprocessed *preprocess.Result) *file {
 		constVars:     map[*ast.Ident]bool{},
 		constDecls:    map[*ast.GenDecl]*ast.AssignStmt{},
 		forOfBlanks:   map[*ast.RangeStmt]*ast.Ident{},
+		tuples:        map[*ast.AssignStmt]*tupleDestructure{},
 	}
 }
 
@@ -529,7 +533,7 @@ func markerDecls(packageName string) string {
 		"func " + preprocess.TryMarker + "[T any](v T, err error) func(T) T { return nil }\n" +
 		"func " + coalesceMarker + "[T any](x any, d T) T { return d }\n" +
 		"func " + coalescePtrMarker + "[T any](x *T, d T) T { return d }\n" +
-		"func " + hoistMarker + "[T any](v T, err error) T { return v }\n" +
+		hoistMarkerDecls() +
 		spreadMarkerDecls +
 		arrayMarkerDecls()
 }
@@ -561,6 +565,7 @@ func (transpiler *transpiler) augment(typeInfo *types.Info) bool {
 	changed := false
 	for _, file := range transpiler.files {
 		changed = convertConsts(file, typeInfo) || changed
+		changed = destructureTuples(file, typeInfo) || changed
 		changed = transpiler.rewriteArrayCalls(file, typeInfo) || changed
 		changed = transpiler.wrapNested(file, typeInfo) || changed
 		changed = transpiler.expandShorthand(file, typeInfo) || changed

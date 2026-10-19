@@ -39,7 +39,11 @@ type Result struct {
 	// ForOfBlanks holds the offsets of the "_" keys that for-of loops add.
 	// A range over a channel, an integer, or iter.Seq cannot have them.
 	ForOfBlanks []int
-	edits       []edit
+	// ArrayTemps holds the temporaries of flat array patterns without a rest
+	// element. If the right side is a call with more than one result, the
+	// pattern takes the results instead.
+	ArrayTemps []ArrayTemp
+	edits      []edit
 }
 
 // Error is a syntax error at an offset into the original source.

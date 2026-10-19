@@ -179,6 +179,16 @@ func TestErrors(test *testing.T) {
 			want: "x.gol:5:2: cannot assign to Y: declared with const",
 		},
 		{
+			name: "assignment to a const destructured tuple",
+			src:  "package p\nfunc g() (int, int) { return 1, 2 }\nfunc f() int {\n\tconst [a, b] = g()\n\tb = a\n\treturn b\n}",
+			want: "x.gol:5:2: cannot assign to b: declared with const",
+		},
+		{
+			name: "array pattern with fewer names than results",
+			src:  "package p\nfunc g() (int, int, int) { return 1, 2, 3 }\nfunc f() int {\n\tconst [a, b] = g()\n\treturn a + b\n}",
+			want: "x.gol:4:17: assignment mismatch: 2 variables but g returns 3 values",
+		},
+		{
 			name: "assignment to an if const",
 			src:  "package p\nfunc g() int { return 1 }\nfunc f() {\n\tif const x = g(); x > 0 {\n\t\tx = 2\n\t}\n}",
 			want: "x.gol:5:3: cannot assign to x: declared with const",
@@ -1298,6 +1308,7 @@ func TestCleanMessage(test *testing.T) {
 		{"__goslingT(`a (`, n, `) b`) + 1", "t`a (${n}) b` + 1"},
 		{"__goslingT(`x`, …", "t(`x`, …"},
 		{"__goslingV(f()) + 1", "f() + 1"},
+		{"__goslingV3(f())", "f()"},
 		{"__goslingNP(p, 1) + \"a\"", "(p ?? 1) + \"a\""},
 		{"invalid operation: -__goslingN(p, 1)", "invalid operation: -(p ?? 1)"},
 		{"__goslingN(p, q).X undefined", "(p ?? q).X undefined"},
