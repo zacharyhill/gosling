@@ -25,13 +25,16 @@ type sourceFile struct {
 	path        string
 	packageName string
 	imports     []string
+	// context is the build configuration that type-checks a .gol file.
+	context          build.Context
+	isInDefaultBuild bool
 }
 
 type packageDir struct {
 	dir        string
 	importPath string
 	golFiles   []sourceFile
-	goFiles    []sourceFile // hand-written .go files that match the build context
+	goFiles    []sourceFile // hand-written .go files
 	// orphans holds generated .go files whose .gol file no longer exists,
 	// for example after a rename of the .gol file.
 	orphans []string
@@ -145,19 +148,13 @@ func generatedNames(entries []fs.DirEntry) map[string]bool {
 	return generated
 }
 
-// addFile records a .gol file, or a hand-written .go file that matches the
-// build context. It skips generated .go files, and records the orphans.
+// addFile records a .gol file or a hand-written .go file, with its build
+// configuration. It skips generated .go files, and records the orphans.
 func (packageDir *packageDir) addFile(name string, generated map[string]bool) error {
 	filePath := filepath.Join(packageDir.dir, name)
 	isGol := strings.HasSuffix(name, sourceExt)
-	if !isGol {
-		if !strings.HasSuffix(name, ".go") || generated[name] {
-			return nil
-		}
-		matches, err := build.Default.MatchFile(packageDir.dir, name)
-		if err != nil || !matches {
-			return err
-		}
+	if !isGol && (!strings.HasSuffix(name, ".go") || generated[name]) {
+		return nil
 	}
 	src, err := packageDir.readSource(filePath)
 	if err != nil {
@@ -171,11 +168,16 @@ func (packageDir *packageDir) addFile(name string, generated map[string]bool) er
 	if err != nil {
 		return err
 	}
-	if isGol {
-		packageDir.golFiles = append(packageDir.golFiles, source)
-	} else {
+	if !isGol {
+		source.isInDefaultBuild, err = build.Default.MatchFile(packageDir.dir, name)
 		packageDir.goFiles = append(packageDir.goFiles, source)
+		return err
 	}
+	if source.context, err = chooseContext(filePath, src); err != nil {
+		return err
+	}
+	source.isInDefaultBuild = isDefaultContext(source.context)
+	packageDir.golFiles = append(packageDir.golFiles, source)
 	return nil
 }
 

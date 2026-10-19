@@ -113,6 +113,14 @@ If you rename or delete `foo.gol`, gosling deletes the old `foo.go` on the next 
 
 gofmt cannot read gosling syntax. So `gosling fmt` runs gofmt on the Go code that preprocessing makes, and copies the space between tokens back to the `.gol` file. It does not sort imports and does not change comments. It does not format a file that has syntax errors.
 
+### Build constraints
+
+gosling reads `//go:build` lines and `_GOOS` and `_GOARCH` file name suffixes in `.gol` files, as the go tool does for `.go` files. The generated file keeps the `//go:build` line.
+
+gosling generates all `.gol` files on each system. It type-checks a file with the build configuration of the system if the file matches it. Otherwise it uses a configuration that matches the file. For example, it uses `GOOS=windows` for `foo_windows.gol`, and the `integration` tag for `//go:build integration`. Each configuration includes only the `.gol` and `.go` files that match it. A file that no configuration matches is an error.
+
+A `.gol` file with `//go:build ignore` can have a different package, such as a main package for `go run`.
+
 ## Editor support
 
 `editors/vscode` has a VS Code extension. It highlights `.gol` files and starts the gosling language server. It also gives `.gol` files their own language ID, so the Go extension does not report errors in them. Other editors can also use the language server. See [Other editors](#other-editors).
@@ -238,6 +246,7 @@ To highlight `.gol` files, add the VS Code extension folder as a TextMate bundle
 - A rename can change a name that gosling copies into generated code, such as a catch variable, an arrow parameter, or a destructured name. The server then transpiles the renamed files and compares the result with the rename in Go. If they differ, the rename fails, because a partial rename would break the code. For example, a rename of the field `X` fails if `const {X} = p` uses it.
 - A rename in a file that changed after a syntax error fails if the name occurs in generated code.
 - After a syntax error, the server uses the last version that parsed, with the changed lines that still parse. The lines that do not parse get no results until the file parses again. Type errors do not have this problem.
+- gopls uses only the build configuration of your system. A `.gol` file for another system or with a build tag gets no results from gopls.
 
 ## Language
 
@@ -979,7 +988,6 @@ gosling type-checks each package. Errors show the line and column in the `.gol` 
 - VS Code highlights the name in `name: type` parameters as a type.
 - An arrow cannot get a type from the context if a local declaration hides the name of that type. Rename the local declaration.
 - Only a package-level `const` with one name can hold a generic arrow. Go function literals cannot have type parameters.
-- gosling ignores build constraints in `.gol` files.
 
 ## How it works
 
