@@ -40,3 +40,7 @@ func indexedAfterFilter(users []User) []string {
 func impureArgument(users []User, pick func() func(User) string) []string {
 	return users.filter(u => u.Age > 0).map(pick())
 }
+
+func firstNonEmptyName(users []User) string {
+	return users.map(u => u.Name).find(n => n != "") ?? "none"
+}

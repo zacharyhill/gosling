@@ -85,7 +85,7 @@ func (transpiler *transpiler) fixTernaryTypes(file *file, typeInfo *types.Info) 
 		if !ok || len(call.Args) != 3 {
 			continue // already explicit
 		}
-		resultType := pickTernaryType(typeInfo, call, contextType(typeInfo, parentOf, call))
+		resultType := pickTernaryType(typeInfo, call, getTernaryContext(typeInfo, parentOf, call))
 		if resultType == nil {
 			continue
 		}
@@ -99,10 +99,35 @@ func (transpiler *transpiler) fixTernaryTypes(file *file, typeInfo *types.Info) 
 	return changed
 }
 
+// getTernaryContext returns the type that the code around a ternary expects,
+// or nil. A ternary in an arm of another ternary gets the context of the
+// outer ternary.
+func getTernaryContext(typeInfo *types.Info, parentOf map[ast.Node]ast.Node, call *ast.CallExpr) types.Type {
+	outerExpr, parent := outermostParen(parentOf, call)
+	outerCall, ok := parent.(*ast.CallExpr)
+	if !ok || !isTernaryCall(outerCall) || outerCall.Args[0] == outerExpr {
+		return contextType(typeInfo, parentOf, call)
+	}
+	if typedMarker, ok := outerCall.Fun.(*ast.IndexExpr); ok {
+		return typeInfo.TypeOf(typedMarker.Index)
+	}
+	return getTernaryContext(typeInfo, parentOf, outerCall)
+}
+
+func isTernaryCall(call *ast.CallExpr) bool {
+	marker := call.Fun
+	if typedMarker, ok := marker.(*ast.IndexExpr); ok {
+		marker = typedMarker.X
+	}
+	markerIdentifier, ok := marker.(*ast.Ident)
+	return ok && markerIdentifier.Name == ternaryMarker && len(call.Args) == 3
+}
+
 // pickTernaryType returns the type for a ternary whose arms do not infer the
-// right type, or nil. The context type wins if inference fails, or if both
-// arms are constants and the context is not an interface. Otherwise one arm
-// must be assignable to the type of the other.
+// right type, or nil. The context type wins if inference fails, if both
+// arms are constants and the context is not an interface, or if an arm is
+// nil and the context is an interface. Otherwise one arm must be assignable
+// to the type of the other.
 func pickTernaryType(typeInfo *types.Info, call *ast.CallExpr, context types.Type) types.Type {
 	then, otherwise := typeInfo.Types[call.Args[1]], typeInfo.Types[call.Args[2]]
 	if !isValidType(then.Type) || !isValidType(otherwise.Type) {
@@ -114,7 +139,12 @@ func pickTernaryType(typeInfo *types.Info, call *ast.CallExpr, context types.Typ
 	if context != nil && (!isInferred || isConstant && !types.IsInterface(context) && !types.Identical(context, inferred)) {
 		return context
 	}
-	if isInferred || isUntypedNil(then.Type) || isUntypedNil(otherwise.Type) {
+	// A nil arm of a concrete type would put a typed nil in the interface.
+	hasNilArm := isUntypedNil(then.Type) || isUntypedNil(otherwise.Type)
+	if context != nil && hasNilArm && types.IsInterface(context) && !types.IsInterface(inferred) {
+		return context
+	}
+	if isInferred || hasNilArm {
 		return nil
 	}
 	thenType, otherwiseType := types.Default(then.Type), types.Default(otherwise.Type)

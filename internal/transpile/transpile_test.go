@@ -1313,6 +1313,58 @@ func main() {
 	expectPanicAt(test, src, "prog.gol:11")
 }
 
+// TestEmbedWithTypedCatch checks that a //go:embed directive still builds
+// when lowering adds an import, and that an errors import written by hand
+// counts as used by a typed catch.
+func TestEmbedWithTypedCatch(test *testing.T) {
+	if testing.Short() {
+		test.Skip("runs the go tool")
+	}
+	const embeddedPage = "embedded"
+	const body = `
+//go:embed page.txt
+var page string
+
+func read(): error {
+	try {
+		os.Stat("missing")
+	} catch (e is os.ErrNotExist) {
+		print(page)
+	}
+	return nil
+}
+
+func main() {
+	read()
+}
+`
+	testCases := map[string]string{
+		"added import": "package main\n\nimport (\n\t_ \"embed\"\n\t\"os\"\n)\n" + body,
+		"own import":   "package main\n\nimport (\n\t_ \"embed\"\n\t\"errors\"\n\t\"os\"\n)\n" + body,
+	}
+	for name, src := range testCases {
+		test.Run(name, func(test *testing.T) {
+			outputs, err := Transpile(Config{Importer: importer.Default(), LineDirectives: true}, []Input{{Path: "prog.gol", Src: []byte(src)}})
+			if err != nil {
+				test.Fatal(err)
+			}
+			directory := test.TempDir()
+			writeFile(test, filepath.Join(directory, "go.mod"), "module run\n\ngo 1.26\n")
+			writeFile(test, filepath.Join(directory, "page.txt"), embeddedPage)
+			writeFile(test, filepath.Join(directory, "prog.go"), string(outputs[0].Src))
+			runCommand := exec.Command("go", "run", ".")
+			runCommand.Dir = directory
+			got, err := runCommand.CombinedOutput()
+			if err != nil {
+				test.Fatalf("go run: %v\n%s\ngenerated:\n%s", err, got, outputs[0].Src)
+			}
+			if string(got) != embeddedPage {
+				test.Errorf("output %q, want %q", got, embeddedPage)
+			}
+		})
+	}
+}
+
 // expectPanicAt runs src as prog.gol and checks that its stack trace
 // contains location.
 func expectPanicAt(test *testing.T, src, location string) {

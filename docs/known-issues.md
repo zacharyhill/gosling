@@ -11,70 +11,44 @@ The version in this file is gosling v1.0.0.
 
 Each bug has an example that fails or gives incorrect output, and a workaround.
 
-### `map(...).find(...) ?? d` is an error
+### A ternary with a `nil` arm and no context type gives a typed nil
 
-`find` on a slice whose element type cannot be nil returns a pointer. So `??` must accept it. After `map`, gosling reports an error.
-
-```go
-return xs.map(x => x + "!").find(x => x != "") ?? ""
-// error: left side of ?? is never nil
-```
-
-`xs.find(f) ?? d` without `map` is valid.
-
-Workaround: assign the result of `map` to a variable first.
+If one arm is `nil` and the code around the ternary does not give a type, the `nil` gets the type of the other arm. This occurs with `:=`, with `let` without a type, and in an argument to a generic function. When the value later goes into an interface, the interface holds a typed nil, so a nil check is false.
 
 ```go
-const ys = xs.map(x => x + "!")
-return ys.find(x => x != "") ?? ""
+s := c ? &T{} : nil
+var x fmt.Stringer = s
+// when c is false: x == nil is false
 ```
 
-### A regex literal after `of` is an error
+A declared type, an assignment, a `return`, or a parameter type of a function that is not generic gives the context type. Then the result is correct.
 
-gosling reads the `/` after `of` as a division, so the regex literal is not found.
-
-```go
-for (const seg of /,/.Split(s, -1)) { }
-// error: const seg needs a value
-```
-
-Workaround: assign the result to a variable first.
-
-```go
-const segs = /,/.Split(s, -1)
-for (const seg of segs) { }
-```
-
-### A typed `const` cannot hold a ternary of an interface type
-
-```go
-const r: io.Reader = c ? a : b
-// error: invalid constant type io.Reader
-```
-
-Workaround: use `let`.
-
-```go
-let r: io.Reader = c ? a : b
-```
-
-### A ternary with a `nil` arm gives a typed nil
-
-If one arm is `nil`, the `nil` gets the type of the other arm. The type that the context expects does not apply. When the context is an interface, the interface holds a typed nil, so a nil check is false.
+Workaround: give the declaration a type.
 
 ```go
 let s: fmt.Stringer = c ? &T{} : nil
-// when c is false: s == nil is false
 ```
 
-Workaround: use an `if` statement.
+### An `errors` import is unused with `instanceof`
+
+`err instanceof *fs.PathError` becomes a call to `errors.AsType`. If you import `errors` yourself, gosling reports `"errors" imported and not used`.
 
 ```go
-let s: fmt.Stringer
-if c {
-	s = &T{}
+import (
+	"errors"
+	"io/fs"
+)
+
+func f(err: error): bool {
+	if (err instanceof *fs.PathError) {
+		return err.Path != ""
+	}
+	return false
 }
+// error: "errors" imported and not used
 ```
+
+Workaround: do not import `errors` yourself. gosling adds the import.
 
 ## Traps
 

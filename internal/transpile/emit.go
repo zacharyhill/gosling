@@ -159,9 +159,29 @@ func (writer *outputWriter) copyOriginal(offset int) {
 		return
 	}
 	writer.writeSource(from, segment[:firstNonSpace])
-	writer.directive(writer.lineAt(from + firstNonSpace))
+	tokenLine := writer.lineAt(from + firstNonSpace)
+	if isCompilerDirectiveStart(segment, firstNonSpace) {
+		writer.writeLineDirective(tokenLine)
+	} else {
+		writer.directive(tokenLine)
+	}
 	writer.writeSource(from+firstNonSpace, segment[firstNonSpace:])
 	writer.needsDirective = false
+}
+
+// isCompilerDirectiveStart reports whether a //go: comment starts the line at
+// offset in segment. The compiler rejects such a directive if a comment is
+// before it on the same line.
+func isCompilerDirectiveStart(segment []byte, offset int) bool {
+	return bytes.HasPrefix(segment[offset:], []byte("//go:")) && (offset == 0 || segment[offset-1] == '\n')
+}
+
+// writeLineDirective writes a //line directive on its own line. The directive
+// gives line to the next line.
+func (writer *outputWriter) writeLineDirective(line int) {
+	if writer.lineDirectives {
+		fmt.Fprintf(&writer.buffer, "//line %s:%d\n", writer.baseName, line)
+	}
 }
 
 // writeSource writes text that starts at srcOffset in the preprocessed source.

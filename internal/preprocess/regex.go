@@ -87,7 +87,7 @@ func maskRegex(src []byte, start, end int) {
 
 // findRegexStart returns the offset of the first "/" that starts an operand
 // and is not a known regex literal. As in JavaScript, a "/" after an operand
-// is a division.
+// is a division, except after the "of" or "in" of a for loop.
 func findRegexStart(lexemes []lexeme, regexEnds map[int]int) (int, bool) {
 	for lexemeIndex, current := range lexemes {
 		if !current.is(token.QUO) && !current.is(token.QUO_ASSIGN) {
@@ -96,11 +96,22 @@ func findRegexStart(lexemes []lexeme, regexEnds map[int]int) (int, bool) {
 		if _, known := regexEnds[current.offset]; known {
 			continue
 		}
-		if lexemeIndex == 0 || !isOperandEnd(lexemes[lexemeIndex-1]) {
+		if lexemeIndex == 0 || !isOperandEnd(lexemes[lexemeIndex-1]) || isLoopKeyword(lexemes, lexemeIndex-1) {
 			return current.offset, true
 		}
 	}
 	return 0, false
+}
+
+// isLoopKeyword reports whether lexemes[keywordIndex] is the "of" or "in" of
+// `for (const x of xs)`. Go never puts two operands next to each other, so an
+// "of" or "in" after an operand is the keyword and not a variable.
+func isLoopKeyword(lexemes []lexeme, keywordIndex int) bool {
+	keyword := lexemes[keywordIndex]
+	if !keyword.isIdent("of") && !keyword.isIdent("in") {
+		return false
+	}
+	return keywordIndex > 0 && isOperandEnd(lexemes[keywordIndex-1])
 }
 
 // scanRegex returns the end of the regex literal at src[start]. For an
