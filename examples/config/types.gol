@@ -1,0 +1,94 @@
+package main
+
+import (
+	"errors"
+	"fmt"
+	"iter"
+	"path/filepath"
+)
+
+// Protocol is a literal union. Each literal gets a constant, such as ProtocolHttps.
+type Protocol = "http" | "https" | "grpc"
+
+enum Stage { Dev, Staging, Prod }
+
+enum LogLevel { Debug = "debug", Info = "info", Warn = "warn" }
+
+// Service is one config entry. Port and Host are optional fields.
+type Service struct {
+	Name     string   `json:"name"`
+	Protocol Protocol `json:"protocol"`
+	Stage    Stage    `json:"stage"`
+	Level    LogLevel `json:"level"`
+	Tags     []string `json:"tags"`
+
+	Port? int    `json:"port,omitempty"`
+	Host? string `json:"host,omitempty"`
+}
+
+type FileSource struct{ Path string }
+
+type InlineSource struct {
+	Name string
+	Text string
+}
+
+// Source is a union type. A type switch on it must list each variant.
+type Source = FileSource | InlineSource
+
+var ErrMissing = errors.New("config file is missing")
+
+let (
+	baseTags     = []string{"managed"}
+	defaultPorts = map[Protocol]int{ProtocolHttp: 80, ProtocolHttps: 443, ProtocolGrpc: 50051}
+)
+
+func nameSource(source: Source): string {
+	let name: string
+	switch const source = source.(type) {
+	case FileSource:
+		name = filepath.Base(source.Path)
+	case InlineSource:
+		name = t`inline:${source.Name}`
+	}
+	return name
+}
+
+type Registry struct {
+	services map[string]Service
+	names    []string
+}
+
+impl Registry implements fmt.Stringer {
+	constructor() {
+	this.services = map[string]Service{}
+	}
+
+	func Add(service: Service) {
+	if !this.services.has(service.Name) {
+		this.names = [...this.names, service.Name]
+	}
+	this.services[service.Name] = service
+}
+
+	func Remove(name: string) {
+	this.services.delete(name)
+	this.names = this.names.filter(existing => existing != name)
+}
+
+	// Find returns a copy of the service, or nil.
+	func Find(name: string): *Service {
+	return this.services.get(name)
+}
+
+	func String(): string {
+	return t`Registry(${this.names.length} services)`
+}
+}
+
+// All is a generator. It gives the services in the order that Add saw them.
+func* (registry *Registry) All(): iter.Seq[Service] {
+	for (const name of registry.names) {
+			yield registry.services[name]
+		}
+}

@@ -1,65 +1,72 @@
-// Command config shows how to use the gosling features.
+// Command config loads service configs and prints a report. The comment on
+// each function names the gosling features that the function shows.
 package main
 
 import (
-	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 )
 
-type Config struct {
-	Name string  `json:"name"`
-	Port int     `json:"port"`
-	Host *string `json:"host"`
-}
-
-// load uses one catch block to wrap each failure in its try block.
-func load(path string) (Config, error) {
-	let config: Config
-	try {
-		const contents = os.ReadFile(path)
-		json.Unmarshal(contents, &config)
-	} catch (e) {
-		return Config{}, fmt.Errorf("load config: %w", e)
-	}
-	return config, nil
-}
-
-// loadAll uses try/catch to send each failed call in the block to one handler.
-func loadAll(paths []string) ([]Config, error) {
-	let configs: []Config
-	try {
-		for (const path of paths) {
-			const config = load(path)
-			configs = append(configs, config)
-		}
-	} catch (e) {
-		return nil, fmt.Errorf("loading configs: %w", e)
-	}
-	return configs, nil
-}
-
-// describe uses destructuring, for...of, template literals, ??, and array methods.
-// Code cannot assign to the names that const declares.
-func describe(configs []Config) {
-	for (const config of configs) {
-		const {Name: name, Port: port} = config
-		fmt.Println(t`${name} listens on ${config.Host ?? "localhost"}:${port}`)
-	}
-	const publicNames = configs.filter(config => config.Port < 10000).map(config => config.Name)
-	fmt.Println(t`public services: ${publicNames}`)
+let configFiles = map[string]string{
+	"api.json":    `{"name": "api", "protocol": "https", "stage": 2, "level": "info", "tags": ["public", "edge"], "host": "api.internal"}`,
+	"worker.json": `{"name": "worker", "protocol": "grpc", "stage": 0, "level": "debug", "tags": []}`,
+	"broken.json": `{"name": "broken",`,
 }
 
 func main() {
-	const dir = os.TempDir()
-	const good = filepath.Join(dir, "gosling-good.json")
-	try {
-		os.WriteFile(good, []byte(`{"name":"api","port":8080}`), 0o600)
-		const configs = loadAll([]string{good})
-		describe(configs)
-		loadAll([]string{good, filepath.Join(dir, "gosling-missing.json")})
-	} catch (e) {
-		fmt.Println("error:", e)
+	if const err = runInTempDir(); err != nil {
+		fmt.Fprintln(os.Stderr, err)
+		os.Exit(1)
 	}
+}
+
+func runInTempDir(): error {
+	const dir, err = os.MkdirTemp("", "gosling-config")
+	if err != nil {
+		return err
+	}
+	return errors.Join(run(dir), os.RemoveAll(dir))
+}
+
+// run shows a try block, a try expression, a call result pattern, and an
+// arrow that gets its types from the context.
+func run(dir: string): error {
+	try {
+		for const name, contents = range configFiles {
+			os.WriteFile(filepath.Join(dir, name), []byte(contents), 0o600)
+		}
+	} catch (err) {
+		return fmt.Errorf("write configs: %w", err)
+	}
+
+	const sources = []Source{
+		FileSource{filepath.Join(dir, "api.json")},
+		FileSource{filepath.Join(dir, "worker.json")},
+		FileSource{filepath.Join(dir, "broken.json")},
+		FileSource{filepath.Join(dir, "missing.json")},
+		InlineSource{"billing", `{"name": "billing", "protocol": "http", "stage": 1, "level": "warn", "tags": ["internal"], "port": 8081}`},
+		InlineSource{"bad", `{"name": "Bad_Name", "protocol": "http"}`},
+	}
+	const limit = try strconv.Atoi(os.Getenv("CONFIG_LIMIT")) catch sources.length
+	let stats: loadStats
+	const [registry, failures] = loadAll(sources[:min(limit, sources.length)], &stats)
+	for (const failure of failures) {
+		fmt.Println("error:", failure)
+	}
+	fmt.Println(t`loaded ${registry} from ${stats.Attempts} sources, ${stats.Failures} failed`)
+
+	for (const service of registry.All()) {
+		const err = applyHook(service, service => service.Tags[0] == "public" ? nil : fmt.Errorf("first tag is %q", service.Tags[0]))
+		if err != nil {
+			fmt.Println("hook:", err)
+		}
+	}
+
+	printReport(registry)
+	registry.Remove("billing")
+	fmt.Println(t`after remove: ${registry}`)
+	return nil
 }

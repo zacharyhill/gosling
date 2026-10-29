@@ -3,10 +3,13 @@ package golfmt
 import (
 	"bytes"
 	"go/importer"
+	"go/parser"
+	"go/token"
 	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 
@@ -236,11 +239,56 @@ func checkFormatPreservesOutput(test *testing.T, path string) {
 	}
 }
 
+// transpileSource transpiles src as path, with the other .gol files of its
+// package, and returns the output of path.
 func transpileSource(test *testing.T, path string, src []byte) []byte {
 	test.Helper()
-	outputs, err := transpile.Transpile(transpile.Config{Importer: importer.Default()}, []transpile.Input{{Path: path, Src: src}})
+	inputs := append([]transpile.Input{{Path: path, Src: src}}, readPackageSiblings(test, path)...)
+	outputs, err := transpile.Transpile(transpile.Config{Importer: importer.Default()}, inputs)
 	if err != nil {
 		test.Fatalf("Transpile: %v", err)
 	}
-	return outputs[0].Src
+	for _, output := range outputs {
+		if output.Path == transpile.OutputPath(path) {
+			return output.Src
+		}
+	}
+	test.Fatalf("no output for %s", path)
+	return nil
+}
+
+// readPackageSiblings reads the other .gol files in the directory of path
+// that have the same package name. Each file in a testdata directory is its
+// own program, so it has no siblings.
+func readPackageSiblings(test *testing.T, path string) []transpile.Input {
+	test.Helper()
+	if slices.Contains(strings.Split(filepath.ToSlash(path), "/"), "testdata") {
+		return nil
+	}
+	siblingPaths, err := filepath.Glob(filepath.Join(filepath.Dir(path), "*.gol"))
+	if err != nil {
+		test.Fatal(err)
+	}
+	packageName := readPackageName(test, path)
+	var siblings []transpile.Input
+	for _, siblingPath := range siblingPaths {
+		if siblingPath == path || readPackageName(test, siblingPath) != packageName {
+			continue
+		}
+		src, err := os.ReadFile(siblingPath)
+		if err != nil {
+			test.Fatal(err)
+		}
+		siblings = append(siblings, transpile.Input{Path: siblingPath, Src: src})
+	}
+	return siblings
+}
+
+func readPackageName(test *testing.T, path string) string {
+	test.Helper()
+	file, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.PackageClauseOnly)
+	if err != nil {
+		test.Fatal(err)
+	}
+	return file.Name.Name
 }

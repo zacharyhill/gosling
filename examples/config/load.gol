@@ -1,0 +1,77 @@
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"io"
+	"io/fs"
+	"os"
+	"path/filepath"
+)
+
+type loadStats struct {
+	Attempts int
+	Failures int
+}
+
+// readSource shows instanceof, as, using, a typed catch, and throw.
+func readSource(source: Source): (string, error) {
+	if (source instanceof InlineSource) {
+		return source.Text, nil
+	}
+	const path = (source as FileSource).Path
+	try {
+		using file = os.Open(path)
+		const contents = io.ReadAll(file)
+		return string(contents), nil
+	} catch (err is fs.ErrNotExist) {
+		throw fmt.Errorf("%s: %w", filepath.Base(path), ErrMissing)
+	}
+}
+
+// parseService shows a typed catch with a type and a regex literal.
+func parseService(name: string, text: string): (Service, error) {
+	let service: Service
+	try {
+		json.Unmarshal([]byte(text), &service)
+	} catch (syntaxError: *json.SyntaxError) {
+		throw fmt.Errorf("%s: bad JSON at byte %d", name, syntaxError.Offset)
+	}
+	if !/^[a-z][a-z0-9-]*$/.MatchString(service.Name) {
+		return Service{}, fmt.Errorf("%s: invalid service name %q", name, service.Name)
+	}
+	if !service.Protocol.Valid() {
+		return Service{}, fmt.Errorf("%s: unknown protocol %q", name, service.Protocol)
+	}
+	return service, nil
+}
+
+// loadAll shows checked calls and finally. A failed source does not stop the others.
+func loadAll(sources: []Source, stats: *loadStats): (*Registry, []error) {
+	const registry = NewRegistry()
+	let failures: []error
+	for (const source of sources) {
+		try {
+			const text = readSource(source)
+			registry.Add(parseService(nameSource(source), text))
+		} catch (err) {
+			stats.Failures++
+			failures = append(failures, err)
+		} finally {
+			stats.Attempts++
+		}
+	}
+	return registry, failures
+}
+
+// applyHook shows catch panic. A hook that panics does not stop the program.
+func applyHook(service: Service, hook: func(service: Service): error): error {
+	try {
+		hook(service)
+	} catch (err) {
+		return fmt.Errorf("hook for %s: %w", service.Name, err)
+	} catch panic (recovered) {
+		return fmt.Errorf("hook for %s panicked: %v", service.Name, recovered)
+	}
+	return nil
+}
