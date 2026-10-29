@@ -1,0 +1,81 @@
+package main
+
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
+// firstOr is a generic arrow.
+const firstOr = <T>(items: []T, fallback: T): T => items.length > 0 ? items[0] : fallback
+
+// portsFor shows a map spread. Dev uses another gRPC port.
+func portsFor(stage: Stage): map[Protocol]int {
+	return stage == Stage.Dev ? map[Protocol]int{...defaultPorts, ProtocolGrpc: 9090} : defaultPorts
+}
+
+// withDefaults shows a struct spread, a slice spread, ?.[, and ??=. It does not change its argument.
+func withDefaults(service: Service): Service {
+	const filled = Service{...service, Tags: [...baseTags, ...service.Tags]}
+	filled.Port ??= new(portsFor(service.Stage)?.[service.Protocol] ?? 8080)
+	filled.Host ??= new("localhost")
+	return filled
+}
+
+// formatService shows default and optional parameters, destructuring, a ternary, and string methods.
+func formatService(service: Service, width: int = 8, showTags?: bool): string {
+	const {Name: name, Stage: stage, Tags: tags} = service
+	const [firstTag = "untagged", ...otherTags] = tags
+	const marker = stage == Stage.Prod ? "*" : "-"
+	let line = t`${marker} ${name.padEnd(width)} ${stage.String().toLowerCase().padEnd(7)} ${service.Host ?? "?"}:${service.Port ?? 0}`
+	if showTags {
+		line += t` [${firstTag}+${otherTags.length}]`
+	}
+	return line
+}
+
+// env is a tag function. It quotes each value.
+func env(pieces: []string, values: ...string): string {
+	let text = pieces[0]
+	for (let index = 0; index < values.length; index++) {
+		text += strconv.Quote(values[index]) + pieces[index+1]
+	}
+	return text
+}
+
+func printList(title: string, items: ...string) {
+	fmt.Println(t`${title}: ${items.length > 0 ? items.join(", ") : "none"}`)
+}
+
+// printReport shows a generator loop, slice and map methods, arrows, and call spread.
+func printReport(registry: *Registry) {
+	let services: []Service
+	for (const service of registry.All()) {
+		services = append(services, withDefaults(service))
+	}
+	services.sort((left, right) => strings.Compare(left.Name, right.Name))
+	for (const index in services) {
+		fmt.Println(t`${index + 1:2d}. ${formatService(services[index], 8, true)}`)
+	}
+
+	const prodNames = services.filter(service => service.Stage == Stage.Prod).map(({Name}) => Name)
+	printList("prod", ...prodNames)
+
+	const tagCounts = map[string]int{}
+	services.flatMap(service => service.Tags).forEach(tag => {
+		tagCounts[tag]++
+	})
+	const tagSummaries = tagCounts.keys().sort().map(tag => tag + "=" + strconv.Itoa(tagCounts[tag]))
+	fmt.Println(t`tags: ${tagSummaries.join(" ")}`)
+
+	const highestPort = services.reduce((highest, service) => max(highest, *service.Port), 0)
+	const isPublic = (service: Service) => service.Tags.includes("public")
+	fmt.Println(t`highest port: ${highestPort}, any public: ${services.some(isPublic)}, all public: ${services.every(isPublic)}`)
+	fmt.Println(t`debug logging: ${services.findIndex(service => service.Level == LogLevel.Debug) >= 0}`)
+
+	const first = firstOr(services, Service{Name: "none"})
+	const apiHost = registry.Find("api")?.Host ?? "unknown"
+	fmt.Println(t`first: ${formatService(first)}`)
+	fmt.Println(t`api host: ${apiHost}, ghost: ${registry.Find("ghost")?.Name ?? "not found"}`)
+	fmt.Println(env`SERVICE=${first.Name} ADDR=${*first.Host}`)
+}

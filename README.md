@@ -117,7 +117,7 @@ To use `go generate`, add `//go:generate gosling` to a `.go` file in the package
 
 If you rename or delete `foo.gol`, gosling deletes the old `foo.go` on the next run. `gosling -check` reports the old file and does not delete it.
 
-`examples/config` has a program and its generated output.
+`examples/config` is a program that uses most gosling features, with its generated output. Its `Example` test checks the output of the program.
 
 ### Formatting
 
