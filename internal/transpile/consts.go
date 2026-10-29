@@ -63,13 +63,17 @@ func (file *file) recordConstNames() {
 }
 
 // convertibleConst returns node and its spec if node is a single const
-// declaration. The value must type-check but not be constant.
+// declaration. The value must type-check but not be constant, or the
+// declared type must be one that a Go constant cannot have.
 func convertibleConst(node ast.Node, typeInfo *types.Info) (*ast.GenDecl, *ast.ValueSpec) {
 	decl, ok := node.(*ast.GenDecl)
 	if !ok || decl.Tok != token.CONST || decl.Lparen.IsValid() || len(decl.Specs) != 1 {
 		return nil, nil
 	}
 	spec := decl.Specs[0].(*ast.ValueSpec)
+	if spec.Type != nil && len(spec.Values) > 0 && !isConstType(typeInfo.TypeOf(spec.Type)) {
+		return decl, spec
+	}
 	constant := true
 	for _, value := range spec.Values {
 		typeAndValue, ok := typeInfo.Types[value]
@@ -84,6 +88,16 @@ func convertibleConst(node ast.Node, typeInfo *types.Info) (*ast.GenDecl, *ast.V
 		return nil, nil
 	}
 	return decl, spec
+}
+
+// isConstType reports whether a Go constant can have goType. An unknown
+// type counts as one, so the type checker reports it.
+func isConstType(goType types.Type) bool {
+	if !isValidType(goType) {
+		return true
+	}
+	basic, ok := goType.Underlying().(*types.Basic)
+	return ok && basic.Info()&types.IsConstType != 0
 }
 
 // assignPos returns the position of the = in spec.

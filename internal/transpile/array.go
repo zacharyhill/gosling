@@ -270,6 +270,11 @@ func (transpiler *transpiler) asArrayCall(file *file, typeInfo *types.Info, call
 	if object, _, _ := types.LookupFieldOrMethod(receiverType, true, transpiler.checkedPackage, name); object != nil {
 		return nil, false // a real method wins
 	}
+	if method.pointerResult != "" && hasPlaceholder(elementType) {
+		// The placeholder is any, so wait for the arrow to resolve before
+		// picking the pointer variant.
+		return nil, false
+	}
 	methodCall := &arrayCall{method: name, set: set, originalCall: call, receiver: selector.X}
 	methodCall.returnsPointer = method.pointerResult != "" && !isComparableToNil(elementType)
 	if _, isArray := receiverType.Underlying().(*types.Array); isArray {

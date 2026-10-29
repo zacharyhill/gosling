@@ -133,3 +133,21 @@ func impureArgument(users []User, pick func() func(User) string) []string {
 		return out
 	}()
 }
+
+func firstNonEmptyName(users []User) string {
+	return func() string {
+		if v := func() *string {
+			xs, f1, f2 := users, func(u User) string { return u.Name }, func(n string) bool { return n != "" }
+			for _, x := range xs {
+				x2 := f1(x)
+				if f2(x2) {
+					return &x2
+				}
+			}
+			return nil
+		}(); v != nil {
+			return *v
+		}
+		return "none"
+	}()
+}

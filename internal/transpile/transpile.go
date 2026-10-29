@@ -662,11 +662,14 @@ func (transpiler *transpiler) unresolvedArrows() bool {
 }
 
 // isUsedByLowering reports an unused fmt import in a file with template
-// literals, or an unused regexp import in a file with regex literals.
-// Lowering makes these literals use the import.
+// literals, an unused regexp import in a file with regex literals, or an
+// unused errors import in a file with typed catches. Lowering makes this
+// code use the import.
 func (transpiler *transpiler) isUsedByLowering(typeError types.Error) bool {
 	return transpiler.isImportUsedByMarker(typeError, "fmt", preprocess.TMarker) ||
-		transpiler.isImportUsedByMarker(typeError, "regexp", preprocess.RegexMarker)
+		transpiler.isImportUsedByMarker(typeError, "regexp", preprocess.RegexMarker) ||
+		transpiler.isImportUsedByMarker(typeError, "errors", preprocess.IsMarker) ||
+		transpiler.isImportUsedByMarker(typeError, "errors", preprocess.AsMarker)
 }
 
 func (transpiler *transpiler) isImportUsedByMarker(typeError types.Error, importPath, marker string) bool {

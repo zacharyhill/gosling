@@ -1296,6 +1296,12 @@ func TestProcess(test *testing.T) {
 			want: "return __goslingRegexp(`a`)\nf(func(s __goslingU) __goslingR { return __goslingRegexp(`b`).MatchString(s) })",
 		},
 		{
+			name:        "regex literal after for of and in",
+			src:         "for (let seg of /,/.Split(s, -1)) {\n}\nfor (let i in /a/.FindAllString(s, -1)) {\n}\nn := of / 2 / in",
+			want:        "for _, seg := range __goslingRegexp(`,`).Split(s, -1) {\n}\nfor i := range __goslingRegexp(`a`).FindAllString(s, -1) {\n}\nn := of / 2 / in",
+			forOfBlanks: []int{len("for ")},
+		},
+		{
 			name: "regex literal with backtick",
 			src:  "re := /`/",
 			want: "re := __goslingRegexp(\"`\")",
